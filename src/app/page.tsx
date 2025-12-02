@@ -385,7 +385,10 @@ export default function HomePage() {
 
         {/* Остальные секции */}
         <HowItWorks />
+        </div>
+
         <Courses onOpenTestModal={openTestModal} />
+        <div className="mx-auto max-w-container px-4 sm:px-6 lg:px-8 pb-16 sm:pb-20 lg:pb-24">
         <Pricing
           onOpenTestModal={openTestModal}
           onOpenPurchaseModal={openPurchaseModal}

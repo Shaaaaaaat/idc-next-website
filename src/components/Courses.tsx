@@ -12,7 +12,8 @@ export function Courses({ onOpenTestModal }: CoursesProps) {
   return (
     <section
       id="courses"
-      className="relative w-screen -ml-[50vw] -mr-[50vw] left-1/2 right-1/2 border-t border-black/5 bg-[#F5F7FB] text-brand-dark py-16 sm:py-20 lg:py-24"
+      // className="relative w-screen -ml-[50vw] -mr-[50vw] left-1/2 right-1/2 border-t border-black/5 bg-[#F5F7FB] text-brand-dark py-16 sm:py-20 lg:py-24"
+      className="border-t border-black/5 bg-[#F5F7FB] text-brand-dark py-16 sm:py-20 lg:py-24"
     >
       <div className="mx-auto max-w-container px-4 sm:px-6 lg:px-8">
         {/* Заголовок + бейдж */}
