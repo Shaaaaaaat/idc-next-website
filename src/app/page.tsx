@@ -22,7 +22,6 @@ import { courseNames } from "@/data/courses";
 import { ChatWidget } from "@/components/ChatWidget";
 import { Footer } from "@/components/Footer";
 
-
 function HowStepCard({
   children,
   className,
@@ -71,6 +70,9 @@ function HowStepCard({
 }
 
 export default function HomePage() {
+  /* ---------- Мобильное меню ---------- */
+  const [isMobileNavOpen, setIsMobileNavOpen] = useState(false);
+
   /* ---------- Модалка теста силы ---------- */
   const [isTestModalOpen, setIsTestModalOpen] = useState(false);
   const [testContext, setTestContext] = useState<string | undefined>();
@@ -129,7 +131,7 @@ export default function HomePage() {
 
   const [buyFullName, setBuyFullName] = useState("");
   const [buyEmail, setBuyEmail] = useState("");
-  const [buyPhone, setBuyPhone] = useState(""); 
+  const [buyPhone, setBuyPhone] = useState("");
   const [buyCourse, setBuyCourse] = useState<string>("");
   const [buyAgreed, setBuyAgreed] = useState(false);
   const [isBuySubmitting, setIsBuySubmitting] = useState(false);
@@ -222,55 +224,174 @@ export default function HomePage() {
     <main className="min-h-screen bg-brand-dark text-white">
       <div className="mx-auto max-w-container px-4 sm:px-6 lg:px-8 py-10 sm:py-16 lg:py-20">
         {/* Top bar */}
-        <header className="flex items-center justify-between gap-4 mb-10 sm:mb-14">
-          
-          <div className="flex items-center gap-2">
-          <Image src="/logo-idc-white1.svg" // положи файл в public/logo-idc-white.png
-              alt="I Do Calisthenics"
-              width={150}
-              height={40}
-              className="h-7 w-auto sm:h-8 lg:h-9"
-              priority/>
-            
-            {/* <div className="h-7 w-7 rounded-2xl bg-brand-blue/80 flex items-center justify-center text-xs font-semibold">
-            </div> */}
-            <span className="text-sm sm:text-base font-medium tracking-tight">
-              I Do Calisthenics
-            </span>
+        <header className="sticky top-0 z-40 mb-8 sm:mb-12 bg-brand-dark/90 backdrop-blur-md">
+          <div className="flex items-center justify-between gap-4 py-3">
+            <div className="flex items-center gap-2">
+              <Image
+                src="/logo-idc-white1.svg"
+                alt="I Do Calisthenics"
+                width={150}
+                height={40}
+                className="h-7 w-auto sm:h-8 lg:h-9"
+                priority
+              />
+              <span className="text-sm sm:text-base font-medium tracking-tight">
+                I Do Calisthenics
+              </span>
+            </div>
+
+            {/* Десктоп-навигация */}
+            <nav className="hidden md:flex items-center gap-6 text-sm text-brand-muted">
+              <a href="#how" className="hover:text-white transition-colors">
+                Как это работает
+              </a>
+              <a href="#courses" className="hover:text-white transition-colors">
+                Курсы
+              </a>
+              <a href="#pricing" className="hover:text-white transition-colors">
+                Цены
+              </a>
+              <a
+                href="#locations"
+                className="hover:text-white transition-colors"
+              >
+                Локации
+              </a>
+              <a href="#about" className="hover:text-white transition-colors">
+                О проекте
+              </a>
+              <a href="#reviews" className="hover:text-white transition-colors">
+                Отзывы
+              </a>
+              <a href="#faq" className="hover:text-white transition-colors">
+                FAQ
+              </a>
+            </nav>
+
+            {/* Кнопка Войти — десктоп */}
+            <button
+              className="hidden sm:inline-flex items-center rounded-full border border-white/15 bg-white/5 px-4 py-2 text-xs sm:text-sm font-medium hover:bg-white/10 transition-colors md:ml-2"
+              type="button"
+              onClick={openLoginModal}
+            >
+              Войти
+            </button>
+
+            {/* Бургер — только мобилка */}
+            <button
+              type="button"
+              className="inline-flex items-center justify-center rounded-full border border-white/15 bg-white/5 p-2 md:hidden"
+              onClick={() => setIsMobileNavOpen(true)}
+              aria-label="Открыть меню"
+            >
+              <span className="sr-only">Открыть меню</span>
+              <span className="block h-0.5 w-4 rounded-full bg-white mb-1" />
+              <span className="block h-0.5 w-4 rounded-full bg-white mb-1" />
+              <span className="block h-0.5 w-4 rounded-full bg-white" />
+            </button>
           </div>
-
-          <nav className="hidden md:flex items-center gap-6 text-sm text-brand-muted">
-            <a href="#how" className="hover:text-white transition-colors">
-              Как это работает
-            </a>
-            <a href="#courses" className="hover:text-white transition-colors">
-              Курсы
-            </a>
-            <a href="#pricing" className="hover:text-white transition-colors">
-              Цены
-            </a>
-            <a href="#pricing" className="hover:text-white transition-colors">
-              Локации
-            </a>
-            <a href="#about" className="hover:text-white transition-colors">
-              О проекте
-            </a>
-            <a href="#reviews" className="hover:text-white transition-colors">
-              Отзывы
-            </a>
-            <a href="#faq" className="hover:text-white transition-colors">
-              FAQ
-            </a>
-          </nav>
-
-          <button
-            className="hidden sm:inline-flex items-center rounded-full border border-white/15 bg-white/5 px-4 py-2 text-xs sm:text-sm font-medium hover:bg-white/10 transition-colors"
-            type="button"
-            onClick={openLoginModal}
-          >
-            Войти
-          </button>
         </header>
+
+        {/* Мобильное меню */}
+        {isMobileNavOpen && (
+          <div
+            className="fixed inset-0 z-50 bg-black/70 md:hidden"
+            onClick={() => setIsMobileNavOpen(false)}
+          >
+            <nav
+              className="absolute inset-x-4 top-4 rounded-3xl bg-brand-dark border border-white/10 p-5 shadow-2xl"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="mb-4 flex items-center justify-between gap-3">
+                <span className="text-sm font-medium">Меню</span>
+                <button
+                  type="button"
+                  onClick={() => setIsMobileNavOpen(false)}
+                  className="rounded-full bg-white/5 p-1 text-brand-muted hover:bg-white/10 hover:text-white transition-colors"
+                  aria-label="Закрыть меню"
+                >
+                  ✕
+                </button>
+              </div>
+
+              <div className="flex flex-col gap-2 mb-4 text-sm">
+                <a
+                  href="#how"
+                  className="rounded-2xl px-3 py-2 hover:bg-white/5"
+                  onClick={() => setIsMobileNavOpen(false)}
+                >
+                  Как это работает
+                </a>
+                <a
+                  href="#courses"
+                  className="rounded-2xl px-3 py-2 hover:bg-white/5"
+                  onClick={() => setIsMobileNavOpen(false)}
+                >
+                  Курсы
+                </a>
+                <a
+                  href="#pricing"
+                  className="rounded-2xl px-3 py-2 hover:bg-white/5"
+                  onClick={() => setIsMobileNavOpen(false)}
+                >
+                  Цены
+                </a>
+                <a
+                  href="#locations"
+                  className="rounded-2xl px-3 py-2 hover:bg-white/5"
+                  onClick={() => setIsMobileNavOpen(false)}
+                >
+                  Локации
+                </a>
+                <a
+                  href="#about"
+                  className="rounded-2xl px-3 py-2 hover:bg-white/5"
+                  onClick={() => setIsMobileNavOpen(false)}
+                >
+                  О проекте
+                </a>
+                <a
+                  href="#reviews"
+                  className="rounded-2xl px-3 py-2 hover:bg-white/5"
+                  onClick={() => setIsMobileNavOpen(false)}
+                >
+                  Отзывы
+                </a>
+                <a
+                  href="#faq"
+                  className="rounded-2xl px-3 py-2 hover:bg-white/5"
+                  onClick={() => setIsMobileNavOpen(false)}
+                >
+                  FAQ
+                </a>
+              </div>
+
+              <div className="space-y-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsMobileNavOpen(false);
+                    openTestModal("Моб. меню: Пройти тест силы");
+                  }}
+                  className="w-full rounded-full bg-brand-primary px-4 py-2.5 text-sm font-semibold text-white hover:bg-brand-primary/90 transition-colors"
+                >
+                  Пройти тест силы
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsMobileNavOpen(false);
+                    openLoginModal();
+                  }}
+                  className="w-full rounded-full border border-white/20 bg-white/5 px-4 py-2.5 text-sm font-semibold hover:bg-white/10 transition-colors"
+                >
+                  Войти
+                </button>
+              </div>
+            </nav>
+          </div>
+        )}
 
         {/* HERO */}
         <section className="grid gap-10 lg:grid-cols-[1.1fr_0.9fr] items-center mb-16 lg:mb-24">
@@ -285,28 +406,57 @@ export default function HomePage() {
               Тренировки с
               <br />
               собственным весом
-              <span className="block text-lg sm:text-xl lg:text-2xl text-brand-accent mt-3 lg:mt-4">
+              <span className="block text-base sm:text-xl lg:text-2xl text-brand-accent mt-3 lg:mt-4">
                 в комфортном темпе и с фокусом на технике
               </span>
             </h1>
 
             <p className="max-w-xl text-sm sm:text-base text-brand-muted">
-              Учишься технике, набираешь силу и осваиваешь элементы быстрее,
-              чем ты думаешь. Каждая тренировка подстраивается под твой уровень,
-              цели и расписание.
+              Учишься технике, набираешь силу и осваиваешь элементы шаг за
+              шагом. Каждая тренировка подстраивается под твой уровень, цели и
+              расписание.
             </p>
 
-            <div className="flex flex-col sm:flex-row gap-3 sm:gap-4 pt-2">
-              <TestSignupButton
-                onClick={() => openTestModal("Главный блок: Пройти тест силы")}
-              />
+            {/* CTA: мобилка в плашке, десктоп — как раньше */}
+            <div className="pt-2">
+              {/* Мобилка */}
+              <div className="sm:hidden rounded-3xl border border-white/10 bg-white/5 px-4 py-3 mb-3">
+                <p className="text-[11px] text-brand-muted mb-2">
+                  Начни с короткого теста силы — это бесплатно, по нему мы
+                  подберём программу под твой уровень.
+                </p>
+                <div className="flex flex-col gap-2">
+                  <TestSignupButton
+                    onClick={() =>
+                      openTestModal(
+                        "Главный блок (моб): Пройти тест силы"
+                      )
+                    }
+                  />
+                  <a
+                    href="#courses"
+                    className="inline-flex items-center justify-center rounded-full border border-white/20 px-4 py-2 text-xs font-semibold hover:bg-white/5 transition-colors"
+                  >
+                    Посмотреть курсы
+                  </a>
+                </div>
+              </div>
 
-              <a
-                href="#courses"
-                className="inline-flex items-center justify-center rounded-full border border-white/20 px-6 py-3 text-sm sm:text-base font-semibold hover:bg-white/5 transition-colors"
-              >
-                Посмотреть курсы
-              </a>
+              {/* Десктоп / планшет */}
+              <div className="hidden sm:flex flex-row gap-3 sm:gap-4">
+                <TestSignupButton
+                  onClick={() =>
+                    openTestModal("Главный блок: Пройти тест силы")
+                  }
+                />
+
+                <a
+                  href="#courses"
+                  className="inline-flex items-center justify-center rounded-full border border-white/20 px-6 py-3 text-sm sm:text-base font-semibold hover:bg-white/5 transition-colors"
+                >
+                  Посмотреть курсы
+                </a>
+              </div>
             </div>
 
             <div className="flex flex-wrap gap-4 pt-4 text-xs sm:text-sm text-brand-muted">
@@ -330,18 +480,14 @@ export default function HomePage() {
             <div className="relative rounded-4xl bg-gradient-to-br from-brand-blue to-[#111827] p-1 shadow-soft">
               <div className="rounded-4xl bg-brand-dark/90 border border-white/10 p-4 sm:p-5 lg:p-6">
                 <div className="relative overflow-hidden rounded-3xl bg-black/60 h-56 sm:h-64 lg:h-72 mb-4 sm:mb-5">
-                <video
-    className="absolute inset-0 h-full w-full object-cover"
-    src="/hero-preview2.mp4"
-    // poster="/hero-poster.jpg" // опционально: картинка-обложка из public
-    playsInline
-    muted
-    autoPlay
-    loop
-  />
-  {/* Если хочешь поверх полупрозрачный градиент — можно добавить:
-  <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/40 to-transparent" />
-  */}
+                  <video
+                    className="absolute inset-0 h-full w-full object-cover"
+                    src="/hero-preview2.mp4"
+                    playsInline
+                    muted
+                    autoPlay
+                    loop
+                  />
                 </div>
 
                 <div className="grid grid-cols-2 gap-3 text-xs sm:text-sm">
@@ -377,7 +523,14 @@ export default function HomePage() {
                           Подбери программу под себя
                         </div>
                       </div>
-                      <button className="shrink-0 rounded-full bg-brand-accent text-brand-dark px-4 py-2 text-xs font-semibold hover:bg-brand-accent/90 transition-colors">
+                      <button
+                        className="shrink-0 rounded-full bg-brand-accent text-brand-dark px-4 py-2 text-xs font-semibold hover:bg-brand-accent/90 transition-colors"
+                        onClick={() =>
+                          openTestModal(
+                            "Главный блок: Подбери программу под себя"
+                          )
+                        }
+                      >
                         Начать
                       </button>
                     </div>
@@ -392,10 +545,11 @@ export default function HomePage() {
 
         {/* Остальные секции */}
         <HowItWorks />
-        </div>
+      </div>
 
-        <Courses onOpenTestModal={openTestModal} />
-        <div className="mx-auto max-w-container px-4 sm:px-6 lg:px-8 pb-16 sm:pb-20 lg:pb-24">
+      <Courses onOpenTestModal={openTestModal} />
+
+      <div className="mx-auto max-w-container px-4 sm:px-6 lg:px-8 pb-16 sm:pb-20 lg:pb-24">
         <Pricing
           onOpenTestModal={openTestModal}
           onOpenPurchaseModal={openPurchaseModal}
@@ -405,7 +559,32 @@ export default function HomePage() {
         <Testimonials />
         <FAQ />
       </div>
-          <Footer />
+
+      <Footer />
+
+      {/* Мобильный фиксированный CTA */}
+      <div className="fixed inset-x-4 bottom-4 z-30 md:hidden">
+        <div className="rounded-2xl border border-white/10 bg-brand-dark/95 backdrop-blur-xl px-4 py-3 shadow-soft flex items-center gap-3">
+          <div className="flex-1 text-[11px] leading-snug text-brand-muted">
+            <p className="text-sm font-semibold text-white mb-0.5">
+              Не знаешь, с чего начать?
+            </p>
+            <p>
+              Пройди короткий тест силы, и мы подберём программу под твой
+              уровень.
+            </p>
+          </div>
+
+          <button
+            type="button"
+            onClick={() => openTestModal("Моб. фиксированный CTA")}
+            className="shrink-0 rounded-full bg-brand-primary px-3 py-2 text-[11px] font-semibold hover:bg-brand-primary/90 transition-colors"
+          >
+            Тест силы
+          </button>
+        </div>
+      </div>
+
       {/* МОДАЛКА ТЕСТА СИЛЫ */}
       {isTestModalOpen && (
         <div
@@ -557,49 +736,48 @@ export default function HomePage() {
               </div>
 
               <div className="space-y-1">
-  <label className="text-xs sm:text-sm text-brand-muted">
-    Телефон
-  </label>
-  <input
-    type="tel"
-    value={buyPhone}
-    onChange={(e) => setBuyPhone(e.target.value)}
-    required
-    className="w-full rounded-2xl border border-white/10 bg-white/5 px-3 py-2 text-sm outline-none focus:border-brand-primary"
-    placeholder="+7 900 000-00-00"
-  />
-</div>
-
+                <label className="text-xs sm:text-sm text-brand-muted">
+                  Телефон
+                </label>
+                <input
+                  type="tel"
+                  value={buyPhone}
+                  onChange={(e) => setBuyPhone(e.target.value)}
+                  required
+                  className="w-full rounded-2xl border border-white/10 bg-white/5 px-3 py-2 text-sm outline-none focus:border-brand-primary"
+                  placeholder="+7 900 000-00-00"
+                />
+              </div>
 
               {!purchaseOptions.studioName && (
-              <div className="space-y-1">
-                <label className="text-xs sm:text-sm text-brand-muted">
-                  Курс
-                </label>
+                <div className="space-y-1">
+                  <label className="text-xs sm:text-sm text-brand-muted">
+                    Курс
+                  </label>
 
-                <div className="relative">
-                  <select
-                    value={buyCourse}
-                    onChange={(e) => setBuyCourse(e.target.value)}
-                    required
-                    className="w-full rounded-2xl border border-brand-primary/60 bg-brand-dark px-3 py-2 pr-8 text-sm text-white outline-none focus:border-brand-primary focus:ring-1 focus:ring-brand-primary appearance-none"
-                  >
-                    <option value="" disabled>
-                      Выбери курс
-                    </option>
-
-                    {courseNames.map((name) => (
-                      <option key={name} value={name}>
-                        {name}
+                  <div className="relative">
+                    <select
+                      value={buyCourse}
+                      onChange={(e) => setBuyCourse(e.target.value)}
+                      required
+                      className="w-full rounded-2xl border border-brand-primary/60 bg-brand-dark px-3 py-2 pr-8 text-sm text-white outline-none focus:border-brand-primary focus:ring-1 focus:ring-brand-primary appearance-none"
+                    >
+                      <option value="" disabled>
+                        Выбери курс
                       </option>
-                    ))}
-                  </select>
 
-                  <span className="pointer-events-none absolute inset-y-0 right-3 flex items-center text-brand-muted">
-                    ▾
-                  </span>
+                      {courseNames.map((name) => (
+                        <option key={name} value={name}>
+                          {name}
+                        </option>
+                      ))}
+                    </select>
+
+                    <span className="pointer-events-none absolute inset-y-0 right-3 flex items-center text-brand-muted">
+                      ▾
+                    </span>
+                  </div>
                 </div>
-              </div>
               )}
 
               <label className="flex items-start gap-2 text-[11px] sm:text-xs text-brand-muted">
@@ -659,7 +837,7 @@ export default function HomePage() {
               <button
                 type="button"
                 onClick={closeLoginModal}
-                className="rounded-full bg-white/5 p-1 text-brand-muted hover:bg-white/10 hover:text-white transition-colors"
+                className="rounded-full bg.white/5 p-1 text-brand-muted hover:bg-white/10 hover:text-white transition-colors"
                 aria-label="Закрыть форму входа"
               >
                 <span className="block h-4 w-4 leading-none">✕</span>
@@ -712,6 +890,7 @@ export default function HomePage() {
           </div>
         </div>
       )}
+
       <ChatWidget />
     </main>
   );
