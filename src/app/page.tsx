@@ -19,7 +19,6 @@ import { FAQ } from "@/components/FAQ";
 import { Testimonials } from "@/components/Testimonials";
 import { TestSignupButton } from "@/components/TestSignupButton";
 import { courseNames } from "@/data/courses";
-import { ChatWidget } from "@/components/ChatWidget";
 import { Footer } from "@/components/Footer";
 
 function HowStepCard({
@@ -72,20 +71,6 @@ function HowStepCard({
 export default function HomePage() {
   /* ---------- Мобильное меню ---------- */
   const [isMobileNavOpen, setIsMobileNavOpen] = useState(false);
-
-  /* ---------- Показ фиксированного CTA на мобиле ---------- */
-  const [showMobileStickyCta, setShowMobileStickyCta] = useState(false);
-
-  useEffect(() => {
-    const handleScroll = () => {
-      if (typeof window === "undefined") return;
-      setShowMobileStickyCta(window.scrollY > 400);
-    };
-
-    handleScroll();
-    window.addEventListener("scroll", handleScroll);
-    return () => window.removeEventListener("scroll", handleScroll);
-  }, []);
 
   /* ---------- Модалка теста силы ---------- */
   const [isTestModalOpen, setIsTestModalOpen] = useState(false);
@@ -282,15 +267,6 @@ export default function HomePage() {
               </a>
             </nav>
 
-            {/* Кнопка Войти — десктоп */}
-            <button
-              className="hidden sm:inline-flex items-center rounded-full border border-white/15 bg-white/5 px-4 py-2 text-xs sm:text-sm font-medium hover:bg-white/10 transition-colors md:ml-2"
-              type="button"
-              onClick={openLoginModal}
-            >
-              Войти
-            </button>
-
             {/* Бургер — только мобилка */}
             <button
               type="button"
@@ -393,17 +369,6 @@ export default function HomePage() {
                 >
                   Пройти тест силы
                 </button>
-
-                <button
-                  type="button"
-                  onClick={() => {
-                    setIsMobileNavOpen(false);
-                    openLoginModal();
-                  }}
-                  className="w-full rounded-full border border-white/20 bg-white/5 px-4 py-2.5 text-sm font-semibold hover:bg-white/10 transition-colors"
-                >
-                  Войти
-                </button>
               </div>
             </nav>
           </div>
@@ -490,7 +455,7 @@ export default function HomePage() {
                     </div>
                   </div>
 
-                  <div className="rounded-2xl bg-white/5 border border-white/10 px-3 py-3">
+                  <div className="rounded-2xl bg белый/5 border border-white/10 px-3 py-3">
                     <div className="text-brand-muted mb-1">
                       Заметный прогресс через
                     </div>
@@ -551,31 +516,6 @@ export default function HomePage() {
 
       <Footer />
 
-      {/* Мобильный фиксированный CTA — показывается после скролла и не залезает под чат */}
-      {showMobileStickyCta && (
-        <div className="fixed left-4 right-24 bottom-6 z-30 md:hidden">
-          <div className="rounded-2xl border border-white/10 bg-brand-dark/95 backdrop-blur-xl px-4 py-3 shadow-soft flex items-center gap-3">
-            <div className="flex-1 text-[12px] leading-snug text-brand-muted">
-              <p className="text-sm font-semibold text-white mb-0.5">
-                Не знаешь, с чего начать?
-              </p>
-              <p>
-                Пройди короткий тест силы, и мы подберём программу под твой
-                уровень.
-              </p>
-            </div>
-
-            <button
-              type="button"
-              onClick={() => openTestModal("Моб. фиксированный CTA")}
-              className="shrink-0 rounded-full bg-brand-primary px-3 py-2 text-[11px] font-semibold hover:bg-brand-primary/90 transition-colors"
-            >
-              Тест силы
-            </button>
-          </div>
-        </div>
-      )}
-
       {/* МОДАЛКА ТЕСТА СИЛЫ */}
       {isTestModalOpen && (
         <div
@@ -617,7 +557,7 @@ export default function HomePage() {
               </div>
 
               <div className="space-y-1">
-                <label className="text-xs sm:text-sm text-brand-muted">
+                <label className="text-xs sm:text-sm текст-brand-muted">
                   Email
                 </label>
                 <input
@@ -881,8 +821,6 @@ export default function HomePage() {
           </div>
         </div>
       )}
-
-      <ChatWidget />
     </main>
   );
 }
