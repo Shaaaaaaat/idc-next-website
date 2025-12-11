@@ -2,7 +2,6 @@
 
 "use client";
 import Image from "next/image";
-
 import {
   useEffect,
   useRef,
@@ -10,6 +9,7 @@ import {
   type ReactNode,
   type FormEvent,
 } from "react";
+
 import { HowItWorks } from "@/components/HowItWorks";
 import { Courses } from "@/components/Courses";
 import { Pricing, type PurchaseOptions } from "@/components/Pricing";
@@ -294,7 +294,7 @@ export default function HomePage() {
             {/* Бургер — только мобилка */}
             <button
               type="button"
-              className="inline-flex h-9 w-9 items-center justify-center rounded-full bg-transparent md:hidden"
+              className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-white/20 bg-white/5 md:hidden"
               onClick={() => setIsMobileNavOpen(true)}
               aria-label="Открыть меню"
             >
@@ -433,7 +433,6 @@ export default function HomePage() {
               расписание.
             </p>
 
-            {/* CTA: одна связка и для мобилки, и для десктопа */}
             <div className="flex flex-col sm:flex-row gap-3 sm:gap-4 pt-2">
               <TestSignupButton
                 onClick={() =>
@@ -491,7 +490,7 @@ export default function HomePage() {
                     </div>
                   </div>
 
-                  <div className="rounded-2xl bg-white/5 border border.white/10 px-3 py-3">
+                  <div className="rounded-2xl bg-white/5 border border-white/10 px-3 py-3">
                     <div className="text-brand-muted mb-1">
                       Заметный прогресс через
                     </div>
@@ -552,9 +551,9 @@ export default function HomePage() {
 
       <Footer />
 
-      {/* Мобильный фиксированный CTA — появляется после небольшого скролла */}
+      {/* Мобильный фиксированный CTA — показывается после скролла и не залезает под чат */}
       {showMobileStickyCta && (
-        <div className="fixed inset-x-4 bottom-4 z-30 md:hidden">
+        <div className="fixed left-4 right-24 bottom-6 z-30 md:hidden">
           <div className="rounded-2xl border border-white/10 bg-brand-dark/95 backdrop-blur-xl px-4 py-3 shadow-soft flex items-center gap-3">
             <div className="flex-1 text-[11px] leading-snug text-brand-muted">
               <p className="text-sm font-semibold text-white mb-0.5">
@@ -752,7 +751,7 @@ export default function HomePage() {
                       value={buyCourse}
                       onChange={(e) => setBuyCourse(e.target.value)}
                       required
-                      className="w-full rounded-2xl border border-brand-primary/60 bg-brand-dark px-3 py-2 pr-8 text-sm text.white outline-none focus:border-brand-primary focus:ring-1 focus:ring-brand-primary appearance-none"
+                      className="w-full rounded-2xl border border-brand-primary/60 bg-brand-dark px-3 py-2 pr-8 text-sm text-white outline-none focus:border-brand-primary focus:ring-1 focus:ring-brand-primary appearance-none"
                     >
                       <option value="" disabled>
                         Выбери курс

@@ -11,7 +11,7 @@ export function Courses({ onOpenTestModal }: CoursesProps) {
   return (
     <section
       id="courses"
-      className="relative w-screen -ml-[50vw] left-1/2 border-t border-black/5 bg-[#F5F7FB] text-brand-dark py-16 sm:py-20 lg:py-24"
+      className="border-t border-black/5 bg-[#F5F7FB] text-brand-dark py-16 sm:py-20 lg:py-24"
     >
       <div className="mx-auto max-w-container px-4 sm:px-6 lg:px-8">
         {/* Заголовок + бейдж */}
@@ -42,10 +42,10 @@ export function Courses({ onOpenTestModal }: CoursesProps) {
         </div>
 
         {/* Горизонтальный скролл с карточками */}
-        <div className="-mx-4 sm:-mx-6 lg:-mx-8">
-          <div className="flex gap-4 sm:gap-6 lg:gap-8 overflow-x-auto pt-3 pb-4 sm:pb-6 px-4 sm:px-6 lg:px-8 snap-x snap-mandatory [&::-webkit-scrollbar]:h-1.5 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-black/10">
+        <div className="mt-3">
+          <div className="flex gap-4 sm:gap-6 lg:gap-8 overflow-x-auto pt-3 pb-4 sm:pb-6 -mx-1 px-1 snap-x snap-mandatory [&::-webkit-scrollbar]:h-1.5 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-black/10">
             {/* 1. Calisthenics Light */}
-            <article className="snap-start flex flex-col shrink-0 w-[80%] sm:w-[60%] lg:w-[40%] rounded-3xl bg-white border border-black/5 shadow-sm p-5 sm:p-6 transition-all duration-300 ease-out hover:-translate-y-1 hover:shadow-xl hover:border-brand-primary/50">
+            <article className="snap-start flex flex-col shrink-0 w-[82%] sm:w-[60%] lg:w-[40%] rounded-3xl bg-white border border-black/5 shadow-sm p-5 sm:p-6 transition-all duration-300 ease-out hover:-translate-y-1 hover:shadow-xl hover:border-brand-primary/50">
               <div className="flex items-center justify-between gap-2 mb-3 text-[11px] sm:text-xs">
                 <span className="inline-flex items-center gap-2 rounded-full bg-gray-50 border border-black/10 px-3 py-1 text-gray-600">
                   <span className="h-2 w-2 rounded-full bg-brand-accent" />
@@ -79,11 +79,11 @@ export function Courses({ onOpenTestModal }: CoursesProps) {
             </article>
 
             {/* 2. Super Calisthenics */}
-            <article className="snap-start flex flex-col shrink-0 w-[80%] sm:w-[60%] lg:w-[40%] rounded-3xl bg-white border border-black/5 shadow-sm p-5 sm:p-6 transition-all duration-300 ease-out hover:-translate-y-1 hover:shadow-xl hover:border-brand-primary/50">
+            <article className="snap-start flex flex-col shrink-0 w-[82%] sm:w-[60%] lg:w-[40%] rounded-3xl bg-white border border-black/5 shadow-sm p-5 sm:p-6 transition-all duration-300 ease-out hover:-translate-y-1 hover:shadow-xl hover:border-brand-primary/50">
               <div className="flex items-center justify-between gap-2 mb-3 text-[11px] sm:text-xs">
                 <span className="inline-flex items-center gap-2 rounded-full bg-gray-50 border border-black/10 px-3 py-1 text-gray-600">
                   <span className="h-2 w-2 rounded-full bg-brand-blue" />
-                  Стать сильнее  · Любой уровень
+                  Стать сильнее · Любой уровень
                 </span>
               </div>
 
@@ -96,7 +96,7 @@ export function Courses({ onOpenTestModal }: CoursesProps) {
               </p>
 
               <ul className="mb-4 space-y-1.5 text-[11px] sm:text-xs text-gray-600">
-                <li>• 45-60 минут, нужен турник</li>
+                <li>• 45–60 минут, нужен турник</li>
                 <li>• Баланс тяги, жима и кора</li>
                 <li>• Обучение любому элементу</li>
               </ul>
@@ -113,7 +113,7 @@ export function Courses({ onOpenTestModal }: CoursesProps) {
             </article>
 
             {/* 3. Подтягивания для девушек */}
-            <article className="snap-start flex flex-col shrink-0 w-[80%] sm:w-[60%] lg:w-[40%] rounded-3xl bg-white border border-black/5 shadow-sm p-5 sm:p-6 transition-all duration-300 ease-out hover:-translate-y-1 hover:shadow-xl hover:border-brand-primary/50">
+            <article className="snap-start flex flex-col shrink-0 w-[82%] sm:w-[60%] lg:w-[40%] rounded-3xl bg-white border border-black/5 shadow-sm p-5 sm:p-6 transition-all duration-300 ease-out hover:-translate-y-1 hover:shadow-xl hover:border-brand-primary/50">
               <div className="flex items-center justify-between gap-2 mb-3 text-[11px] sm:text-xs">
                 <span className="inline-flex items-center gap-2 rounded-full bg-gray-50 border border-black/10 px-3 py-1 text-gray-600">
                   <span className="h-2 w-2 rounded-full bg-brand-blue" />
@@ -147,7 +147,7 @@ export function Courses({ onOpenTestModal }: CoursesProps) {
             </article>
 
             {/* 4. Стойка на руках */}
-            <article className="snap-start flex flex-col shrink-0 w-[80%] sm:w-[60%] lg:w-[40%] rounded-3xl bg-white border border-black/5 shadow-sm p-5 sm:p-6 transition-all duration-300 ease-out hover:-translate-y-1 hover:shadow-xl hover:border-brand-primary/50">
+            <article className="snap-start flex flex-col shrink-0 w-[82%] sm:w-[60%] lg:w-[40%] rounded-3xl bg-white border border-black/5 shadow-sm p-5 sm:p-6 transition-all duration-300 ease-out hover:-translate-y-1 hover:shadow-xl hover:border-brand-primary/50">
               <div className="flex items-center justify-between gap-2 mb-3 text-[11px] sm:text-xs">
                 <span className="inline-flex items-center gap-2 rounded-full bg-gray-50 border border-black/10 px-3 py-1 text-gray-600">
                   <span className="h-2 w-2 rounded-full bg-brand-primary" />
@@ -181,8 +181,8 @@ export function Courses({ onOpenTestModal }: CoursesProps) {
             </article>
 
             {/* 5. Калистеника для кроссфитеров */}
-            <article className="snap-start flex flex-col shrink-0 w-[80%] sm:w-[60%] lg:w-[40%] rounded-3xl bg-white border border-black/5 shadow-sm p-5 sm:p-6 transition-all duration-300 ease-out hover:-translate-y-1 hover:shadow-xl hover:border-brand-primary/50">
-              <div className="flex items.center justify-between gap-2 mb-3 text-[11px] sm:text-xs">
+            <article className="snap-start flex flex-col shrink-0 w-[82%] sm:w-[60%] lg:w-[40%] rounded-3xl bg-white border border-black/5 shadow-sm p-5 sm:p-6 transition-all duration-300 ease-out hover:-translate-y-1 hover:shadow-xl hover:border-brand-primary/50">
+              <div className="flex items-center justify-between gap-2 mb-3 text-[11px] sm:text-xs">
                 <span className="inline-flex items-center gap-2 rounded-full bg-gray-50 border border-black/10 px-3 py-1 text-gray-600">
                   <span className="h-2 w-2 rounded-full bg-amber-400" />
                   Добавить строгие движения · Для продвинутых
@@ -199,7 +199,7 @@ export function Courses({ onOpenTestModal }: CoursesProps) {
               </p>
 
               <ul className="mb-4 space-y-1.5 text-[11px] sm:text-xs text-gray-600">
-                <li>• 60-80 минут на тренировку, нужен турник</li>
+                <li>• 60–80 минут на тренировку, нужен турник</li>
                 <li>• Сила лопаток и корпуса под гимнастику</li>
                 <li>• Строгие подтягивания и HSPU</li>
               </ul>
