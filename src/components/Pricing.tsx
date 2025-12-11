@@ -51,7 +51,10 @@ type PricingProps = {
   onOpenPurchaseModal?: (options: PurchaseOptions) => void;
 };
 
-export function Pricing({ onOpenTestModal, onOpenPurchaseModal }: PricingProps) {
+export function Pricing({
+  onOpenTestModal,
+  onOpenPurchaseModal,
+}: PricingProps) {
   const [currency, setCurrency] = useState<Currency>("RUB");
   const isRub = currency === "RUB";
 
@@ -70,16 +73,16 @@ export function Pricing({ onOpenTestModal, onOpenPurchaseModal }: PricingProps) 
     >
       <div className="mx-auto max-w-container px-4 sm:px-6 lg:px-8">
         {/* Заголовок + переключатель валюты */}
-        <div className="mb-10 sm:mb-12 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+        <div className="mb-10 sm:mb-12 flex flex-col gap-6 sm:flex-row sm:items-end sm:justify-between">
           <div className="max-w-3xl">
-            <p className="text-xs font-medium uppercase tracking-[0.2em] text-brand-muted mb-3">
+            <p className="text-[11px] sm:text-xs font-medium uppercase tracking-[0.2em] text-brand-muted mb-3">
               Цены
             </p>
-            <h2 className="text-2xl sm:text-3xl lg:text-4xl font-semibold tracking-tight mb-4">
+            <h2 className="text-[26px] sm:text-3xl lg:text-4xl font-semibold tracking-tight mb-3 leading-tight">
               Сколько стоят тренировки
             </h2>
 
-            <p className="mt-3 max-w-2xl text-sm sm:text-base text-brand-muted">
+            <p className="mt-2 max-w-2xl text-[14px] sm:text-base text-brand-muted leading-relaxed">
               Ты покупаешь блок тренировок, проходишь его в своём темпе, а
               потом можешь взять следующий. Без подписки и автосписаний.
             </p>
@@ -88,7 +91,9 @@ export function Pricing({ onOpenTestModal, onOpenPurchaseModal }: PricingProps) 
           {/* Переключатель валюты */}
           <div className="flex flex-col items-start sm:items-end gap-1.5">
             <div className="flex items-center gap-3">
-              <span className="text-[11px] uppercase tracking-[0.16em] text-brand-muted/80" />
+              <span className="text-[11px] uppercase tracking-[0.16em] text-brand-muted/80">
+                Валюта
+              </span>
               <div className="inline-flex rounded-full border border-white/10 bg-white/5 p-1 text-xs sm:text-sm">
                 <button
                   type="button"
@@ -119,7 +124,7 @@ export function Pricing({ onOpenTestModal, onOpenPurchaseModal }: PricingProps) 
         </div>
 
         {/* Две аккуратные колонки с текстом над карточками */}
-        <div className="mb-8 sm:mb-10 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between text-xs sm:text-sm text-brand-muted">
+        <div className="mb-8 sm:mb-10 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between text-[13px] sm:text-sm text-brand-muted">
           <span>
             1 тренировка = персональная программа в приложении + разбор техники
             по твоим видео.
@@ -139,19 +144,19 @@ export function Pricing({ onOpenTestModal, onOpenPurchaseModal }: PricingProps) 
                 <StepDot />
                 <span>Шаг 1 · старт · приложение</span>
               </div>
-              <h3 className="text-base sm:text-lg font-semibold mb-2">
+              <h3 className="text-[16px] sm:text-lg font-semibold mb-2">
                 Тест силы
               </h3>
-              <p className="text-sm font-semibold mb-1">
+              <p className="text-[15px] font-semibold mb-1">
                 {formatPrice(0, currency)}
               </p>
               <p className="text-[11px] text-brand-muted mb-4">бесплатно</p>
-              <ul className="mb-4 space-y-1.5 text-[11px] sm:text-xs text-brand-muted">
+              <ul className="mb-4 space-y-1.5 text-[12px] sm:text-xs text-brand-muted">
                 <li>• Доступ к приложению и формату тренировок</li>
                 <li>• Упражнения с объяснением техники</li>
                 <li>• Без оплаты и обязательств</li>
               </ul>
-              <p className="text-xs sm:text-sm text-brand-muted">
+              <p className="text-[13px] sm:text-sm text-brand-muted leading-relaxed">
                 Проходишь тест в удобное время и загружаешь видео в приложение.
               </p>
             </div>
@@ -159,7 +164,7 @@ export function Pricing({ onOpenTestModal, onOpenPurchaseModal }: PricingProps) 
             <div className="mt-auto pt-4">
               <TestSignupButton
                 label="Пройти тест бесплатно"
-                buttonClassName="w-full rounded-full bg-brand-primary px-4 py-2 text-xs sm:text-sm font-semibold shadow-soft hover:bg-brand-primary/90 transition-colors"
+                buttonClassName="w-full rounded-full bg-brand-primary px-4 py-2.5 text-[13px] sm:text-sm font-semibold shadow-soft hover:bg-brand-primary/90 transition-colors"
                 onClick={() =>
                   onOpenTestModal?.("Блок цен: Тест силы (бесплатно)")
                 }
@@ -174,29 +179,29 @@ export function Pricing({ onOpenTestModal, onOpenPurchaseModal }: PricingProps) 
                 <StepDot color="bg-brand-accent" />
                 <span>Разовый формат</span>
               </div>
-              <h3 className="text-base sm:text-lg font-semibold mb-2">
+              <h3 className="text-[16px] sm:text-lg font-semibold mb-2">
                 Разбор техники
               </h3>
-              <p className="text-sm font-semibold mb-1">
+              <p className="text-[15px] font-semibold mb-1">
                 {formatPrice(prices.review[currency].total, currency)}
               </p>
               <p className="text-[11px] text-brand-muted mb-4">
                 разовый формат
               </p>
-              <ul className="mb-4 space-y-1.5 text-[11px] sm:text-xs text-brand-muted">
+              <ul className="mb-4 space-y-1.5 text-[12px] sm:text-xs text-brand-muted">
                 <li>• Всё, что в тесте силы</li>
                 <li>• Подробный разбор техники от тренера</li>
                 <li>• Первая тренировка под тебя</li>
                 <li>• Рекомендации по нагрузке на ближайшие недели</li>
               </ul>
-              <p className="text-xs sm:text-sm text-brand-muted">
+              <p className="text-[13px] sm:text-sm text-brand-muted leading-relaxed">
                 Знакомишься с тренером и начинаешь свой путь в калистенике.
               </p>
             </div>
 
             <div className="mt-auto pt-4">
               <button
-                className="w-full rounded-full border border-white/40 px-4 py-2 text-xs sm:text-sm font-semibold hover:bg-white/10 transition-colors"
+                className="w-full rounded-full border border-white/40 px-4 py-2.5 text-[13px] sm:text-sm font-semibold hover:bg-white/10 transition-colors"
                 onClick={() =>
                   onOpenPurchaseModal?.({
                     tariffId: "review",
@@ -214,36 +219,40 @@ export function Pricing({ onOpenTestModal, onOpenPurchaseModal }: PricingProps) 
           {/* 3. 12 занятий — акцентный план */}
           <article className="relative flex h-full flex-col rounded-3xl border border-brand-primary/40 bg-brand-primary/5 px-5 py-6 sm:px-6 sm:py-7 backdrop-blur-sm shadow-[0_0_40px_rgba(216,22,150,0.35)] overflow-hidden">
             <div className="pointer-events-none absolute inset-0 rounded-3xl border border-brand-primary/60 opacity-40" />
+
             <div className="relative flex h-full flex-col">
               <div>
                 <div className="mb-3 flex items-center gap-2 text-[11px] uppercase tracking-[0.16em] text-brand-muted min-h-[32px]">
                   <StepDot color="bg-brand-primary" />
                   <span>Интенсивный блок</span>
+                  <span className="ml-auto rounded-full bg-white/10 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-white">
+                    Лучший выбор
+                  </span>
                 </div>
-                <h3 className="text-base sm:text-lg font-semibold mb-2">
+                <h3 className="text-[16px] sm:text-lg font-semibold mb-2">
                   12 тренировок
                 </h3>
-                <p className="text-sm font-semibold mb-1">
+                <p className="text-[15px] font-semibold mb-1">
                   {formatPrice(prices.month[currency].total, currency)}
                 </p>
                 <p className="text-[11px] text-brand-muted mb-4">
                   {formatPrice(prices.month[currency].per, currency)} за
                   тренировку
                 </p>
-                <ul className="mb-4 space-y-1.5 text-[11px] sm:text-xs text-brand-muted">
+                <ul className="mb-4 space-y-1.5 text-[12px] sm:text-xs text-brand-muted">
                   <li>• Всё, что в тесте силы</li>
                   <li>• 12 персональных тренировок</li>
                   <li>• Разбор техники после каждой тренировки</li>
                   <li>• Можно тренироваться 2–3 раза в неделю</li>
                 </ul>
-                <p className="text-xs sm:text-sm text-brand-muted">
+                <p className="text-[13px] sm:text-sm text-brand-muted leading-relaxed">
                   Блок, чтобы заметно продвинуться в силе, технике и форме.
                 </p>
               </div>
 
               <div className="mt-auto pt-4">
                 <button
-                  className="mt-3 w-full rounded-full border border-white/40 bg-transparent px-4 py-2 text-xs sm:text-sm font-semibold text-white hover:bg-white/10 transition-colors"
+                  className="mt-3 w-full rounded-full border border-white/40 bg-transparent px-4 py-2.5 text-[13px] sm:text-sm font-semibold text-white hover:bg-white/10 transition-colors"
                   onClick={() =>
                     onOpenPurchaseModal?.({
                       tariffId: "month",
@@ -269,11 +278,11 @@ export function Pricing({ onOpenTestModal, onOpenPurchaseModal }: PricingProps) 
             {/* верхняя половина — 12 тренировок в спокойном темпе */}
             <div className="flex flex-1 flex-col justify-between pb-4 mb-4 border-b border-white/10">
               <div>
-                <h3 className="text-base sm:text-lg font-semibold mb-2">
+                <h3 className="text-[15px] sm:text-lg font-semibold mb-2">
                   12 тренировок — спокойный темп
                 </h3>
 
-                <p className="text-sm font-semibold text-white">
+                <p className="text-[15px] font-semibold text-white">
                   {formatPrice(prices.slow12[currency].total, currency)}
                 </p>
                 <p className="text-[11px] text-brand-muted mb-2">
@@ -281,14 +290,14 @@ export function Pricing({ onOpenTestModal, onOpenPurchaseModal }: PricingProps) 
                   тренировку
                 </p>
 
-                <p className="text-[11px] sm:text-xs text-brand-muted">
+                <p className="text-[12px] sm:text-xs text-brand-muted leading-relaxed">
                   Подойдёт, если хочешь 1–2 тренировки в неделю без гонки и
                   дедлайнов.
                 </p>
               </div>
 
               <button
-                className="mt-3 w-full rounded-full border border-white/40 bg-transparent px-4 py-2 text-xs sm:text-sm font-semibold text-white hover:bg-white/10 transition-colors"
+                className="mt-3 w-full rounded-full border border-white/40 bg-transparent px-4 py-2.5 text-[13px] sm:text-sm font-semibold text-white hover:bg-white/10 transition-colors"
                 onClick={() =>
                   onOpenPurchaseModal?.({
                     tariffId: "slow12",
@@ -305,11 +314,11 @@ export function Pricing({ onOpenTestModal, onOpenPurchaseModal }: PricingProps) 
             {/* нижняя половина — 36 тренировок */}
             <div className="flex flex-1 flex-col justify-between pt-2">
               <div>
-                <h3 className="text-sm sm:text-base font-semibold mb-1 text-white">
+                <h3 className="text-[15px] sm:text-base font-semibold mb-1 text-white">
                   36 тренировок
                 </h3>
 
-                <p className="text-sm font-semibold text-white">
+                <p className="text-[15px] font-semibold text-white">
                   {formatPrice(prices.long36[currency].total, currency)}
                 </p>
                 <p className="text-[11px] text-brand-muted mb-2">
@@ -317,13 +326,13 @@ export function Pricing({ onOpenTestModal, onOpenPurchaseModal }: PricingProps) 
                   тренировку
                 </p>
 
-                <p className="text-[11px] sm:text-xs text-brand-muted">
+                <p className="text-[12px] sm:text-xs text-brand-muted leading-relaxed">
                   Для тех, кто точно остаётся надолго и хочет стабильный рост.
                 </p>
               </div>
 
               <button
-                className="mt-3 w-full rounded-full border border-white/40 bg-transparent px-4 py-2 text-xs sm:text-sm font-semibold text-white hover:bg-white/10 transition-colors"
+                className="mt-3 w-full rounded-full border border-white/40 bg-transparent px-4 py-2.5 text-[13px] sm:text-sm font-semibold text-white hover:bg-white/10 transition-colors"
                 onClick={() =>
                   onOpenPurchaseModal?.({
                     tariffId: "long36",
