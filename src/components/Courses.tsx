@@ -33,35 +33,36 @@ export function Courses({ onOpenTestModal }: CoursesProps) {
           </div>
         </div>
 
-        {/* Подпись про скролл — только начиная с md, где есть горизонтальный скролл */}
+        {/* Подпись про скролл */}
         <div className="flex items-center justify-between text-[12px] sm:text-xs text-gray-500 mb-3 sm:mb-4">
-          <span className="hidden md:inline">
-            Пролистай вправо, чтобы увидеть все программы.
-          </span>
+          <span>Пролистай вправо, чтобы увидеть все программы.</span>
           <span className="hidden sm:inline">
             Любой курс можно адаптировать под твой стартовый уровень.
           </span>
         </div>
 
-        {/* Карточки: на мобиле — вертикальный список, на md+ — горизонтальная карусель */}
+        {/* Горизонтальный скролл с карточками */}
         <div className="mt-3">
           <div
             className="
-              flex flex-col gap-4 sm:gap-5
-              md:flex-row md:overflow-x-auto md:pt-3 md:pb-6 md:-mx-1 md:px-1
-              md:snap-x md:snap-mandatory
-              md:[&::-webkit-scrollbar]:h-1.5
-              md:[&::-webkit-scrollbar-thumb]:rounded-full
-              md:[&::-webkit-scrollbar-thumb]:bg-black/10
+              flex gap-4 sm:gap-6 lg:gap-8
+              overflow-x-auto pt-3 pb-4 sm:pb-6
+              -mx-1 px-1
+              snap-x snap-mandatory
+              [&::-webkit-scrollbar]:h-1.5
+              [&::-webkit-scrollbar-thumb]:rounded-full
+              [&::-webkit-scrollbar-thumb]:bg-black/10
             "
           >
             {/* 1. Calisthenics Light */}
             <article
               className="
-                flex flex-col rounded-3xl bg-white border border-black/5 shadow-sm 
-                p-5 sm:p-6 transition-all duration-300 ease-out hover:-translate-y-1 hover:shadow-xl hover:border-brand-primary/50
-                w-full
-                md:shrink-0 md:w-[60%] lg:w-[40%] md:snap-start
+                snap-start flex flex-col shrink-0
+                w-[86%] sm:w-[60%] lg:w-[40%]
+                rounded-3xl bg-white border border-black/5 shadow-sm
+                p-5 sm:p-6
+                transition-all duration-300 ease-out
+                hover:-translate-y-1 hover:shadow-xl hover:border-brand-primary/50
               "
             >
               <div className="flex items-center justify-between gap-2 mb-3 text-xs sm:text-xs">
@@ -99,10 +100,12 @@ export function Courses({ onOpenTestModal }: CoursesProps) {
             {/* 2. Super Calisthenics */}
             <article
               className="
-                flex flex-col rounded-3xl bg-white border border-black/5 shadow-sm 
-                p-5 sm:p-6 transition-all duration-300 ease-out hover:-translate-y-1 hover:shadow-xl hover:border-brand-primary/50
-                w-full
-                md:shrink-0 md:w-[60%] lg:w-[40%] md:snap-start
+                snap-start flex flex-col shrink-0
+                w-[86%] sm:w-[60%] lg:w-[40%]
+                rounded-3xl bg-white border border-black/5 shadow-sm
+                p-5 sm:p-6
+                transition-all duration-300 ease-out
+                hover:-translate-y-1 hover:shadow-xl hover:border-brand-primary/50
               "
             >
               <div className="flex items-center justify-between gap-2 mb-3 text-xs sm:text-xs">
@@ -140,10 +143,12 @@ export function Courses({ onOpenTestModal }: CoursesProps) {
             {/* 3. Подтягивания для девушек */}
             <article
               className="
-                flex flex-col rounded-3xl bg-white border border-black/5 shadow-sm 
-                p-5 sm:p-6 transition-all duration-300 ease-out hover:-translate-y-1 hover:shadow-xl hover:border-brand-primary/50
-                w-full
-                md:shrink-0 md:w-[60%] lg:w-[40%] md:snap-start
+                snap-start flex flex-col shrink-0
+                w-[86%] sm:w-[60%] lg:w-[40%]
+                rounded-3xl bg-white border border-black/5 shadow-sm
+                p-5 sm:p-6
+                transition-all duration-300 ease-out
+                hover:-translate-y-1 hover:shadow-xl hover:border-brand-primary/50
               "
             >
               <div className="flex items-center justify-between gap-2 mb-3 text-xs sm:text-xs">
@@ -181,10 +186,12 @@ export function Courses({ onOpenTestModal }: CoursesProps) {
             {/* 4. Стойка на руках */}
             <article
               className="
-                flex flex-col rounded-3xl bg-white border border-black/5 shadow-sm 
-                p-5 sm:p-6 transition-all duration-300 ease-out hover:-translate-y-1 hover:shadow-xl hover:border-brand-primary/50
-                w-full
-                md:shrink-0 md:w-[60%] lg:w-[40%] md:snap-start
+                snap-start flex flex-col shrink-0
+                w-[86%] sm:w-[60%] lg:w-[40%]
+                rounded-3xl bg-white border border-black/5 shadow-sm
+                p-5 sm:p-6
+                transition-all duration-300 ease-out
+                hover:-translate-y-1 hover:shadow-xl hover:border-brand-primary/50
               "
             >
               <div className="flex items-center justify-between gap-2 mb-3 text-xs sm:text-xs">
@@ -222,10 +229,12 @@ export function Courses({ onOpenTestModal }: CoursesProps) {
             {/* 5. Калистеника для кроссфитеров */}
             <article
               className="
-                flex flex-col rounded-3xl bg-white border border-black/5 shadow-sm 
-                p-5 sm:p-6 transition-all duration-300 ease-out hover:-translate-y-1 hover:shadow-xl hover:border-brand-primary/50
-                w-full
-                md:shrink-0 md:w-[60%] lg:w-[40%] md:snap-start
+                snap-start flex flex-col shrink-0
+                w-[86%] sm:w-[60%] lg:w-[40%]
+                rounded-3xl bg-white border border-black/5 shadow-sm
+                p-5 sm:p-6
+                transition-all duration-300 ease-out
+                hover:-translate-y-1 hover:shadow-xl hover:border-brand-primary/50
               "
             >
               <div className="flex items-center justify-between gap-2 mb-3 text-xs sm:text-xs">
