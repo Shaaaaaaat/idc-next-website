@@ -236,7 +236,7 @@ export default function HomePage() {
 
   return (
     <main className="min-h-screen bg-brand-dark text-white">
-      <div className="mx-auto max-w-container px-4 sm:px-6 lg:px-8 py-10 sm:py-16 lg:py-20">
+      <div className="mx-auto max-w-container px-4 sm:px-6 lg:px-8 py-8 sm:py-16 lg:py-20">
         {/* Top bar */}
         <header className="sticky top-0 z-40 mb-8 sm:mb-12 bg-brand-dark/90 backdrop-blur-md">
           <div className="flex items-center justify-between gap-4 py-3">
@@ -249,7 +249,7 @@ export default function HomePage() {
                 className="h-7 w-auto sm:h-8 lg:h-9"
                 priority
               />
-              <span className="text-sm sm:text-base font-medium tracking-tight">
+              <span className="text-base sm:text-lg font-medium tracking-tight">
                 I Do Calisthenics
               </span>
             </div>
@@ -330,7 +330,7 @@ export default function HomePage() {
                 </button>
               </div>
 
-              <div className="flex flex-col gap-2 mb-4 text-sm">
+              <div className="flex flex-col gap-2 mb-4 text-[15px]">
                 <a
                   href="#how"
                   className="rounded-2xl px-3 py-2 hover:bg-white/5"
@@ -413,21 +413,21 @@ export default function HomePage() {
         <section className="grid gap-10 lg:grid-cols-[1.1fr_0.9fr] items-center mb-16 lg:mb-24">
           {/* Left side */}
           <div className="space-y-6 sm:space-y-8">
-            <div className="inline-flex items-center gap-2 rounded-full bg-white/5 px-3 py-1 text-xs sm:text-sm text-brand-muted border border-white/10">
+            <div className="inline-flex items-center gap-2 rounded-full bg-white/5 px-3 py-1 text-[12px] sm:text-sm text-brand-muted border border-white/10">
               <span className="h-2 w-2 rounded-full bg-brand-accent" />
               Онлайн программы по калистенике
             </div>
 
-            <h1 className="text-3xl sm:text-4xl lg:text-6xl font-semibold leading-tight tracking-tight">
+            <h1 className="text-[30px] sm:text-4xl lg:text-6xl font-semibold leading-tight tracking-tight">
               Тренировки с
               <br />
               собственным весом
-              <span className="block text-base sm:text-xl lg:text-2xl text-brand-accent mt-3 lg:mt-4">
+              <span className="block text-[17px] sm:text-xl lg:text-2xl text-brand-accent mt-3 lg:mt-4">
                 в комфортном темпе и с фокусом на технике
               </span>
             </h1>
 
-            <p className="max-w-xl text-sm sm:text-base text-brand-muted">
+            <p className="max-w-xl text-[15px] sm:text-base text-brand-muted leading-relaxed">
               Учишься технике, набираешь силу и осваиваешь элементы шаг за
               шагом. Каждая тренировка подстраивается под твой уровень, цели и
               расписание.
@@ -448,7 +448,7 @@ export default function HomePage() {
               </a>
             </div>
 
-            <div className="flex flex-wrap gap-4 pt-4 text-xs sm:text-sm text-brand-muted">
+            <div className="flex flex-wrap gap-4 pt-4 text-[13px] sm:text-sm text-brand-muted">
               <div className="flex items-center gap-2">
                 <span className="h-6 w-6 rounded-full bg-white/5 flex items-center justify-center text-[11px]">
                   ✔
@@ -555,7 +555,7 @@ export default function HomePage() {
       {showMobileStickyCta && (
         <div className="fixed left-4 right-24 bottom-6 z-30 md:hidden">
           <div className="rounded-2xl border border-white/10 bg-brand-dark/95 backdrop-blur-xl px-4 py-3 shadow-soft flex items-center gap-3">
-            <div className="flex-1 text-[11px] leading-snug text-brand-muted">
+            <div className="flex-1 text-[12px] leading-snug text-brand-muted">
               <p className="text-sm font-semibold text-white mb-0.5">
                 Не знаешь, с чего начать?
               </p>

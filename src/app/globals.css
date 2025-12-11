@@ -32,3 +32,11 @@ body {
   background-color: #ec4899 !important;
   transform: translateY(-1px);
 }
+
+/* крупнее типографика на телефонах */
+@media (max-width: 640px) {
+  body {
+    font-size: 17px;   /* базовый размер вместо 16px */
+    line-height: 1.5;  /* чуть больше воздуха между строками */
+  }
+}
