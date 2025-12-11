@@ -4,7 +4,7 @@ const steps = [
   {
     number: "01",
     title: "Определяем уровень и цели",
-    text: "Проходишь тест силы по нашей инструкции: 5-7 упражнений в зависимости от выбранного курса и доступного инвентаря. Фиксируем текущий уровень и выбираем главную цель.",
+    text: "Проходишь тест силы по нашей инструкции: 5–7 упражнений в зависимости от выбранного курса и доступного инвентаря. Фиксируем текущий уровень и выбираем главную цель.",
     meta: "Займёт 30–40 минут",
   },
   {
@@ -31,17 +31,22 @@ export function HowItWorks() {
       <div className="pointer-events-none absolute -left-40 top-10 h-80 w-80 rounded-full bg-brand-blue/30 blur-[120px]" />
       <div className="pointer-events-none absolute right-0 bottom-0 h-72 w-72 rounded-full bg-brand-primary/20 blur-[120px]" />
 
-      <div className="mx-auto max-w-5xl px-4 sm:px-6 lg:px-8 py-16 sm:py-20 lg:py-24 relative">
+      <div className="mx-auto max-w-5xl px-4 sm:px-6 lg:px-8 py-14 sm:py-20 lg:py-24 relative">
         {/* заголовок */}
-        <div className="mb-14 sm:mb-16 lg:mb-20 max-w-2xl">
-          <p className="text-xs font-medium uppercase tracking-[0.2em] text-brand-muted mb-3">
+        <div className="mb-10 sm:mb-16 lg:mb-20 max-w-2xl">
+          <p className="text-[11px] sm:text-xs font-medium uppercase tracking-[0.2em] text-brand-muted mb-3">
             Процесс
           </p>
-          <h2 className="text-2xl sm:text-3xl lg:text-4xl font-semibold tracking-tight mb-4">
-          От теста силы до подтягиваний, <br /> стойки на руках и выходов силой
+          <h2 className="text-[26px] sm:text-3xl lg:text-4xl font-semibold tracking-tight mb-4 leading-tight">
+            От теста силы до подтягиваний,
+            <br className="hidden sm:block" /> стойки на руках и выходов силой
           </h2>
-          <p className="text-sm sm:text-base text-brand-muted">
-          Каждый элемент разбираем на технику, частые ошибки и понятные прогрессии под твой уровень. Тест силы показывает, где ты сейчас, цель — к какому элементу идёшь, а индивидуальная программа и видео-разборы тренера помогают дойти до целей безопасно и эффективно.
+          <p className="text-[14px] sm:text-base text-brand-muted leading-relaxed">
+            Каждый элемент разбираем на технику, частые ошибки и понятные
+            прогрессии под твой уровень. Тест силы показывает, где ты сейчас,
+            цель — к какому элементу идёшь, а индивидуальная программа и
+            видео-разборы тренера помогают дойти до целей безопасно и
+            эффективно.
           </p>
         </div>
 
@@ -52,7 +57,7 @@ export function HowItWorks() {
           </div>
 
           {/* сами шаги */}
-          <div className="space-y-12 sm:space-y-16 lg:space-y-20">
+          <div className="space-y-10 sm:space-y-16 lg:space-y-20">
             {steps.map((step, index) => (
               <article
                 key={step.number}
@@ -67,14 +72,14 @@ export function HowItWorks() {
                 </div>
 
                 {/* огромная цифра на фоне */}
-                <div className="pointer-events-none absolute -left-4 sm:-left-2 -top-4 text-[72px] sm:text-[100px] lg:text-[120px] font-semibold leading-none text-white/5 select-none">
+                <div className="pointer-events-none absolute -left-5 sm:-left-3 -top-5 text-[64px] sm:text-[100px] lg:text-[120px] font-semibold leading-none text-white/5 select-none">
                   {step.number}
                 </div>
 
                 {/* контент шага */}
-                <div className="relative rounded-3xl bg-white/2 hover:bg-white/4 transition-colors duration-300 border border-white/5 backdrop-blur-sm px-4 py-5 sm:px-6 sm:py-6 lg:px-7 lg:py-7">
+                <div className="relative rounded-3xl bg-white/5 hover:bg-white/8 transition-colors duration-300 border border-white/5 backdrop-blur-sm px-4 py-5 sm:px-6 sm:py-6 lg:px-7 lg:py-7">
                   <div className="flex flex-col sm:flex-row sm:items-baseline sm:justify-between gap-3 mb-3">
-                    <div className="inline-flex items-center gap-2 text-xs text-brand-muted">
+                    <div className="inline-flex items-center gap-2 text-[12px] sm:text-xs text-brand-muted">
                       <span className="rounded-full bg-white/5 px-2.5 py-1 text-[11px] uppercase tracking-[0.16em]">
                         Шаг {index + 1}
                       </span>
@@ -84,11 +89,11 @@ export function HowItWorks() {
                     </span>
                   </div>
 
-                  <h3 className="text-base sm:text-lg lg:text-xl font-semibold mb-2">
+                  <h3 className="text-[16px] sm:text-lg lg:text-xl font-semibold mb-2">
                     {step.title}
                   </h3>
 
-                  <p className="text-xs sm:text-sm text-brand-muted leading-relaxed max-w-2xl">
+                  <p className="text-[14px] sm:text-sm text-brand-muted leading-relaxed max-w-2xl">
                     {step.text}
                   </p>
                 </div>
