@@ -225,7 +225,6 @@ export default function HomePage() {
 
     setIsLoginSubmitting(true);
 
-    // имитация "логина" без реальной авторизации
     setTimeout(() => {
       setIsLoginSubmitting(false);
       setLoginMessage(
@@ -294,15 +293,15 @@ export default function HomePage() {
             {/* Бургер — только мобилка */}
             <button
               type="button"
-              className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-white/20 bg-white/5 md:hidden"
+              className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-white/20 bg-white/5 md:hidden shadow-soft"
               onClick={() => setIsMobileNavOpen(true)}
               aria-label="Открыть меню"
             >
               <span className="sr-only">Открыть меню</span>
               <div className="flex flex-col items-center justify-center gap-1.5">
-                <span className="block h-0.5 w-5 rounded-full bg-white" />
-                <span className="block h-0.5 w-5 rounded-full bg-white" />
-                <span className="block h-0.5 w-5 rounded-full bg-white" />
+                <span className="block h-0.5 w-4 rounded-full bg-white" />
+                <span className="block h-0.5 w-3 rounded-full bg-white/80" />
+                <span className="block h-0.5 w-4 rounded-full bg-white" />
               </div>
             </button>
           </div>
@@ -551,9 +550,9 @@ export default function HomePage() {
 
       <Footer />
 
-      {/* Мобильный фиксированный CTA — показывается после скролла и не залезает под чат */}
+      {/* Мобильный фиксированный CTA — на всю ширину, чат на мобилке скрыт */}
       {showMobileStickyCta && (
-        <div className="fixed left-4 right-24 bottom-6 z-30 md:hidden">
+        <div className="fixed inset-x-4 bottom-4 z-30 md:hidden">
           <div className="rounded-2xl border border-white/10 bg-brand-dark/95 backdrop-blur-xl px-4 py-3 shadow-soft flex items-center gap-3">
             <div className="flex-1 text-[11px] leading-snug text-brand-muted">
               <p className="text-sm font-semibold text-white mb-0.5">
@@ -575,6 +574,7 @@ export default function HomePage() {
           </div>
         </div>
       )}
+
 
       {/* МОДАЛКА ТЕСТА СИЛЫ */}
       {isTestModalOpen && (
@@ -881,8 +881,10 @@ export default function HomePage() {
           </div>
         </div>
       )}
-
+{/* Чат — только на десктопе */}
+<div className="hidden md:block">
       <ChatWidget />
+      </div>
     </main>
   );
 }
