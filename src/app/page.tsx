@@ -73,6 +73,20 @@ export default function HomePage() {
   /* ---------- Мобильное меню ---------- */
   const [isMobileNavOpen, setIsMobileNavOpen] = useState(false);
 
+  /* ---------- Показ фиксированного CTA на мобиле ---------- */
+  const [showMobileStickyCta, setShowMobileStickyCta] = useState(false);
+
+  useEffect(() => {
+    const handleScroll = () => {
+      if (typeof window === "undefined") return;
+      setShowMobileStickyCta(window.scrollY > 400);
+    };
+
+    handleScroll();
+    window.addEventListener("scroll", handleScroll);
+    return () => window.removeEventListener("scroll", handleScroll);
+  }, []);
+
   /* ---------- Модалка теста силы ---------- */
   const [isTestModalOpen, setIsTestModalOpen] = useState(false);
   const [testContext, setTestContext] = useState<string | undefined>();
@@ -280,14 +294,16 @@ export default function HomePage() {
             {/* Бургер — только мобилка */}
             <button
               type="button"
-              className="inline-flex items-center justify-center rounded-full border border-white/15 bg-white/5 p-2 md:hidden"
+              className="inline-flex h-9 w-9 items-center justify-center rounded-full bg-transparent md:hidden"
               onClick={() => setIsMobileNavOpen(true)}
               aria-label="Открыть меню"
             >
               <span className="sr-only">Открыть меню</span>
-              <span className="block h-0.5 w-4 rounded-full bg-white mb-1" />
-              <span className="block h-0.5 w-4 rounded-full bg-white mb-1" />
-              <span className="block h-0.5 w-4 rounded-full bg-white" />
+              <div className="flex flex-col items-center justify-center gap-1.5">
+                <span className="block h-0.5 w-5 rounded-full bg-white" />
+                <span className="block h-0.5 w-5 rounded-full bg-white" />
+                <span className="block h-0.5 w-5 rounded-full bg-white" />
+              </div>
             </button>
           </div>
         </header>
@@ -417,46 +433,20 @@ export default function HomePage() {
               расписание.
             </p>
 
-            {/* CTA: мобилка в плашке, десктоп — как раньше */}
-            <div className="pt-2">
-              {/* Мобилка */}
-              <div className="sm:hidden rounded-3xl border border-white/10 bg-white/5 px-4 py-3 mb-3">
-                <p className="text-[11px] text-brand-muted mb-2">
-                  Начни с короткого теста силы — это бесплатно, по нему мы
-                  подберём программу под твой уровень.
-                </p>
-                <div className="flex flex-col gap-2">
-                  <TestSignupButton
-                    onClick={() =>
-                      openTestModal(
-                        "Главный блок (моб): Пройти тест силы"
-                      )
-                    }
-                  />
-                  <a
-                    href="#courses"
-                    className="inline-flex items-center justify-center rounded-full border border-white/20 px-4 py-2 text-xs font-semibold hover:bg-white/5 transition-colors"
-                  >
-                    Посмотреть курсы
-                  </a>
-                </div>
-              </div>
+            {/* CTA: одна связка и для мобилки, и для десктопа */}
+            <div className="flex flex-col sm:flex-row gap-3 sm:gap-4 pt-2">
+              <TestSignupButton
+                onClick={() =>
+                  openTestModal("Главный блок: Пройти тест силы")
+                }
+              />
 
-              {/* Десктоп / планшет */}
-              <div className="hidden sm:flex flex-row gap-3 sm:gap-4">
-                <TestSignupButton
-                  onClick={() =>
-                    openTestModal("Главный блок: Пройти тест силы")
-                  }
-                />
-
-                <a
-                  href="#courses"
-                  className="inline-flex items-center justify-center rounded-full border border-white/20 px-6 py-3 text-sm sm:text-base font-semibold hover:bg-white/5 transition-colors"
-                >
-                  Посмотреть курсы
-                </a>
-              </div>
+              <a
+                href="#courses"
+                className="inline-flex items-center justify-center rounded-full border border-white/20 px-6 py-3 text-sm sm:text-base font-semibold hover:bg-white/5 transition-colors"
+              >
+                Посмотреть курсы
+              </a>
             </div>
 
             <div className="flex flex-wrap gap-4 pt-4 text-xs sm:text-sm text-brand-muted">
@@ -501,7 +491,7 @@ export default function HomePage() {
                     </div>
                   </div>
 
-                  <div className="rounded-2xl bg-white/5 border border-white/10 px-3 py-3">
+                  <div className="rounded-2xl bg-white/5 border border.white/10 px-3 py-3">
                     <div className="text-brand-muted mb-1">
                       Заметный прогресс через
                     </div>
@@ -562,28 +552,30 @@ export default function HomePage() {
 
       <Footer />
 
-      {/* Мобильный фиксированный CTA */}
-      <div className="fixed inset-x-4 bottom-4 z-30 md:hidden">
-        <div className="rounded-2xl border border-white/10 bg-brand-dark/95 backdrop-blur-xl px-4 py-3 shadow-soft flex items-center gap-3">
-          <div className="flex-1 text-[11px] leading-snug text-brand-muted">
-            <p className="text-sm font-semibold text-white mb-0.5">
-              Не знаешь, с чего начать?
-            </p>
-            <p>
-              Пройди короткий тест силы, и мы подберём программу под твой
-              уровень.
-            </p>
-          </div>
+      {/* Мобильный фиксированный CTA — появляется после небольшого скролла */}
+      {showMobileStickyCta && (
+        <div className="fixed inset-x-4 bottom-4 z-30 md:hidden">
+          <div className="rounded-2xl border border-white/10 bg-brand-dark/95 backdrop-blur-xl px-4 py-3 shadow-soft flex items-center gap-3">
+            <div className="flex-1 text-[11px] leading-snug text-brand-muted">
+              <p className="text-sm font-semibold text-white mb-0.5">
+                Не знаешь, с чего начать?
+              </p>
+              <p>
+                Пройди короткий тест силы, и мы подберём программу под твой
+                уровень.
+              </p>
+            </div>
 
-          <button
-            type="button"
-            onClick={() => openTestModal("Моб. фиксированный CTA")}
-            className="shrink-0 rounded-full bg-brand-primary px-3 py-2 text-[11px] font-semibold hover:bg-brand-primary/90 transition-colors"
-          >
-            Тест силы
-          </button>
+            <button
+              type="button"
+              onClick={() => openTestModal("Моб. фиксированный CTA")}
+              className="shrink-0 rounded-full bg-brand-primary px-3 py-2 text-[11px] font-semibold hover:bg-brand-primary/90 transition-colors"
+            >
+              Тест силы
+            </button>
+          </div>
         </div>
-      </div>
+      )}
 
       {/* МОДАЛКА ТЕСТА СИЛЫ */}
       {isTestModalOpen && (
@@ -760,7 +752,7 @@ export default function HomePage() {
                       value={buyCourse}
                       onChange={(e) => setBuyCourse(e.target.value)}
                       required
-                      className="w-full rounded-2xl border border-brand-primary/60 bg-brand-dark px-3 py-2 pr-8 text-sm text-white outline-none focus:border-brand-primary focus:ring-1 focus:ring-brand-primary appearance-none"
+                      className="w-full rounded-2xl border border-brand-primary/60 bg-brand-dark px-3 py-2 pr-8 text-sm text.white outline-none focus:border-brand-primary focus:ring-1 focus:ring-brand-primary appearance-none"
                     >
                       <option value="" disabled>
                         Выбери курс
@@ -837,7 +829,7 @@ export default function HomePage() {
               <button
                 type="button"
                 onClick={closeLoginModal}
-                className="rounded-full bg.white/5 p-1 text-brand-muted hover:bg-white/10 hover:text-white transition-colors"
+                className="rounded-full bg-white/5 p-1 text-brand-muted hover:bg-white/10 hover:text-white transition-colors"
                 aria-label="Закрыть форму входа"
               >
                 <span className="block h-4 w-4 leading-none">✕</span>

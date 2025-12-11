@@ -7,13 +7,11 @@ type CoursesProps = {
   onOpenTestModal?: (context?: string) => void;
 };
 
-
 export function Courses({ onOpenTestModal }: CoursesProps) {
   return (
     <section
       id="courses"
-      // className="relative w-screen -ml-[50vw] -mr-[50vw] left-1/2 right-1/2 border-t border-black/5 bg-[#F5F7FB] text-brand-dark py-16 sm:py-20 lg:py-24"
-      className="border-t border-black/5 bg-[#F5F7FB] text-brand-dark py-16 sm:py-20 lg:py-24"
+      className="relative w-screen -ml-[50vw] left-1/2 border-t border-black/5 bg-[#F5F7FB] text-brand-dark py-16 sm:py-20 lg:py-24"
     >
       <div className="mx-auto max-w-container px-4 sm:px-6 lg:px-8">
         {/* Заголовок + бейдж */}
@@ -53,7 +51,6 @@ export function Courses({ onOpenTestModal }: CoursesProps) {
                   <span className="h-2 w-2 rounded-full bg-brand-accent" />
                   Лёгкий старт · Для начинающих
                 </span>
-                {/* <span className="text-gray-400">full-body</span> */}
               </div>
 
               <h3 className="text-base sm:text-lg font-semibold mb-2 text-gray-900">
@@ -71,7 +68,6 @@ export function Courses({ onOpenTestModal }: CoursesProps) {
               </ul>
 
               <div className="mt-auto flex items-center justify-end gap-2 pt-2 text-[11px] sm:text-xs">
-                {/* <span className="text-gray-400">Начать легко</span> */}
                 <TestSignupButton
                   label="Пройти тест силы"
                   buttonClassName="shrink-0 rounded-full bg-brand-primary px-3 py-1.5 text-[11px] font-semibold text-white hover:bg-brand-primary/90"
@@ -89,7 +85,6 @@ export function Courses({ onOpenTestModal }: CoursesProps) {
                   <span className="h-2 w-2 rounded-full bg-brand-blue" />
                   Стать сильнее  · Любой уровень
                 </span>
-                {/* <span className="text-gray-400">full-body</span> */}
               </div>
 
               <h3 className="text-base sm:text-lg font-semibold mb-2 text-gray-900">
@@ -107,7 +102,6 @@ export function Courses({ onOpenTestModal }: CoursesProps) {
               </ul>
 
               <div className="mt-auto flex items-center justify-end gap-2 pt-2 text-[11px] sm:text-xs">
-                {/* <span className="text-gray-400">Стать сильнее</span> */}
                 <TestSignupButton
                   label="Пройти тест силы"
                   buttonClassName="shrink-0 rounded-full bg-gray-900 px-3 py-1.5 text-[11px] font-semibold text-white hover:bg-black"
@@ -125,7 +119,6 @@ export function Courses({ onOpenTestModal }: CoursesProps) {
                   <span className="h-2 w-2 rounded-full bg-brand-blue" />
                   Обучиться подтягиваниям · Любой уровень
                 </span>
-                {/* <span className="text-gray-400">full-body</span> */}
               </div>
 
               <h3 className="text-base sm:text-lg font-semibold mb-2 text-gray-900">
@@ -143,9 +136,6 @@ export function Courses({ onOpenTestModal }: CoursesProps) {
               </ul>
 
               <div className="mt-auto flex items-center justify-end gap-2 pt-2 text-[11px] sm:text-xs">
-                {/* <span className="text-gray-400">
-                  Сделать первое подтягивание
-                </span> */}
                 <TestSignupButton
                   label="Пройти тест силы"
                   buttonClassName="shrink-0 rounded-full bg-brand-primary px-3 py-1.5 text-[11px] font-semibold text-white hover:bg-brand-primary/90"
@@ -163,7 +153,6 @@ export function Courses({ onOpenTestModal }: CoursesProps) {
                   <span className="h-2 w-2 rounded-full bg-brand-primary" />
                   Научиться стоять на руках · Любой уровень
                 </span>
-                {/* <span className="text-gray-400">focus-курс</span> */}
               </div>
 
               <h3 className="text-base sm:text-lg font-semibold mb-2 text-gray-900">
@@ -181,9 +170,6 @@ export function Courses({ onOpenTestModal }: CoursesProps) {
               </ul>
 
               <div className="mt-auto flex items-center justify-end gap-2 pt-2 text-[11px] sm:text-xs">
-                {/* <span className="text-gray-400">
-                  Научиться стоять на руках
-                </span> */}
                 <TestSignupButton
                   label="Пройти тест силы"
                   buttonClassName="shrink-0 rounded-full bg-gray-900 px-3 py-1.5 text-[11px] font-semibold text-white hover:bg-brand-primary/90"
@@ -196,20 +182,20 @@ export function Courses({ onOpenTestModal }: CoursesProps) {
 
             {/* 5. Калистеника для кроссфитеров */}
             <article className="snap-start flex flex-col shrink-0 w-[80%] sm:w-[60%] lg:w-[40%] rounded-3xl bg-white border border-black/5 shadow-sm p-5 sm:p-6 transition-all duration-300 ease-out hover:-translate-y-1 hover:shadow-xl hover:border-brand-primary/50">
-              <div className="flex items-center justify-between gap-2 mb-3 text-[11px] sm:text-xs">
+              <div className="flex items.center justify-between gap-2 mb-3 text-[11px] sm:text-xs">
                 <span className="inline-flex items-center gap-2 rounded-full bg-gray-50 border border-black/10 px-3 py-1 text-gray-600">
                   <span className="h-2 w-2 rounded-full bg-amber-400" />
                   Добавить строгие движения · Для продвинутых
                 </span>
-                {/* <span className="text-gray-400">full-body</span> */}
               </div>
 
               <h3 className="text-base sm:text-lg font-semibold mb-2 text-gray-900">
                 Калистеника для кроссфитеров
               </h3>
               <p className="text-xs sm:text-sm text-gray-600 mb-4">
-                Если хочешь к киппингу добавить уверенные строгие движения: подтягивания, отжимания в
-                стойке и выходы — без потери техники и плеч.
+                Если хочешь к киппингу добавить уверенные строгие движения:
+                подтягивания, отжимания в стойке и выходы — без потери техники
+                и плеч.
               </p>
 
               <ul className="mb-4 space-y-1.5 text-[11px] sm:text-xs text-gray-600">
@@ -219,12 +205,9 @@ export function Courses({ onOpenTestModal }: CoursesProps) {
               </ul>
 
               <div className="mt-auto flex items-center justify-end gap-2 pt-2 text-[11px] sm:text-xs">
-                {/* <span className="text-gray-400">
-                  Увеличить силу в кроссфите
-                </span> */}
                 <TestSignupButton
                   label="Пройти тест силы"
-                  buttonClassName="shrink-0 rounded-full bg-brand-primary  px-3 py-1.5 text-[11px] font-semibold text-white hover:bg-black"
+                  buttonClassName="shrink-0 rounded-full bg-brand-primary px-3 py-1.5 text-[11px] font-semibold text-white hover:bg-black"
                   onClick={() =>
                     onOpenTestModal?.("Курс: Калистеника для кроссфитеров")
                   }
