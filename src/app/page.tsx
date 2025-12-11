@@ -299,10 +299,10 @@ export default function HomePage() {
                 <button
                   type="button"
                   onClick={() => setIsMobileNavOpen(false)}
-                  className="rounded-full bg-white/5 p-1 text-brand-muted hover:bg-white/10 hover:text-white transition-colors"
+                  className="h-9 w-9 rounded-full bg-white/8 border border-white/20 flex items-center justify-center text-base text-brand-muted hover:bg-white/15 hover:text-white transition-colors"
                   aria-label="Закрыть меню"
                 >
-                  ✕
+                  ×
                 </button>
               </div>
 
@@ -455,7 +455,7 @@ export default function HomePage() {
                     </div>
                   </div>
 
-                  <div className="rounded-2xl bg белый/5 border border-white/10 px-3 py-3">
+                  <div className="rounded-2xl bg-white/5 border border-white/10 px-3 py-3">
                     <div className="text-brand-muted mb-1">
                       Заметный прогресс через
                     </div>
@@ -557,7 +557,7 @@ export default function HomePage() {
               </div>
 
               <div className="space-y-1">
-                <label className="text-xs sm:text-sm текст-brand-muted">
+                <label className="text-xs sm:text-sm text-brand-muted">
                   Email
                 </label>
                 <input
