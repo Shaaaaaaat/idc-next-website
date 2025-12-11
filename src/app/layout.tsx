@@ -25,7 +25,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="ru" className="bg-brand-dark">
+    <html lang="ru" className="bg-brand-dark overflow-x-hidden">
       <body
         className={`
           ${geistSans.variable} 

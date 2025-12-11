@@ -1,3 +1,5 @@
+/* src/app/globals.css */
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -7,13 +9,14 @@ body {
   margin: 0;
   padding: 0;
   scroll-behavior: smooth;
+  overflow-x: hidden; /* ← добавили */
 }
 
 /* Точки пагинации блока отзывов */
 #reviews .swiper-pagination-bullet {
   width: 8px !important;
   height: 8px !important;
-  background-color: rgba(148, 163, 184, 0.5) !important; /* пассивная – серенькая */
+  background-color: rgba(148, 163, 184, 0.5) !important;
   opacity: 1 !important;
   margin: 0 4px !important;
   transition:
@@ -26,6 +29,6 @@ body {
 #reviews .swiper-pagination-bullet-active {
   width: 12px !important;
   height: 12px !important;
-  background-color: #ec4899 !important; /* цвет кнопки теста */
+  background-color: #ec4899 !important;
   transform: translateY(-1px);
 }
