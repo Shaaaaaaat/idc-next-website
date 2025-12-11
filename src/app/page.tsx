@@ -13,6 +13,7 @@ import {
 import { HowItWorks } from "@/components/HowItWorks";
 import { Courses } from "@/components/Courses";
 import { Pricing, type PurchaseOptions } from "@/components/Pricing";
+import { Locations } from "@/components/Locations";
 import { About } from "@/components/About";
 import { FAQ } from "@/components/FAQ";
 import { Testimonials } from "@/components/Testimonials";
@@ -128,6 +129,7 @@ export default function HomePage() {
 
   const [buyFullName, setBuyFullName] = useState("");
   const [buyEmail, setBuyEmail] = useState("");
+  const [buyPhone, setBuyPhone] = useState(""); 
   const [buyCourse, setBuyCourse] = useState<string>("");
   const [buyAgreed, setBuyAgreed] = useState(false);
   const [isBuySubmitting, setIsBuySubmitting] = useState(false);
@@ -155,11 +157,13 @@ export default function HomePage() {
         body: JSON.stringify({
           fullName: buyFullName,
           email: buyEmail,
+          phone: buyPhone,
           courseName: buyCourse,
           tariffId: purchaseOptions.tariffId,
           tariffLabel: purchaseOptions.tariffLabel,
           amount: purchaseOptions.amount,
           currency: purchaseOptions.currency,
+          studioName: purchaseOptions.studioName ?? null,
         }),
       });
 
@@ -245,6 +249,9 @@ export default function HomePage() {
             <a href="#pricing" className="hover:text-white transition-colors">
               Цены
             </a>
+            <a href="#pricing" className="hover:text-white transition-colors">
+              Локации
+            </a>
             <a href="#about" className="hover:text-white transition-colors">
               О проекте
             </a>
@@ -325,7 +332,7 @@ export default function HomePage() {
                 <div className="relative overflow-hidden rounded-3xl bg-black/60 h-56 sm:h-64 lg:h-72 mb-4 sm:mb-5">
                 <video
     className="absolute inset-0 h-full w-full object-cover"
-    src="/hero-preview1.mp4"
+    src="/hero-preview2.mp4"
     // poster="/hero-poster.jpg" // опционально: картинка-обложка из public
     playsInline
     muted
@@ -393,14 +400,12 @@ export default function HomePage() {
           onOpenTestModal={openTestModal}
           onOpenPurchaseModal={openPurchaseModal}
         />
+        <Locations onOpenPurchaseModal={openPurchaseModal} />
         <About />
         <Testimonials />
         <FAQ />
       </div>
-
-          {/* ПОДВАЛ */}
           <Footer />
-
       {/* МОДАЛКА ТЕСТА СИЛЫ */}
       {isTestModalOpen && (
         <div
@@ -552,6 +557,22 @@ export default function HomePage() {
               </div>
 
               <div className="space-y-1">
+  <label className="text-xs sm:text-sm text-brand-muted">
+    Телефон
+  </label>
+  <input
+    type="tel"
+    value={buyPhone}
+    onChange={(e) => setBuyPhone(e.target.value)}
+    required
+    className="w-full rounded-2xl border border-white/10 bg-white/5 px-3 py-2 text-sm outline-none focus:border-brand-primary"
+    placeholder="+7 900 000-00-00"
+  />
+</div>
+
+
+              {!purchaseOptions.studioName && (
+              <div className="space-y-1">
                 <label className="text-xs sm:text-sm text-brand-muted">
                   Курс
                 </label>
@@ -579,6 +600,7 @@ export default function HomePage() {
                   </span>
                 </div>
               </div>
+              )}
 
               <label className="flex items-start gap-2 text-[11px] sm:text-xs text-brand-muted">
                 <input

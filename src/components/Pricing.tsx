@@ -43,6 +43,7 @@ export type PurchaseOptions = {
   tariffLabel: string;
   amount: number;
   currency: Currency;
+  studioName?: string;
 };
 
 type PricingProps = {

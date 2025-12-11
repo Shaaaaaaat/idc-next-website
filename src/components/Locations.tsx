@@ -1,13 +1,14 @@
 "use client";
 
 import { useState } from "react";
+import type { PurchaseOptions } from "@/components/Pricing";
 
 type Studio = {
   id: string;
   name: string;
   address: string;
-  note?: string;
   schedule: string;
+  price: string;
 };
 
 type City = {
@@ -26,47 +27,79 @@ const cities: City[] = [
     studios: [
       {
         id: "msk-1",
-        name: "ID Calisthenics · Центр",
-        address: "ул. Такая-то, 10 · м. Пушкинская",
-        note: "Малые группы до 8 человек",
-        schedule: "Групповые: пн, ср, пт · 19:00 и 20:00. Персоналки — по записи."
+        name: "м. Октябрьская · 6 мин. пешком",
+        address: "Адрес: Калужская площадь, 1к2, 3 этаж",
+        schedule: "Групповые: пн, ср, пт · 20:00. Персональные — по записи.",
+        price: "Стоимость пробного занятия: 950 ₽",
       },
       {
         id: "msk-2",
-        name: "ID Calisthenics · Юг",
-        address: "ул. Такая-то, 25 · м. Полянка",
-        schedule: "Групповые: вт, чт · 19:30. Выходные классы — сб · 12:00."
-      }
-    ]
+        name: "м. 1905 года · 5 мин. пешком",
+        address: "Адрес: ул. Большая Декабрьская, д.3 с25",
+        schedule:
+          "Групповые: вт, чт · 18:40 и 20:00, сб · 12:00. Персональные — по записи.",
+        price: "Стоимость пробного занятия: 950 ₽",
+      },
+    ],
   },
   {
     id: "spb",
-    name: "Санкт-Петербург",
+    name: "Питер",
     subtitle:
       "Залы с турниками и брусьями — комфортно тренироваться круглый год.",
     studios: [
       {
         id: "spb-1",
-        name: "ID Calisthenics · Центр",
-        address: "Невский проспект, 50 · м. Гостиный двор",
-        schedule: "Групповые: пн, ср, пт · 19:30. Персональные — по записи."
+        name: "м. Московские Ворота · 4 мин. пешком",
+        address: "Адрес: ул. Заставская, 33П",
+        schedule:
+          "Групповые: вт, чт · 21:00, сб · 14:00. Персональные — по записи.",
+        price: "Стоимость пробного занятия: 950 ₽",
       },
       {
         id: "spb-2",
-        name: "ID Calisthenics · Василеостровская",
-        address: "7-я линия В.О., 20 · м. Василеостровская",
-        schedule: "Групповые: вт, чт · 20:00. Утренние классы — сб · 11:00."
-      }
-    ]
-  }
+        name: "м. Выборгская · 5 мин. пешком",
+        address: "Адрес: Малый Сампсониевский пр., дом 2",
+        schedule: "Групповые: пн, ср · 20:30, сб · 14:00.",
+        price: "Стоимость пробного занятия: 950 ₽",
+      },
+    ],
+  },
 ];
 
-export function Locations() {
-  const [activeCityId, setActiveCityId] = useState<string>(cities[0].id);
+type LocationsProps = {
+  onOpenPurchaseModal?: (options: PurchaseOptions) => void;
+};
 
-  // ВАЖНО: всегда есть фолбэк, чтобы не было undefined
+export function Locations({ onOpenPurchaseModal }: LocationsProps) {
+  const [activeCityId, setActiveCityId] = useState<string>(cities[0].id);
+  const [isTariffsOpen, setIsTariffsOpen] = useState(false);
+  const [tariffsContext, setTariffsContext] = useState<{
+    cityName: string;
+    studioName: string;
+  } | null>(null);
+
   const activeCity =
     cities.find((city) => city.id === activeCityId) ?? cities[0];
+
+  function openTariffs(cityName: string, studioName: string) {
+    setTariffsContext({ cityName, studioName });
+    setIsTariffsOpen(true);
+  }
+
+  function closeTariffs() {
+    setIsTariffsOpen(false);
+  }
+
+  function handleTrialPurchase(studioName: string) {
+    onOpenPurchaseModal?.({
+      tariffId: "review", // используем существующий тариф-id, чтобы не ломать типы
+      tariffLabel: `Пробное занятие в студии · ${studioName}`,
+      amount: 950, // ₽
+      currency: "RUB",
+      studioName,
+    });
+  }
 
   return (
     <section
@@ -85,8 +118,8 @@ export function Locations() {
             </h2>
             <p className="max-w-2xl text-sm sm:text-base text-brand-muted">
               Можно заниматься только онлайн, совмещать онлайн с залом или
-              полностью ходить в студию. Прогресс и программы — в одном
-              личном кабинете.
+              полностью ходить в студию. Прогресс, программы и разбор техники —
+              в одном личном кабинете.
             </p>
           </div>
 
@@ -103,7 +136,7 @@ export function Locations() {
                     "px-3 sm:px-4 py-1.5 rounded-full transition-colors",
                     isActive
                       ? "bg-white text-brand-dark"
-                      : "text-brand-muted hover:text-white"
+                      : "text-brand-muted hover:text-white",
                   ].join(" ")}
                 >
                   {city.name}
@@ -131,27 +164,75 @@ export function Locations() {
               <p className="text-xs sm:text-sm text-brand-muted mb-2">
                 {studio.address}
               </p>
-              {studio.note && (
-                <p className="text-[11px] text-brand-muted mb-4">
-                  {studio.note}
-                </p>
-              )}
-              <p className="text-[11px] sm:text-xs text-brand-muted mb-4">
+              <p className="text-[11px] sm:text-xs text-brand-muted mb-2">
                 {studio.schedule}
+              </p>
+              <p className="text-[11px] sm:text-xs text-brand-muted mb-4">
+                {studio.price}
               </p>
 
               <div className="mt-auto pt-2 flex flex-wrap gap-3">
-                <button className="inline-flex items-center justify-center rounded-full bg-brand-primary px-4 py-2 text-xs sm:text-sm font-semibold shadow-soft hover:bg-brand-primary/90 transition-colors">
+                <button
+                  className="inline-flex items-center justify-center rounded-full bg-brand-primary px-4 py-2 text-xs sm:text-sm font-semibold shadow-soft hover:bg-brand-primary/90 transition-colors"
+                  type="button"
+                  onClick={() => handleTrialPurchase(studio.name)}
+                >
                   Записаться на пробную
                 </button>
-                <button className="inline-flex items-center justify-center rounded-full border border-white/20 px-4 py-2 text-xs sm:text-sm font-semibold text-brand-muted hover:bg-white/5 transition-colors">
-                  Смотреть расписание
+                <button
+                  className="inline-flex items-center justify-center rounded-full border border-white/20 px-4 py-2 text-xs sm:text-sm font-semibold text-brand-muted hover:bg-white/5 transition-colors"
+                  type="button"
+                  onClick={() => openTariffs(activeCity.name, studio.name)}
+                >
+                  Смотреть тарифы
                 </button>
               </div>
             </article>
           ))}
         </div>
       </div>
+
+      {/* Модалка с тарифами студий */}
+      {isTariffsOpen && tariffsContext && (
+        <div
+          className="fixed inset-0 z-40 flex items-center justify-center bg-black/60 px-4 sm:px-0"
+          onClick={closeTariffs}
+        >
+          <div
+            className="w-full max-w-md rounded-3xl bg-brand-dark border border-white/10 p-5 sm:p-6 shadow-xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="mb-4 flex items-start justify-between gap-3">
+              <div>
+                <h3 className="text-lg sm:text-xl font-semibold">
+                  Тарифы в студии
+                </h3>
+                <p className="mt-1 text-[11px] sm:text-xs text-brand-muted">
+                  {tariffsContext.cityName} · {tariffsContext.studioName}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={closeTariffs}
+                className="rounded-full bg-white/5 p-1 text-brand-muted hover:bg-white/10 hover:text-white transition-colors"
+                aria-label="Закрыть"
+              >
+                <span className="block h-4 w-4 leading-none">✕</span>
+              </button>
+            </div>
+
+            <div className="space-y-3 text-sm sm:text-base text-brand-muted">
+              <p>👉🏻 Абонемент на 12 тренировок (длительность 8 недель) — 13 200₽</p>
+              <p>👉🏻 1 тренировка (по-разово) — 1 400₽</p>
+            </div>
+
+            <p className="mt-4 text-[11px] sm:text-xs text-brand-muted/80">
+              Оплатить можно на месте после пробного занятия или через онлайн-оплату
+              по ссылке от тренера.
+            </p>
+          </div>
+        </div>
+      )}
     </section>
   );
 }
