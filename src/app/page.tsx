@@ -284,95 +284,108 @@ export default function HomePage() {
           </div>
         </header>
 
-        {/* Мобильное меню */}
-        {isMobileNavOpen && (
-          <div
-            className="fixed inset-0 z-50 bg-black/70 md:hidden"
-            onClick={() => setIsMobileNavOpen(false)}
-          >
-            <nav
-              className="absolute inset-x-4 top-4 rounded-3xl bg-brand-dark border border-white/10 p-5 shadow-2xl"
-              onClick={(e) => e.stopPropagation()}
-            >
-              <div className="mb-4 flex items-center justify-between gap-3">
-                <span className="text-sm font-medium">Меню</span>
-                <button
-                  type="button"
-                  onClick={() => setIsMobileNavOpen(false)}
-                  className="h-9 w-9 rounded-full bg-white/8 border border-white/20 flex items-center justify-center text-base text-brand-muted hover:bg-white/15 hover:text-white transition-colors"
-                  aria-label="Закрыть меню"
-                >
-                  ×
-                </button>
-              </div>
+{/* Мобильное меню */}
+{isMobileNavOpen && (
+  <div
+    className="fixed inset-0 z-50 bg-black/70 md:hidden"
+    onClick={() => setIsMobileNavOpen(false)}
+  >
+    <nav
+      className="absolute left-4 right-4 top-6 rounded-3xl bg-brand-dark border border-white/10 p-5 shadow-2xl"
+      onClick={(e) => e.stopPropagation()} // ← фон закрывает, но само меню нет
+    >
+      <div className="mb-4 flex items-center justify-between gap-3">
+        <span className="text-base font-medium">Меню</span>
 
-              <div className="flex flex-col gap-2 mb-4 text-[15px]">
-                <a
-                  href="#how"
-                  className="rounded-2xl px-3 py-2 hover:bg-white/5"
-                  onClick={() => setIsMobileNavOpen(false)}
-                >
-                  Как это работает
-                </a>
-                <a
-                  href="#courses"
-                  className="rounded-2xl px-3 py-2 hover:bg-white/5"
-                  onClick={() => setIsMobileNavOpen(false)}
-                >
-                  Курсы
-                </a>
-                <a
-                  href="#pricing"
-                  className="rounded-2xl px-3 py-2 hover:bg-white/5"
-                  onClick={() => setIsMobileNavOpen(false)}
-                >
-                  Цены
-                </a>
-                <a
-                  href="#locations"
-                  className="rounded-2xl px-3 py-2 hover:bg-white/5"
-                  onClick={() => setIsMobileNavOpen(false)}
-                >
-                  Локации
-                </a>
-                <a
-                  href="#about"
-                  className="rounded-2xl px-3 py-2 hover:bg-white/5"
-                  onClick={() => setIsMobileNavOpen(false)}
-                >
-                  О проекте
-                </a>
-                <a
-                  href="#reviews"
-                  className="rounded-2xl px-3 py-2 hover:bg-white/5"
-                  onClick={() => setIsMobileNavOpen(false)}
-                >
-                  Отзывы
-                </a>
-                <a
-                  href="#faq"
-                  className="rounded-2xl px-3 py-2 hover:bg-white/5"
-                  onClick={() => setIsMobileNavOpen(false)}
-                >
-                  FAQ
-                </a>
-              </div>
+        {/* ИСПРАВЛЕННЫЙ КРЕСТИК */}
+        <button
+          type="button"
+          onClick={() => setIsMobileNavOpen(false)}
+          className="
+            h-10 w-10 
+            rounded-full 
+            bg-white/10 
+            border border-white/20 
+            flex items-center justify-center 
+            text-xl leading-none 
+            hover:bg-white/20 
+            transition-colors
+          "
+          aria-label="Закрыть меню"
+        >
+          ×
+        </button>
+      </div>
 
-              <div className="space-y-2">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setIsMobileNavOpen(false);
-                    openTestModal("Моб. меню: Пройти тест силы");
-                  }}
-                  className="w-full rounded-full bg-brand-primary px-4 py-2.5 text-sm font-semibold text-white hover:bg-brand-primary/90 transition-colors"
-                >
-                  Пройти тест силы
-                </button>
-              </div>
-            </nav>
-          </div>
-        )}
+      {/* Ссылки */}
+      <div className="flex flex-col gap-2 mb-4 text-[16px]">
+        <a
+          href="#how"
+          className="rounded-2xl px-3 py-2 hover:bg-white/5"
+          onClick={() => setIsMobileNavOpen(false)}
+        >
+          Как это работает
+        </a>
+        <a
+          href="#courses"
+          className="rounded-2xl px-3 py-2 hover:bg-white/5"
+          onClick={() => setIsMobileNavOpen(false)}
+        >
+          Курсы
+        </a>
+        <a
+          href="#pricing"
+          className="rounded-2xl px-3 py-2 hover:bg-white/5"
+          onClick={() => setIsMobileNavOpen(false)}
+        >
+          Цены
+        </a>
+        <a
+          href="#locations"
+          className="rounded-2xl px-3 py-2 hover:bg-white/5"
+          onClick={() => setIsMobileNavOpen(false)}
+        >
+          Локации
+        </a>
+        <a
+          href="#about"
+          className="rounded-2xl px-3 py-2 hover:bg-white/5"
+          onClick={() => setIsMobileNavOpen(false)}
+        >
+          О проекте
+        </a>
+        <a
+          href="#reviews"
+          className="rounded-2xl px-3 py-2 hover:bg-white/5"
+          onClick={() => setIsMobileNavOpen(false)}
+        >
+          Отзывы
+        </a>
+        <a
+          href="#faq"
+          className="rounded-2xl px-3 py-2 hover:bg-white/5"
+          onClick={() => setIsMobileNavOpen(false)}
+        >
+          FAQ
+        </a>
+      </div>
+
+      <div className="space-y-2">
+        <button
+          type="button"
+          onClick={() => {
+            setIsMobileNavOpen(false);
+            openTestModal("Моб. меню: Пройти тест силы");
+          }}
+          className="w-full rounded-full bg-brand-primary px-4 py-3 text-sm font-semibold text-white hover:bg-brand-primary/90 transition-colors"
+        >
+          Пройти тест силы
+        </button>
+      </div>
+    </nav>
+  </div>
+)}
+
 
         {/* HERO */}
         <section className="grid gap-10 lg:grid-cols-[1.1fr_0.9fr] items-center mb-16 lg:mb-24">
