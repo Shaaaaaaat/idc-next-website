@@ -1,9 +1,8 @@
-// src/components/Testimonials.tsx
 "use client";
 
-import { useRef, useState, type MouseEvent } from "react";
+import { useRef, useState, MouseEvent } from "react";
 import { Swiper, SwiperSlide } from "swiper/react";
-import { Pagination, Mousewheel, A11y } from "swiper/modules";
+import { Pagination, Mousewheel } from "swiper/modules";
 import type { Swiper as SwiperType } from "swiper";
 
 import "swiper/css";
@@ -33,7 +32,7 @@ const testimonials: Testimonial[] = [
     tag: "Онлайн · Подтягивания для девушек",
     text: "Я всегда занималась спортом, но в последнее время у меня было ограничение по времени, да и стало скучно делать стандартные упражнения/программы. Вот уже год я занимаюсь с вами калистеникой и это превзошло все мои фантазии! Моя сила значительно увеличилась, при это я стала более гибкой, крепкой и выносливой. Моя форма уселась в красивую фигуру, хоть я и не очень сильно похудела (потому что я отказываюсь сидеть на строгой диете). Тренер Даша часто дополнительно отправляет видео, чтобы обьяснить непонятные аспекты. Мы ставим общие цели и работаем для этого. И ,конечно, что для очень важно - я могу треннироваться тогда когда удобно МНЕ. Обожаю вас! Долгих лет успеха вам! ❤️",
     source: "Instagram",
-    url: "https://www.instagram.com/p/DIB_beJiU6f/?igsh=MWpsenA0MXJuMnJs", // вставишь реальные ссылки
+    url: "https://www.instagram.com/p/DIB_beJiU6f/?igsh=MWpsenA0MXJuMnJs",
   },
   {
     id: "t2",
@@ -73,24 +72,18 @@ export function Testimonials() {
   const [swiper, setSwiper] = useState<SwiperType | null>(null);
   const lastSlideTimeRef = useRef<number>(0);
 
-  const isDesktop =
-    typeof window !== "undefined" && window.matchMedia("(pointer: fine)").matches;
-
   function handleMouseMove(e: MouseEvent<HTMLDivElement>) {
-    // hover-навигация только для десктопа/мыши
-    if (!isDesktop) return;
     if (!swiper) return;
-
     const container = e.currentTarget;
     const rect = container.getBoundingClientRect();
     const x = e.clientX - rect.left;
     const width = rect.width;
 
     const now = Date.now();
-    const throttleMs = 550;
+    const throttleMs = 600;
     if (now - lastSlideTimeRef.current < throttleMs) return;
 
-    const edgeZone = width * 0.18;
+    const edgeZone = width * 0.2;
 
     if (x < edgeZone) {
       swiper.slidePrev();
@@ -134,43 +127,38 @@ export function Testimonials() {
           </div>
         </div>
 
-        {/* Свайпер */}
+        {/* ВАЖНО: без масок/градиентов по бокам */}
         <div
           onMouseMove={handleMouseMove}
           onMouseLeave={handleMouseLeave}
           className="relative"
         >
-          {/* лёгкие градиенты по краям — подсказка что можно листать */}
-          <div className="pointer-events-none absolute inset-y-0 left-0 w-8 sm:w-10 bg-gradient-to-r from-brand-dark to-transparent z-10" />
-          <div className="pointer-events-none absolute inset-y-0 right-0 w-8 sm:w-10 bg-gradient-to-l from-brand-dark to-transparent z-10" />
-
           <Swiper
-  modules={[Pagination, Mousewheel]}
-  spaceBetween={20}
-  slidesPerView={1}
-  pagination={{ clickable: true }}
-  mousewheel={{ forceToAxis: true, releaseOnEdges: true }}
-  grabCursor
-  onSwiper={(instance) => setSwiper(instance)}
-  breakpoints={{
-    640: { slidesPerView: 1.2, spaceBetween: 20 },
-    768: { slidesPerView: 2, spaceBetween: 24 },
-    1024: { slidesPerView: 3, spaceBetween: 24 },
-  }}
-  className="!pb-12"
->
-
+            modules={[Pagination, Mousewheel]}
+            spaceBetween={20}
+            slidesPerView={1}
+            pagination={{ clickable: true }}
+            mousewheel={{ forceToAxis: true, releaseOnEdges: true }}
+            grabCursor
+            onSwiper={(instance) => setSwiper(instance)}
+            breakpoints={{
+              640: { slidesPerView: 1.2, spaceBetween: 20 },
+              768: { slidesPerView: 2, spaceBetween: 24 },
+              1024: { slidesPerView: 3, spaceBetween: 24 },
+            }}
+            className="!pb-12 !overflow-visible"
+          >
             {testimonials.map((review) => (
               <SwiperSlide key={review.id} className="h-auto">
                 <article className="flex h-full flex-col rounded-3xl border border-white/10 bg-white/5 px-5 py-5 sm:px-6 sm:py-6 backdrop-blur-sm shadow-soft">
                   <div className="mb-4">
-                    <div className="flex items-start justify-between gap-3">
+                    <div className="flex items-center justify-between gap-3">
                       <div>
-                        <h3 className="text-base sm:text-base font-semibold leading-tight">
+                        <h3 className="text-sm sm:text-base font-semibold">
                           {review.name}
                         </h3>
                         {review.tag && (
-                          <p className="text-[12px] sm:text-xs text-brand-muted mt-1 leading-snug">
+                          <p className="text-[11px] sm:text-xs text-brand-muted mt-0.5">
                             {review.tag}
                           </p>
                         )}
@@ -181,7 +169,7 @@ export function Testimonials() {
                           href={review.url}
                           target="_blank"
                           rel="noopener noreferrer"
-                          className="shrink-0 inline-flex items-center rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[10px] uppercase tracking-[0.16em] text-brand-muted hover:text-white hover:bg-white/10 transition-colors"
+                          className="inline-flex items-center rounded-full border border-white/10 px-2 py-0.5 text-[10px] uppercase tracking-[0.16em] text-brand-muted hover:text-white transition-colors"
                         >
                           {review.source}
                         </a>
@@ -189,7 +177,7 @@ export function Testimonials() {
                     </div>
                   </div>
 
-                  <p className="text-[15px] sm:text-sm text-brand-muted leading-relaxed whitespace-pre-line">
+                  <p className="text-sm text-brand-muted leading-relaxed whitespace-pre-line">
                     {review.text}
                   </p>
                 </article>
