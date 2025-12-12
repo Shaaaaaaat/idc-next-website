@@ -1,3 +1,4 @@
+// src/components/Locations.tsx
 "use client";
 
 import { useState } from "react";
@@ -107,16 +108,16 @@ export function Locations({ onOpenPurchaseModal }: LocationsProps) {
       className="py-16 sm:py-20 lg:py-24 scroll-mt-24 md:scroll-mt-28 border-t border-white/5"
     >
       <div className="mx-auto max-w-container px-4 sm:px-6 lg:px-8">
-        {/* Заголовок */}
+        {/* Заголовок + переключатель */}
         <div className="mb-8 sm:mb-10 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
           <div>
             <p className="text-xs font-medium uppercase tracking-[0.2em] text-brand-muted mb-3">
               Локации
             </p>
-            <h2 className="text-2xl sm:text-3xl lg:text-4xl font-semibold tracking-tight mb-3">
+            <h2 className="text-[26px] sm:text-3xl lg:text-4xl font-semibold tracking-tight mb-3">
               Где можно тренироваться в студиях
             </h2>
-            <p className="max-w-2xl text-sm sm:text-base text-brand-muted">
+            <p className="max-w-2xl text-[15px] sm:text-base text-brand-muted leading-relaxed">
               Можно заниматься только онлайн, совмещать онлайн с залом или
               полностью ходить в студию. Прогресс, программы и разбор техники —
               в одном личном кабинете.
@@ -124,63 +125,65 @@ export function Locations({ onOpenPurchaseModal }: LocationsProps) {
           </div>
 
           {/* Переключатель городов */}
-          <div className="inline-flex items-center gap-1 rounded-full bg-white/5 border border-white/10 p-1 text-xs sm:text-sm">
-            {cities.map((city) => {
-              const isActive = city.id === activeCityId;
-              return (
-                <button
-                  key={city.id}
-                  type="button"
-                  onClick={() => setActiveCityId(city.id)}
-                  className={[
-                    "px-3 sm:px-4 py-1.5 rounded-full transition-colors",
-                    isActive
-                      ? "bg-white text-brand-dark"
-                      : "text-brand-muted hover:text-white",
-                  ].join(" ")}
-                >
-                  {city.name}
-                </button>
-              );
-            })}
+          <div className="flex sm:justify-end">
+            <div className="inline-flex w-full sm:w-auto items-center justify-between sm:justify-end gap-1 rounded-full bg-white/5 border border-white/10 p-1 text-xs sm:text-sm">
+              {cities.map((city) => {
+                const isActive = city.id === activeCityId;
+                return (
+                  <button
+                    key={city.id}
+                    type="button"
+                    onClick={() => setActiveCityId(city.id)}
+                    className={[
+                      "flex-1 sm:flex-none px-3 sm:px-4 py-1.5 rounded-full transition-colors",
+                      isActive
+                        ? "bg-white text-brand-dark"
+                        : "text-brand-muted hover:text-white",
+                    ].join(" ")}
+                  >
+                    {city.name}
+                  </button>
+                );
+              })}
+            </div>
           </div>
         </div>
 
         {/* Описание выбранного города */}
-        <div className="mb-8 sm:mb-10 text-sm sm:text-base text-brand-muted">
+        <div className="mb-8 sm:mb-10 text-[14px] sm:text-sm text-brand-muted">
           {activeCity.subtitle}
         </div>
 
         {/* Сами студии */}
-        <div className="grid gap-6 md:grid-cols-2">
+        <div className="grid gap-5 sm:gap-6 md:grid-cols-2">
           {activeCity.studios.map((studio) => (
             <article
               key={studio.id}
-              className="flex flex-col rounded-3xl border border-white/10 bg-white/5 px-5 py-6 sm:px-6 sm:py-7 backdrop-blur-sm"
+              className="flex flex-col rounded-3xl border border-white/10 bg-white/5 px-5 py-5 sm:px-6 sm:py-6 backdrop-blur-sm"
             >
-              <h3 className="text-base sm:text-lg font-semibold mb-1">
+              <h3 className="text-[15px] sm:text-lg font-semibold mb-1.5">
                 {studio.name}
               </h3>
-              <p className="text-xs sm:text-sm text-brand-muted mb-2">
+              <p className="text-[13px] sm:text-sm text-brand-muted mb-2">
                 {studio.address}
               </p>
-              <p className="text-[11px] sm:text-xs text-brand-muted mb-2">
+              <p className="text-[12px] sm:text-xs text-brand-muted mb-1.5">
                 {studio.schedule}
               </p>
-              <p className="text-[11px] sm:text-xs text-brand-muted mb-4">
+              <p className="text-[12px] sm:text-xs text-brand-muted mb-4">
                 {studio.price}
               </p>
 
               <div className="mt-auto pt-2 flex flex-wrap gap-3">
                 <button
-                  className="inline-flex items-center justify-center rounded-full bg-brand-primary px-4 py-2 text-xs sm:text-sm font-semibold shadow-soft hover:bg-brand-primary/90 transition-colors"
+                  className="inline-flex items-center justify-center rounded-full bg-brand-primary px-4 py-2 text-[13px] sm:text-sm font-semibold shadow-soft hover:bg-brand-primary/90 transition-colors"
                   type="button"
                   onClick={() => handleTrialPurchase(studio.name)}
                 >
                   Записаться на пробную
                 </button>
                 <button
-                  className="inline-flex items-center justify-center rounded-full border border-white/20 px-4 py-2 text-xs sm:text-sm font-semibold text-brand-muted hover:bg-white/5 transition-colors"
+                  className="inline-flex items-center justify-center rounded-full border border-white/20 px-4 py-2 text-[13px] sm:text-sm font-semibold text-brand-muted hover:bg-white/5 transition-colors"
                   type="button"
                   onClick={() => openTariffs(activeCity.name, studio.name)}
                 >
@@ -195,7 +198,7 @@ export function Locations({ onOpenPurchaseModal }: LocationsProps) {
       {/* Модалка с тарифами студий */}
       {isTariffsOpen && tariffsContext && (
         <div
-          className="fixed inset-0 z-40 flex items-center justify-center bg-black/60 px-4 sm:px-0"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-4 sm:px-0"
           onClick={closeTariffs}
         >
           <div
@@ -214,21 +217,21 @@ export function Locations({ onOpenPurchaseModal }: LocationsProps) {
               <button
                 type="button"
                 onClick={closeTariffs}
-                className="rounded-full bg-white/5 p-1 text-brand-muted hover:bg-white/10 hover:text-white transition-colors"
+                className="rounded-full bg-white/5 p-1.5 text-brand-muted hover:bg-white/10 hover:text-white transition-colors"
                 aria-label="Закрыть"
               >
                 <span className="block h-4 w-4 leading-none">✕</span>
               </button>
             </div>
 
-            <div className="space-y-3 text-sm sm:text-base text-brand-muted">
+            <div className="space-y-3 text-[14px] sm:text-base text-brand-muted">
               <p>👉🏻 Абонемент на 12 тренировок (длительность 8 недель) — 13 200₽</p>
               <p>👉🏻 1 тренировка (по-разово) — 1 400₽</p>
             </div>
 
             <p className="mt-4 text-[11px] sm:text-xs text-brand-muted/80">
-              Оплатить можно на месте после пробного занятия или через онлайн-оплату
-              по ссылке от тренера.
+              Оплатить можно на месте после пробного занятия или через
+              онлайн-оплату по ссылке от тренера.
             </p>
           </div>
         </div>
