@@ -267,6 +267,15 @@ export default function HomePage() {
               </a>
             </nav>
 
+              {/* Кнопка Войти — ДЕСЯТОЧНАЯ ВЕРСИЯ (вернули назад) */}
+  <button
+    className="hidden md:inline-flex items-center rounded-full border border-white/15 bg-white/5 px-4 py-2 text-sm font-medium hover:bg-white/10 transition-colors"
+    type="button"
+    onClick={openLoginModal}
+  >
+    Войти
+  </button>
+
             {/* Бургер — только мобилка */}
             <button
               type="button"
