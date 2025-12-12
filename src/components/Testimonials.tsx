@@ -145,26 +145,21 @@ export function Testimonials() {
           <div className="pointer-events-none absolute inset-y-0 right-0 w-8 sm:w-10 bg-gradient-to-l from-brand-dark to-transparent z-10" />
 
           <Swiper
-            modules={[Pagination, Mousewheel, A11y]}
-            spaceBetween={16}
-            slidesPerView={1.08}
-            centeredSlides={false}
-            pagination={{ clickable: true }}
-            mousewheel={{
-              forceToAxis: true,
-              releaseOnEdges: true,
-              sensitivity: 0.8,
-            }}
-            grabCursor
-            onSwiper={(instance) => setSwiper(instance)}
-            breakpoints={{
-              480: { slidesPerView: 1.15, spaceBetween: 16 },
-              640: { slidesPerView: 1.4, spaceBetween: 20 },
-              768: { slidesPerView: 2, spaceBetween: 22 },
-              1024: { slidesPerView: 3, spaceBetween: 24 },
-            }}
-            className="!pb-12"
-          >
+  modules={[Pagination, Mousewheel]}
+  spaceBetween={20}
+  slidesPerView={1}
+  pagination={{ clickable: true }}
+  mousewheel={{ forceToAxis: true, releaseOnEdges: true }}
+  grabCursor
+  onSwiper={(instance) => setSwiper(instance)}
+  breakpoints={{
+    640: { slidesPerView: 1.2, spaceBetween: 20 },
+    768: { slidesPerView: 2, spaceBetween: 24 },
+    1024: { slidesPerView: 3, spaceBetween: 24 },
+  }}
+  className="!pb-12"
+>
+
             {testimonials.map((review) => (
               <SwiperSlide key={review.id} className="h-auto">
                 <article className="flex h-full flex-col rounded-3xl border border-white/10 bg-white/5 px-5 py-5 sm:px-6 sm:py-6 backdrop-blur-sm shadow-soft">
