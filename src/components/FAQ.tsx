@@ -1,6 +1,7 @@
+// src/components/FAQ.tsx
 "use client";
 
-import { useState } from "react";
+import { useId, useState } from "react";
 
 type FAQItem = {
   question: string;
@@ -41,6 +42,7 @@ const faqs: FAQItem[] = [
 ];
 
 export function FAQ() {
+  const sectionId = useId();
   const [openIndex, setOpenIndex] = useState<number | null>(0);
 
   const toggleIndex = (index: number) => {
@@ -69,37 +71,74 @@ export function FAQ() {
         <div className="space-y-3 sm:space-y-4">
           {faqs.map((item, index) => {
             const isOpen = openIndex === index;
+            const panelId = `${sectionId}-panel-${index}`;
+            const buttonId = `${sectionId}-button-${index}`;
+
             return (
               <div
                 key={item.question}
-                className="rounded-2xl border border-white/10 bg-white/5 backdrop-blur-sm"
+                className={[
+                  "rounded-2xl border bg-white/5 backdrop-blur-sm transition-colors",
+                  isOpen ? "border-white/20" : "border-white/10 hover:border-white/15"
+                ].join(" ")}
               >
                 <button
+                  id={buttonId}
                   type="button"
                   onClick={() => toggleIndex(index)}
-                  className="flex w-full items-center justify-between gap-3 px-4 py-3 sm:px-5 sm:py-4"
+                  aria-expanded={isOpen}
+                  aria-controls={panelId}
+                  className={[
+                    "group flex w-full items-start justify-between gap-4",
+                    "px-4 py-4 sm:px-5 sm:py-4",
+                    "text-left",
+                    "focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-primary/70 focus-visible:ring-offset-2 focus-visible:ring-offset-brand-dark",
+                    "active:scale-[0.99] transition"
+                  ].join(" ")}
                 >
-                  <span className="text-sm sm:text-base text-left font-medium">
+                  <span className="text-base sm:text-base font-medium leading-snug">
                     {item.question}
                   </span>
-                  <span className="ml-2 flex h-6 w-6 items-center justify-center rounded-full border border-white/20 text-xs text-brand-muted">
+
+                  <span
+                    className={[
+                      "mt-0.5 shrink-0 grid place-items-center",
+                      "h-9 w-9 rounded-full",
+                      "border border-white/20 bg-white/5",
+                      "text-sm font-semibold text-white/90",
+                      "group-hover:bg-white/10 transition-colors"
+                    ].join(" ")}
+                    aria-hidden="true"
+                  >
                     {isOpen ? "–" : "+"}
                   </span>
                 </button>
-                {isOpen && (
-                  <div className="px-4 pb-4 sm:px-5 sm:pb-5 pt-0">
-                    <p className="text-xs sm:text-sm text-brand-muted leading-relaxed">
-                      {item.answer}
-                    </p>
+
+                {/* Плавное раскрытие без изменения текста */}
+                <div
+                  id={panelId}
+                  role="region"
+                  aria-labelledby={buttonId}
+                  className={[
+                    "grid transition-[grid-template-rows,opacity] duration-300 ease-out",
+                    isOpen ? "grid-rows-[1fr] opacity-100" : "grid-rows-[0fr] opacity-0"
+                  ].join(" ")}
+                >
+                  <div className="overflow-hidden">
+                    <div className="px-4 pb-4 sm:px-5 sm:pb-5 -mt-1">
+                      <p className="text-[15px] sm:text-sm text-brand-muted leading-relaxed">
+                        {item.answer}
+                      </p>
+                    </div>
                   </div>
-                )}
+                </div>
               </div>
             );
           })}
         </div>
 
         {/* небольшой call-to-action под FAQ */}
-        <div className="mt-8 sm:mt-10 rounded-2xl border border-white/10 bg-white/5 px-4 py-4 sm:px-5 sm:py-5 text-xs sm:text-sm text-brand-muted">
+        <div className="mt-8 sm:mt-10 rounded-2xl border border-white/10 bg-white/5 px-4 py-4 sm:px-5 sm:py-5 text-[13px] sm:text-sm text-brand-muted leading-relaxed">
           Всё ещё сомневаешься, с чего начать? Попробуй с бесплатного теста
           силы — это безопасный способ понять свой уровень и формат тренировок.
         </div>
