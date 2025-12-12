@@ -225,9 +225,6 @@ export function Pricing({
                 <div className="mb-3 flex items-center gap-2 text-[11px] uppercase tracking-[0.16em] text-brand-muted min-h-[32px]">
                   <StepDot color="bg-brand-primary" />
                   <span>Интенсивный блок</span>
-                  <span className="ml-auto rounded-full bg-white/10 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-white">
-                    Лучший выбор
-                  </span>
                 </div>
                 <h3 className="text-[16px] sm:text-lg font-semibold mb-2">
                   12 тренировок
