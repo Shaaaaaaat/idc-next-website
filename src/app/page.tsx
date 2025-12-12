@@ -14,6 +14,7 @@ import { HowItWorks } from "@/components/HowItWorks";
 import { Courses } from "@/components/Courses";
 import { Pricing, type PurchaseOptions } from "@/components/Pricing";
 import { Locations } from "@/components/Locations";
+import { ChatWidget } from "@/components/ChatWidget";
 import { About } from "@/components/About";
 import { FAQ } from "@/components/FAQ";
 import { Testimonials } from "@/components/Testimonials";
@@ -223,7 +224,7 @@ export default function HomePage() {
     <main className="min-h-screen bg-brand-dark text-white">
       <div className="mx-auto max-w-container px-4 sm:px-6 lg:px-8 py-8 sm:py-16 lg:py-20">
         {/* Top bar */}
-        <header className="sticky top-0 z-40 mb-8 sm:mb-12 bg-brand-dark/90 backdrop-blur-md">
+        <header className="sticky top-0 z-40 mb-8 sm:mb-12 backdrop-blur-md">
           <div className="flex items-center justify-between gap-4 py-3">
             <div className="flex items-center gap-2">
               <Image
@@ -842,7 +843,13 @@ export default function HomePage() {
             </form>
           </div>
         </div>
+        
       )}
+      {/* Десктоп-чат (на мобилке скрыт) */}
+      <div className="hidden md:block">
+        <ChatWidget />
+      </div>
+      
     </main>
   );
 }
