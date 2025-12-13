@@ -225,32 +225,42 @@ export default function HomePage() {
   const anyModalOpen =
     isTestModalOpen || isPurchaseModalOpen || isLoginModalOpen;
 
-  useEffect(() => {
-    if (!anyModalOpen) return;
-
-    scrollYRef.current = window.scrollY || 0;
-
-    const body = document.body;
-    body.style.position = "fixed";
-    body.style.top = `-${scrollYRef.current}px`;
-    body.style.left = "0";
-    body.style.right = "0";
-    body.style.width = "100%";
-    body.style.overflow = "hidden";
-
-    return () => {
-      const y = scrollYRef.current;
-
-      body.style.position = "";
-      body.style.top = "";
-      body.style.left = "";
-      body.style.right = "";
-      body.style.width = "";
-      body.style.overflow = "";
-
-      window.scrollTo(0, y);
-    };
-  }, [anyModalOpen]);
+    useEffect(() => {
+      if (!anyModalOpen) return;
+    
+      scrollYRef.current = window.scrollY || 0;
+    
+      const body = document.body;
+      body.style.position = "fixed";
+      body.style.top = `-${scrollYRef.current}px`;
+      body.style.left = "0";
+      body.style.right = "0";
+      body.style.width = "100%";
+      body.style.overflow = "hidden";
+    
+      return () => {
+        const y = scrollYRef.current;
+    
+        body.style.position = "";
+        body.style.top = "";
+        body.style.left = "";
+        body.style.right = "";
+        body.style.width = "";
+        body.style.overflow = "";
+    
+        // 🔥 важно: убрать smooth на миг, иначе будет “пролистывание”
+        const html = document.documentElement;
+        const prev = html.style.scrollBehavior;
+        html.style.scrollBehavior = "auto";
+    
+        // если вдруг браузер чуть “уплыл”, вернём строго
+        window.scrollTo({ top: y, left: 0, behavior: "auto" });
+    
+        // вернуть как было
+        html.style.scrollBehavior = prev;
+      };
+    }, [anyModalOpen]);
+    
 
   return (
     <main className="min-h-screen bg-brand-dark text-white">
