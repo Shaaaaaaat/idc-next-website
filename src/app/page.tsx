@@ -2,13 +2,7 @@
 
 "use client";
 import Image from "next/image";
-import {
-  useEffect,
-  useRef,
-  useState,
-  type ReactNode,
-  type FormEvent,
-} from "react";
+import { useEffect, useRef, useState, type ReactNode, type FormEvent } from "react";
 
 import { HowItWorks } from "@/components/HowItWorks";
 import { Courses } from "@/components/Courses";
@@ -211,7 +205,6 @@ export default function HomePage() {
 
     setIsLoginSubmitting(true);
 
-    // имитация "логина" без реальной авторизации
     setTimeout(() => {
       setIsLoginSubmitting(false);
       setLoginMessage(
@@ -251,10 +244,7 @@ export default function HomePage() {
               <a href="#pricing" className="hover:text-white transition-colors">
                 Цены
               </a>
-              <a
-                href="#locations"
-                className="hover:text-white transition-colors"
-              >
+              <a href="#locations" className="hover:text-white transition-colors">
                 Локации
               </a>
               <a href="#about" className="hover:text-white transition-colors">
@@ -268,7 +258,7 @@ export default function HomePage() {
               </a>
             </nav>
 
-            {/* Кнопка Войти — ДЕСЯТОЧНАЯ ВЕРСИЯ (вернули назад) */}
+            {/* Кнопка Войти — ДЕСКТОП */}
             <button
               className="hidden md:inline-flex items-center rounded-full border border-white/15 bg-white/5 px-4 py-2 text-sm font-medium hover:bg-white/10 transition-colors"
               type="button"
@@ -310,16 +300,7 @@ export default function HomePage() {
                 <button
                   type="button"
                   onClick={() => setIsMobileNavOpen(false)}
-                  className="
-                    h-10 w-10
-                    rounded-full
-                    bg-white/10
-                    border border-white/20
-                    flex items-center justify-center
-                    text-xl leading-none
-                    hover:bg-white/20
-                    transition-colors
-                  "
+                  className="h-10 w-10 rounded-full bg-white/10 border border-white/20 flex items-center justify-center text-xl leading-none hover:bg-white/20 transition-colors"
                   aria-label="Закрыть меню"
                 >
                   ×
@@ -396,7 +377,6 @@ export default function HomePage() {
 
         {/* HERO */}
         <section className="grid gap-10 lg:grid-cols-[1.1fr_0.9fr] items-center mb-16 lg:mb-24">
-          {/* Left side */}
           <div className="space-y-6 sm:space-y-8">
             <div className="inline-flex items-center gap-2 rounded-full bg-white/5 px-3 py-1 text-[12px] sm:text-sm text-brand-muted border border-white/10">
               <span className="h-2 w-2 rounded-full bg-brand-accent" />
@@ -413,9 +393,8 @@ export default function HomePage() {
             </h1>
 
             <p className="max-w-xl text-[15px] sm:text-base text-brand-muted leading-relaxed">
-              Учишься технике, набираешь силу и осваиваешь элементы шаг за
-              шагом. Каждая тренировка подстраивается под твой уровень, цели и
-              расписание.
+              Учишься технике, набираешь силу и осваиваешь элементы шаг за шагом.
+              Каждая тренировка подстраивается под твой уровень, цели и расписание.
             </p>
 
             <div className="flex flex-col sm:flex-row gap-3 sm:gap-4 pt-2">
@@ -447,7 +426,6 @@ export default function HomePage() {
             </div>
           </div>
 
-          {/* Right side */}
           <div className="relative">
             <div className="relative rounded-4xl bg-gradient-to-br from-brand-blue to-[#111827] p-1 shadow-soft">
               <div className="rounded-4xl bg-brand-dark/90 border border-white/10 p-4 sm:p-5 lg:p-6">
@@ -464,9 +442,7 @@ export default function HomePage() {
 
                 <div className="grid grid-cols-2 gap-3 text-xs sm:text-sm">
                   <div className="rounded-2xl bg-white/5 border border-white/10 px-3 py-3">
-                    <div className="text-brand-muted mb-1">
-                      Тренировок в неделю
-                    </div>
+                    <div className="text-brand-muted mb-1">Тренировок в неделю</div>
                     <div className="text-lg sm:text-xl font-semibold">2–3</div>
                     <div className="mt-1 text-[11px] text-brand-muted">
                       оптимально для прогресса и восстановления
@@ -474,12 +450,8 @@ export default function HomePage() {
                   </div>
 
                   <div className="rounded-2xl bg-white/5 border border-white/10 px-3 py-3">
-                    <div className="text-brand-muted mb-1">
-                      Заметный прогресс через
-                    </div>
-                    <div className="text-lg sm:text-xl font-semibold">
-                      3–4 недели
-                    </div>
+                    <div className="text-brand-muted mb-1">Заметный прогресс через</div>
+                    <div className="text-lg sm:text-xl font-semibold">3–4 недели</div>
                     <div className="mt-1 text-[11px] text-brand-muted">
                       рост силы и техники
                     </div>
@@ -491,16 +463,12 @@ export default function HomePage() {
                         <div className="text-[11px] uppercase tracking-wide text-brand-muted mb-1">
                           Твой следующий шаг
                         </div>
-                        <div className="text-sm font-semibold">
-                          Подбери программу под себя
-                        </div>
+                        <div className="text-sm font-semibold">Подбери программу под себя</div>
                       </div>
                       <button
                         className="shrink-0 rounded-full bg-brand-accent text-brand-dark px-4 py-2 text-xs font-semibold hover:bg-brand-accent/90 transition-colors"
                         onClick={() =>
-                          openTestModal(
-                            "Главный блок: Подбери программу под себя"
-                          )
+                          openTestModal("Главный блок: Подбери программу под себя")
                         }
                       >
                         Начать
@@ -515,17 +483,13 @@ export default function HomePage() {
           </div>
         </section>
 
-        {/* Остальные секции */}
         <HowItWorks />
       </div>
 
       <Courses onOpenTestModal={openTestModal} />
 
       <div className="mx-auto max-w-container px-4 sm:px-6 lg:px-8 pb-16 sm:pb-20 lg:pb-24">
-        <Pricing
-          onOpenTestModal={openTestModal}
-          onOpenPurchaseModal={openPurchaseModal}
-        />
+        <Pricing onOpenTestModal={openTestModal} onOpenPurchaseModal={openPurchaseModal} />
         <Locations onOpenPurchaseModal={openPurchaseModal} />
         <About />
         <Testimonials />
@@ -537,109 +501,84 @@ export default function HomePage() {
       {/* МОДАЛКА ТЕСТА СИЛЫ */}
       {isTestModalOpen && (
         <div
-          className="
-            fixed inset-0 z-50 bg-black/60
-            flex items-end sm:items-center justify-center
-            px-3 sm:px-0
-          "
+          className="fixed inset-0 z-50 bg-black/60 px-4 sm:px-0 overflow-y-auto"
           onClick={closeTestModal}
         >
-          <div
-            className="
-              w-full max-w-md
-              rounded-t-3xl sm:rounded-3xl
-              bg-brand-dark border border-white/10
-              p-5 sm:p-6
-              shadow-xl
-              max-h-[90dvh]
-              overflow-y-auto
-            "
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="mb-4 flex items-start justify-between gap-3">
-              <h2 className="text-lg sm:text-xl font-semibold">
-                Записаться на тест силы
-              </h2>
+          <div className="min-h-full flex items-end sm:items-center justify-center py-6 sm:py-0">
+            <div
+              className="w-full max-w-md rounded-3xl bg-brand-dark border border-white/10 p-5 sm:p-6 shadow-xl mb-[max(0px,env(safe-area-inset-bottom))]"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="mb-4 flex items-start justify-between gap-3">
+                <h2 className="text-lg sm:text-xl font-semibold">Записаться на тест силы</h2>
 
-              <button
-                type="button"
-                onClick={closeTestModal}
-                className="
-                  -m-2 p-3
-                  rounded-full bg-white/5
-                  text-brand-muted
-                  hover:bg-white/10 hover:text-white
-                  transition-colors
-                "
-                aria-label="Закрыть форму"
-              >
-                <span className="block h-4 w-4 leading-none text-base">✕</span>
-              </button>
+                <button
+                  type="button"
+                  onClick={closeTestModal}
+                  className="h-10 w-10 rounded-full bg-white/5 border border-white/10 flex items-center justify-center text-brand-muted hover:bg-white/10 hover:text-white transition-colors"
+                  aria-label="Закрыть форму"
+                >
+                  <span className="text-xl leading-none">×</span>
+                </button>
+              </div>
+
+              <form className="space-y-4" onSubmit={handleTestSubmit}>
+                <div className="space-y-1">
+                  <label className="text-xs sm:text-sm text-brand-muted">Имя и фамилия</label>
+                  <input
+                    type="text"
+                    value={testFullName}
+                    onChange={(e) => setTestFullName(e.target.value)}
+                    required
+                    className="w-full rounded-2xl border border-white/10 bg-white/5 px-3 py-3 text-sm outline-none focus:border-brand-primary"
+                    placeholder="Например: Анна Иванова"
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-xs sm:text-sm text-brand-muted">Email</label>
+                  <input
+                    type="email"
+                    value={testEmail}
+                    onChange={(e) => setTestEmail(e.target.value)}
+                    required
+                    className="w-full rounded-2xl border border-white/10 bg-white/5 px-3 py-3 text-sm outline-none focus:border-brand-primary"
+                    placeholder="you@example.com"
+                  />
+                </div>
+
+                <input type="hidden" name="context" value={testContext ?? ""} />
+
+                <label className="flex items-start gap-2 text-[11px] sm:text-xs text-brand-muted">
+                  <input
+                    type="checkbox"
+                    checked={testAgreed}
+                    onChange={(e) => setTestAgreed(e.target.checked)}
+                    className="mt-0.5 h-4 w-4 rounded border-white/20 bg-transparent text-brand-primary focus:ring-0"
+                    required
+                  />
+                  <span>
+                    Я согласен(на) с{" "}
+                    <a
+                      href="/privacy"
+                      target="_blank"
+                      className="underline decoration-dotted hover:text-white"
+                    >
+                      политикой обработки персональных данных
+                    </a>
+                    .
+                  </span>
+                </label>
+
+                <button
+                  type="submit"
+                  disabled={isTestSubmitting || !testAgreed}
+                  className="mt-2 inline-flex w-full items-center justify-center rounded-full bg-brand-primary px-4 py-3 text-sm font-semibold disabled:opacity-60 disabled:pointer-events-none hover:bg-brand-primary/90 transition-colors"
+                >
+                  {isTestSubmitting ? "Отправляем..." : "Отправить заявку"}
+                </button>
+              </form>
             </div>
-
-            <form className="space-y-4" onSubmit={handleTestSubmit}>
-              <div className="space-y-1">
-                <label className="text-xs sm:text-sm text-brand-muted">
-                  Имя и фамилия
-                </label>
-                <input
-                  type="text"
-                  value={testFullName}
-                  onChange={(e) => setTestFullName(e.target.value)}
-                  required
-                  autoComplete="name"
-                  className="w-full rounded-2xl border border-white/10 bg-white/5 px-3 py-2 text-sm outline-none focus:border-brand-primary"
-                  placeholder="Например: Анна Иванова"
-                />
-              </div>
-
-              <div className="space-y-1">
-                <label className="text-xs sm:text-sm text-brand-muted">
-                  Email
-                </label>
-                <input
-                  type="email"
-                  value={testEmail}
-                  onChange={(e) => setTestEmail(e.target.value)}
-                  required
-                  inputMode="email"
-                  autoComplete="email"
-                  className="w-full rounded-2xl border border-white/10 bg-white/5 px-3 py-2 text-sm outline-none focus:border-brand-primary"
-                  placeholder="you@example.com"
-                />
-              </div>
-
-              <input type="hidden" name="context" value={testContext ?? ""} />
-
-              <label className="flex items-start gap-2 text-[11px] sm:text-xs text-brand-muted">
-                <input
-                  type="checkbox"
-                  checked={testAgreed}
-                  onChange={(e) => setTestAgreed(e.target.checked)}
-                  className="mt-0.5 h-3.5 w-3.5 rounded border-white/20 bg-transparent text-brand-primary focus:ring-0"
-                  required
-                />
-                <span>
-                  Я согласен(на) с{" "}
-                  <a
-                    href="/privacy"
-                    target="_blank"
-                    className="underline decoration-dotted hover:text-white"
-                  >
-                    политикой обработки персональных данных
-                  </a>
-                  .
-                </span>
-              </label>
-
-              <button
-                type="submit"
-                disabled={isTestSubmitting || !testAgreed}
-                className="mt-2 inline-flex w-full items-center justify-center rounded-full bg-brand-primary px-4 py-2.5 text-sm font-semibold disabled:opacity-60 disabled:pointer-events-none hover:bg-brand-primary/90 transition-colors"
-              >
-                {isTestSubmitting ? "Отправляем..." : "Отправить заявку"}
-              </button>
-            </form>
           </div>
         </div>
       )}
@@ -647,161 +586,130 @@ export default function HomePage() {
       {/* МОДАЛКА ПОКУПКИ ТАРИФА */}
       {isPurchaseModalOpen && purchaseOptions && (
         <div
-          className="
-            fixed inset-0 z-50 bg-black/60
-            flex items-end sm:items-center justify-center
-            px-3 sm:px-0
-          "
+          className="fixed inset-0 z-50 bg-black/60 px-4 sm:px-0 overflow-y-auto"
           onClick={closePurchaseModal}
         >
-          <div
-            className="
-              w-full max-w-md
-              rounded-t-3xl sm:rounded-3xl
-              bg-brand-dark border border-white/10
-              p-5 sm:p-6
-              shadow-xl
-              max-h-[90dvh]
-              overflow-y-auto
-            "
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="mb-4 flex items-start justify-between gap-3">
-              <div>
-                <h2 className="text-lg sm:text-xl font-semibold">
-                  Оплата блока тренировок
-                </h2>
-                <p className="mt-1 text-[11px] sm:text-xs text-brand-muted">
-                  Тариф: {purchaseOptions.tariffLabel} ·{" "}
-                  {purchaseOptions.amount.toLocaleString("ru-RU")}{" "}
-                  {purchaseOptions.currency === "RUB" ? "₽" : "€"}
-                </p>
-              </div>
-
-              <button
-                type="button"
-                onClick={closePurchaseModal}
-                className="
-                  -m-2 p-3
-                  rounded-full bg-white/5
-                  text-brand-muted
-                  hover:bg-white/10 hover:text-white
-                  transition-colors
-                "
-                aria-label="Закрыть покупку"
-              >
-                <span className="block h-4 w-4 leading-none text-base">✕</span>
-              </button>
-            </div>
-
-            <form className="space-y-4" onSubmit={handlePurchaseSubmit}>
-              <div className="space-y-1">
-                <label className="text-xs sm:text-sm text-brand-muted">
-                  Имя и фамилия
-                </label>
-                <input
-                  type="text"
-                  value={buyFullName}
-                  onChange={(e) => setBuyFullName(e.target.value)}
-                  required
-                  autoComplete="name"
-                  className="w-full rounded-2xl border border-white/10 bg-white/5 px-3 py-2 text-sm outline-none focus:border-brand-primary"
-                  placeholder="Например: Анна Иванова"
-                />
-              </div>
-
-              <div className="space-y-1">
-                <label className="text-xs sm:text-sm text-brand-muted">
-                  Email
-                </label>
-                <input
-                  type="email"
-                  value={buyEmail}
-                  onChange={(e) => setBuyEmail(e.target.value)}
-                  required
-                  inputMode="email"
-                  autoComplete="email"
-                  className="w-full rounded-2xl border border-white/10 bg-white/5 px-3 py-2 text-sm outline-none focus:border-brand-primary"
-                  placeholder="you@example.com"
-                />
-              </div>
-
-              <div className="space-y-1">
-                <label className="text-xs sm:text-sm text-brand-muted">
-                  Телефон
-                </label>
-                <input
-                  type="tel"
-                  value={buyPhone}
-                  onChange={(e) => setBuyPhone(e.target.value)}
-                  required
-                  inputMode="tel"
-                  autoComplete="tel"
-                  className="w-full rounded-2xl border border-white/10 bg-white/5 px-3 py-2 text-sm outline-none focus:border-brand-primary"
-                  placeholder="+7 900 000-00-00"
-                />
-              </div>
-
-              {!purchaseOptions.studioName && (
-                <div className="space-y-1">
-                  <label className="text-xs sm:text-sm text-brand-muted">
-                    Курс
-                  </label>
-
-                  <div className="relative">
-                    <select
-                      value={buyCourse}
-                      onChange={(e) => setBuyCourse(e.target.value)}
-                      required
-                      className="w-full rounded-2xl border border-brand-primary/60 bg-brand-dark px-3 py-2 pr-8 text-sm text-white outline-none focus:border-brand-primary focus:ring-1 focus:ring-brand-primary appearance-none"
-                    >
-                      <option value="" disabled>
-                        Выбери курс
-                      </option>
-
-                      {courseNames.map((name) => (
-                        <option key={name} value={name}>
-                          {name}
-                        </option>
-                      ))}
-                    </select>
-
-                    <span className="pointer-events-none absolute inset-y-0 right-3 flex items-center text-brand-muted">
-                      ▾
-                    </span>
-                  </div>
+          <div className="min-h-full flex items-end sm:items-center justify-center py-6 sm:py-0">
+            <div
+              className="w-full max-w-md rounded-3xl bg-brand-dark border border-white/10 p-5 sm:p-6 shadow-xl mb-[max(0px,env(safe-area-inset-bottom))]"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="mb-4 flex items-start justify-between gap-3">
+                <div>
+                  <h2 className="text-lg sm:text-xl font-semibold">Оплата блока тренировок</h2>
+                  <p className="mt-1 text-[11px] sm:text-xs text-brand-muted">
+                    Тариф: {purchaseOptions.tariffLabel} ·{" "}
+                    {purchaseOptions.amount.toLocaleString("ru-RU")}{" "}
+                    {purchaseOptions.currency === "RUB" ? "₽" : "€"}
+                  </p>
                 </div>
-              )}
 
-              <label className="flex items-start gap-2 text-[11px] sm:text-xs text-brand-muted">
-                <input
-                  type="checkbox"
-                  checked={buyAgreed}
-                  onChange={(e) => setBuyAgreed(e.target.checked)}
-                  className="mt-0.5 h-3.5 w-3.5 rounded border-white/20 bg-transparent text-brand-primary focus:ring-0"
-                  required
-                />
-                <span>
-                  Я согласен(на) с{" "}
-                  <a
-                    href="/privacy"
-                    target="_blank"
-                    className="underline decoration-dotted hover:text-white"
-                  >
-                    политикой обработки персональных данных
-                  </a>{" "}
-                  и условиями оплаты.
-                </span>
-              </label>
+                <button
+                  type="button"
+                  onClick={closePurchaseModal}
+                  className="h-10 w-10 rounded-full bg-white/5 border border-white/10 flex items-center justify-center text-brand-muted hover:bg-white/10 hover:text-white transition-colors"
+                  aria-label="Закрыть покупку"
+                >
+                  <span className="text-xl leading-none">×</span>
+                </button>
+              </div>
 
-              <button
-                type="submit"
-                disabled={isBuySubmitting || !buyAgreed}
-                className="mt-2 inline-flex w-full items-center justify-center rounded-full bg-brand-primary px-4 py-2.5 text-sm font-semibold disabled:opacity-60 disabled:pointer-events-none hover:bg-brand-primary/90 transition-colors"
-              >
-                {isBuySubmitting ? "Переходим к оплате..." : "Перейти к оплате"}
-              </button>
-            </form>
+              <form className="space-y-4" onSubmit={handlePurchaseSubmit}>
+                <div className="space-y-1">
+                  <label className="text-xs sm:text-sm text-brand-muted">Имя и фамилия</label>
+                  <input
+                    type="text"
+                    value={buyFullName}
+                    onChange={(e) => setBuyFullName(e.target.value)}
+                    required
+                    className="w-full rounded-2xl border border-white/10 bg-white/5 px-3 py-3 text-sm outline-none focus:border-brand-primary"
+                    placeholder="Например: Анна Иванова"
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-xs sm:text-sm text-brand-muted">Email</label>
+                  <input
+                    type="email"
+                    value={buyEmail}
+                    onChange={(e) => setBuyEmail(e.target.value)}
+                    required
+                    className="w-full rounded-2xl border border-white/10 bg-white/5 px-3 py-3 text-sm outline-none focus:border-brand-primary"
+                    placeholder="you@example.com"
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-xs sm:text-sm text-brand-muted">Телефон</label>
+                  <input
+                    type="tel"
+                    value={buyPhone}
+                    onChange={(e) => setBuyPhone(e.target.value)}
+                    required
+                    className="w-full rounded-2xl border border-white/10 bg-white/5 px-3 py-3 text-sm outline-none focus:border-brand-primary"
+                    placeholder="+7 900 000-00-00"
+                  />
+                </div>
+
+                {!purchaseOptions.studioName && (
+                  <div className="space-y-1">
+                    <label className="text-xs sm:text-sm text-brand-muted">Курс</label>
+
+                    <div className="relative">
+                      <select
+                        value={buyCourse}
+                        onChange={(e) => setBuyCourse(e.target.value)}
+                        required
+                        className="w-full rounded-2xl border border-brand-primary/60 bg-brand-dark px-3 py-3 pr-8 text-sm text-white outline-none focus:border-brand-primary focus:ring-1 focus:ring-brand-primary appearance-none"
+                      >
+                        <option value="" disabled>
+                          Выбери курс
+                        </option>
+
+                        {courseNames.map((name) => (
+                          <option key={name} value={name}>
+                            {name}
+                          </option>
+                        ))}
+                      </select>
+
+                      <span className="pointer-events-none absolute inset-y-0 right-3 flex items-center text-brand-muted">
+                        ▾
+                      </span>
+                    </div>
+                  </div>
+                )}
+
+                <label className="flex items-start gap-2 text-[11px] sm:text-xs text-brand-muted">
+                  <input
+                    type="checkbox"
+                    checked={buyAgreed}
+                    onChange={(e) => setBuyAgreed(e.target.checked)}
+                    className="mt-0.5 h-4 w-4 rounded border-white/20 bg-transparent text-brand-primary focus:ring-0"
+                    required
+                  />
+                  <span>
+                    Я согласен(на) с{" "}
+                    <a
+                      href="/privacy"
+                      target="_blank"
+                      className="underline decoration-dotted hover:text-white"
+                    >
+                      политикой обработки персональных данных
+                    </a>{" "}
+                    и условиями оплаты.
+                  </span>
+                </label>
+
+                <button
+                  type="submit"
+                  disabled={isBuySubmitting || !buyAgreed}
+                  className="mt-2 inline-flex w-full items-center justify-center rounded-full bg-brand-primary px-4 py-3 text-sm font-semibold disabled:opacity-60 disabled:pointer-events-none hover:bg-brand-primary/90 transition-colors"
+                >
+                  {isBuySubmitting ? "Переходим к оплате..." : "Перейти к оплате"}
+                </button>
+              </form>
+            </div>
           </div>
         </div>
       )}
@@ -809,98 +717,73 @@ export default function HomePage() {
       {/* МОДАЛКА ЛОГИНА */}
       {isLoginModalOpen && (
         <div
-          className="
-            fixed inset-0 z-50 bg-black/60
-            flex items-end sm:items-center justify-center
-            px-3 sm:px-0
-          "
+          className="fixed inset-0 z-50 bg-black/60 px-4 sm:px-0 overflow-y-auto"
           onClick={closeLoginModal}
         >
-          <div
-            className="
-              w-full max-w-md
-              rounded-t-3xl sm:rounded-3xl
-              bg-brand-dark border border-white/10
-              p-5 sm:p-6
-              shadow-xl
-              max-h-[90dvh]
-              overflow-y-auto
-            "
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="mb-4 flex items-start justify-between gap-3">
-              <div>
-                <h2 className="text-lg sm:text-xl font-semibold">
-                  Войти в личный кабинет
-                </h2>
-                <p className="mt-1 text-[11px] sm:text-xs text-brand-muted">
-                  Личный кабинет приложения сейчас в разработке. Форма входа —
-                  демонстрационная.
-                </p>
+          <div className="min-h-full flex items-end sm:items-center justify-center py-6 sm:py-0">
+            <div
+              className="w-full max-w-md rounded-3xl bg-brand-dark border border-white/10 p-5 sm:p-6 shadow-xl mb-[max(0px,env(safe-area-inset-bottom))]"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="mb-4 flex items-start justify-between gap-3">
+                <div>
+                  <h2 className="text-lg sm:text-xl font-semibold">Войти в личный кабинет</h2>
+                  <p className="mt-1 text-[11px] sm:text-xs text-brand-muted">
+                    Личный кабинет приложения сейчас в разработке. Форма входа —
+                    демонстрационная.
+                  </p>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={closeLoginModal}
+                  className="h-10 w-10 rounded-full bg-white/5 border border-white/10 flex items-center justify-center text-brand-muted hover:bg-white/10 hover:text-white transition-colors"
+                  aria-label="Закрыть форму входа"
+                >
+                  <span className="text-xl leading-none">×</span>
+                </button>
               </div>
 
-              <button
-                type="button"
-                onClick={closeLoginModal}
-                className="
-                  -m-2 p-3
-                  rounded-full bg-white/5
-                  text-brand-muted
-                  hover:bg-white/10 hover:text-white
-                  transition-colors
-                "
-                aria-label="Закрыть форму входа"
-              >
-                <span className="block h-4 w-4 leading-none text-base">✕</span>
-              </button>
+              <form className="space-y-4" onSubmit={handleLoginSubmit}>
+                <div className="space-y-1">
+                  <label className="text-xs sm:text-sm text-brand-muted">Email</label>
+                  <input
+                    type="email"
+                    value={loginEmail}
+                    onChange={(e) => setLoginEmail(e.target.value)}
+                    required
+                    className="w-full rounded-2xl border border-white/10 bg-white/5 px-3 py-3 text-sm outline-none focus:border-brand-primary"
+                    placeholder="you@example.com"
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-xs sm:text-sm text-brand-muted">Пароль</label>
+                  <input
+                    type="password"
+                    value={loginPassword}
+                    onChange={(e) => setLoginPassword(e.target.value)}
+                    required
+                    className="w-full rounded-2xl border border-white/10 bg-white/5 px-3 py-3 text-sm outline-none focus:border-brand-primary"
+                    placeholder="Пароль"
+                  />
+                </div>
+
+                {loginMessage && (
+                  <p className="text-[11px] sm:text-xs text-amber-300/90 bg-amber-500/10 border border-amber-500/30 rounded-2xl px-3 py-2">
+                    {loginMessage}
+                  </p>
+                )}
+
+                <button
+                  type="submit"
+                  disabled={isLoginSubmitting}
+                  className="mt-2 inline-flex w-full items-center justify-center rounded-full bg-white/90 px-4 py-3 text-sm font-semibold text-brand-dark disabled:opacity-60 disabled:pointer-events-none hover:bg-white transition-colors"
+                >
+                  {isLoginSubmitting ? "Проверяем…" : "Войти"}
+                </button>
+              </form>
             </div>
-
-            <form className="space-y-4" onSubmit={handleLoginSubmit}>
-              <div className="space-y-1">
-                <label className="text-xs sm:text-sm text-brand-muted">
-                  Email
-                </label>
-                <input
-                  type="email"
-                  value={loginEmail}
-                  onChange={(e) => setLoginEmail(e.target.value)}
-                  required
-                  inputMode="email"
-                  autoComplete="email"
-                  className="w-full rounded-2xl border border-white/10 bg-white/5 px-3 py-2 text-sm outline-none focus:border-brand-primary"
-                  placeholder="you@example.com"
-                />
-              </div>
-
-              <div className="space-y-1">
-                <label className="text-xs sm:text-sm text-brand-muted">
-                  Пароль
-                </label>
-                <input
-                  type="password"
-                  value={loginPassword}
-                  onChange={(e) => setLoginPassword(e.target.value)}
-                  required
-                  autoComplete="current-password"
-                  className="w-full rounded-2xl border border-white/10 bg-white/5 px-3 py-2 text-sm outline-none focus:border-brand-primary"
-                  placeholder="Пароль"
-                />
-              </div>
-
-              {loginMessage && (
-                <p className="text-[11px] sm:text-xs text-amber-300/90 bg-amber-500/10 border border-amber-500/30 rounded-2xl px-3 py-2">
-                  {loginMessage}
-                </p>
-              )}
-
-              <button
-                type="submit"
-                disabled={isLoginSubmitting}
-                className="mt-2 inline-flex w-full items-center justify-center rounded-full bg-white/90 px-4 py-2.5 text-sm font-semibold text-brand-dark disabled:opacity-60 disabled:pointer-events-none hover:bg-white transition-colors"
-              >
-                {isLoginSubmitting ? "Проверяем…" : "Войти"}
-              </button>
-            </form>
           </div>
         </div>
       )}
