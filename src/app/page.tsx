@@ -268,14 +268,14 @@ export default function HomePage() {
               </a>
             </nav>
 
-              {/* Кнопка Войти — ДЕСЯТОЧНАЯ ВЕРСИЯ (вернули назад) */}
-  <button
-    className="hidden md:inline-flex items-center rounded-full border border-white/15 bg-white/5 px-4 py-2 text-sm font-medium hover:bg-white/10 transition-colors"
-    type="button"
-    onClick={openLoginModal}
-  >
-    Войти
-  </button>
+            {/* Кнопка Войти — ДЕСЯТОЧНАЯ ВЕРСИЯ (вернули назад) */}
+            <button
+              className="hidden md:inline-flex items-center rounded-full border border-white/15 bg-white/5 px-4 py-2 text-sm font-medium hover:bg-white/10 transition-colors"
+              type="button"
+              onClick={openLoginModal}
+            >
+              Войти
+            </button>
 
             {/* Бургер — только мобилка */}
             <button
@@ -294,108 +294,105 @@ export default function HomePage() {
           </div>
         </header>
 
-{/* Мобильное меню */}
-{isMobileNavOpen && (
-  <div
-    className="fixed inset-0 z-50 bg-black/70 md:hidden"
-    onClick={() => setIsMobileNavOpen(false)}
-  >
-    <nav
-      className="absolute left-4 right-4 top-6 rounded-3xl bg-brand-dark border border-white/10 p-5 shadow-2xl"
-      onClick={(e) => e.stopPropagation()} // ← фон закрывает, но само меню нет
-    >
-      <div className="mb-4 flex items-center justify-between gap-3">
-        <span className="text-base font-medium">Меню</span>
+        {/* Мобильное меню */}
+        {isMobileNavOpen && (
+          <div
+            className="fixed inset-0 z-50 bg-black/70 md:hidden"
+            onClick={() => setIsMobileNavOpen(false)}
+          >
+            <nav
+              className="absolute left-4 right-4 top-6 rounded-3xl bg-brand-dark border border-white/10 p-5 shadow-2xl"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="mb-4 flex items-center justify-between gap-3">
+                <span className="text-base font-medium">Меню</span>
 
-        {/* ИСПРАВЛЕННЫЙ КРЕСТИК */}
-        <button
-          type="button"
-          onClick={() => setIsMobileNavOpen(false)}
-          className="
-            h-10 w-10 
-            rounded-full 
-            bg-white/10 
-            border border-white/20 
-            flex items-center justify-center 
-            text-xl leading-none 
-            hover:bg-white/20 
-            transition-colors
-          "
-          aria-label="Закрыть меню"
-        >
-          ×
-        </button>
-      </div>
+                <button
+                  type="button"
+                  onClick={() => setIsMobileNavOpen(false)}
+                  className="
+                    h-10 w-10
+                    rounded-full
+                    bg-white/10
+                    border border-white/20
+                    flex items-center justify-center
+                    text-xl leading-none
+                    hover:bg-white/20
+                    transition-colors
+                  "
+                  aria-label="Закрыть меню"
+                >
+                  ×
+                </button>
+              </div>
 
-      {/* Ссылки */}
-      <div className="flex flex-col gap-2 mb-4 text-[16px]">
-        <a
-          href="#how"
-          className="rounded-2xl px-3 py-2 hover:bg-white/5"
-          onClick={() => setIsMobileNavOpen(false)}
-        >
-          Как это работает
-        </a>
-        <a
-          href="#courses"
-          className="rounded-2xl px-3 py-2 hover:bg-white/5"
-          onClick={() => setIsMobileNavOpen(false)}
-        >
-          Курсы
-        </a>
-        <a
-          href="#pricing"
-          className="rounded-2xl px-3 py-2 hover:bg-white/5"
-          onClick={() => setIsMobileNavOpen(false)}
-        >
-          Цены
-        </a>
-        <a
-          href="#locations"
-          className="rounded-2xl px-3 py-2 hover:bg-white/5"
-          onClick={() => setIsMobileNavOpen(false)}
-        >
-          Локации
-        </a>
-        <a
-          href="#about"
-          className="rounded-2xl px-3 py-2 hover:bg-white/5"
-          onClick={() => setIsMobileNavOpen(false)}
-        >
-          О проекте
-        </a>
-        <a
-          href="#reviews"
-          className="rounded-2xl px-3 py-2 hover:bg-white/5"
-          onClick={() => setIsMobileNavOpen(false)}
-        >
-          Отзывы
-        </a>
-        <a
-          href="#faq"
-          className="rounded-2xl px-3 py-2 hover:bg-white/5"
-          onClick={() => setIsMobileNavOpen(false)}
-        >
-          FAQ
-        </a>
-      </div>
+              <div className="flex flex-col gap-2 mb-4 text-[16px]">
+                <a
+                  href="#how"
+                  className="rounded-2xl px-3 py-2 hover:bg-white/5"
+                  onClick={() => setIsMobileNavOpen(false)}
+                >
+                  Как это работает
+                </a>
+                <a
+                  href="#courses"
+                  className="rounded-2xl px-3 py-2 hover:bg-white/5"
+                  onClick={() => setIsMobileNavOpen(false)}
+                >
+                  Курсы
+                </a>
+                <a
+                  href="#pricing"
+                  className="rounded-2xl px-3 py-2 hover:bg-white/5"
+                  onClick={() => setIsMobileNavOpen(false)}
+                >
+                  Цены
+                </a>
+                <a
+                  href="#locations"
+                  className="rounded-2xl px-3 py-2 hover:bg-white/5"
+                  onClick={() => setIsMobileNavOpen(false)}
+                >
+                  Локации
+                </a>
+                <a
+                  href="#about"
+                  className="rounded-2xl px-3 py-2 hover:bg-white/5"
+                  onClick={() => setIsMobileNavOpen(false)}
+                >
+                  О проекте
+                </a>
+                <a
+                  href="#reviews"
+                  className="rounded-2xl px-3 py-2 hover:bg-white/5"
+                  onClick={() => setIsMobileNavOpen(false)}
+                >
+                  Отзывы
+                </a>
+                <a
+                  href="#faq"
+                  className="rounded-2xl px-3 py-2 hover:bg-white/5"
+                  onClick={() => setIsMobileNavOpen(false)}
+                >
+                  FAQ
+                </a>
+              </div>
 
-      <div className="space-y-2">
-        <button
-          type="button"
-          onClick={() => {
-            setIsMobileNavOpen(false);
-            openTestModal("Моб. меню: Пройти тест силы");
-          }}
-          className="w-full rounded-full bg-brand-primary px-4 py-3 text-sm font-semibold text-white hover:bg-brand-primary/90 transition-colors"
-        >
-          Пройти тест силы
-        </button>
-      </div>
-    </nav>
-  </div>
-)}
-
+              <div className="space-y-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsMobileNavOpen(false);
+                    openTestModal("Моб. меню: Пройти тест силы");
+                  }}
+                  className="w-full rounded-full bg-brand-primary px-4 py-3 text-sm font-semibold text-white hover:bg-brand-primary/90 transition-colors"
+                >
+                  Пройти тест силы
+                </button>
+              </div>
+            </nav>
+          </div>
+        )}
 
         {/* HERO */}
         <section className="grid gap-10 lg:grid-cols-[1.1fr_0.9fr] items-center mb-16 lg:mb-24">
@@ -423,9 +420,7 @@ export default function HomePage() {
 
             <div className="flex flex-col sm:flex-row gap-3 sm:gap-4 pt-2">
               <TestSignupButton
-                onClick={() =>
-                  openTestModal("Главный блок: Пройти тест силы")
-                }
+                onClick={() => openTestModal("Главный блок: Пройти тест силы")}
               />
 
               <a
@@ -542,11 +537,23 @@ export default function HomePage() {
       {/* МОДАЛКА ТЕСТА СИЛЫ */}
       {isTestModalOpen && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-4 sm:px-0"
+          className="
+            fixed inset-0 z-50 bg-black/60
+            flex items-end sm:items-center justify-center
+            px-3 sm:px-0
+          "
           onClick={closeTestModal}
         >
           <div
-            className="w-full max-w-md rounded-3xl bg-brand-dark border border-white/10 p-5 sm:p-6 shadow-xl"
+            className="
+              w-full max-w-md
+              rounded-t-3xl sm:rounded-3xl
+              bg-brand-dark border border-white/10
+              p-5 sm:p-6
+              shadow-xl
+              max-h-[90dvh]
+              overflow-y-auto
+            "
             onClick={(e) => e.stopPropagation()}
           >
             <div className="mb-4 flex items-start justify-between gap-3">
@@ -557,10 +564,16 @@ export default function HomePage() {
               <button
                 type="button"
                 onClick={closeTestModal}
-                className="rounded-full bg-white/5 p-1 text-brand-muted hover:bg-white/10 hover:text-white transition-colors"
+                className="
+                  -m-2 p-3
+                  rounded-full bg-white/5
+                  text-brand-muted
+                  hover:bg-white/10 hover:text-white
+                  transition-colors
+                "
                 aria-label="Закрыть форму"
               >
-                <span className="block h-4 w-4 leading-none">✕</span>
+                <span className="block h-4 w-4 leading-none text-base">✕</span>
               </button>
             </div>
 
@@ -574,6 +587,7 @@ export default function HomePage() {
                   value={testFullName}
                   onChange={(e) => setTestFullName(e.target.value)}
                   required
+                  autoComplete="name"
                   className="w-full rounded-2xl border border-white/10 bg-white/5 px-3 py-2 text-sm outline-none focus:border-brand-primary"
                   placeholder="Например: Анна Иванова"
                 />
@@ -588,6 +602,8 @@ export default function HomePage() {
                   value={testEmail}
                   onChange={(e) => setTestEmail(e.target.value)}
                   required
+                  inputMode="email"
+                  autoComplete="email"
                   className="w-full rounded-2xl border border-white/10 bg-white/5 px-3 py-2 text-sm outline-none focus:border-brand-primary"
                   placeholder="you@example.com"
                 />
@@ -631,11 +647,23 @@ export default function HomePage() {
       {/* МОДАЛКА ПОКУПКИ ТАРИФА */}
       {isPurchaseModalOpen && purchaseOptions && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-4 sm:px-0"
+          className="
+            fixed inset-0 z-50 bg-black/60
+            flex items-end sm:items-center justify-center
+            px-3 sm:px-0
+          "
           onClick={closePurchaseModal}
         >
           <div
-            className="w-full max-w-md rounded-3xl bg-brand-dark border border-white/10 p-5 sm:p-6 shadow-xl"
+            className="
+              w-full max-w-md
+              rounded-t-3xl sm:rounded-3xl
+              bg-brand-dark border border-white/10
+              p-5 sm:p-6
+              shadow-xl
+              max-h-[90dvh]
+              overflow-y-auto
+            "
             onClick={(e) => e.stopPropagation()}
           >
             <div className="mb-4 flex items-start justify-between gap-3">
@@ -653,10 +681,16 @@ export default function HomePage() {
               <button
                 type="button"
                 onClick={closePurchaseModal}
-                className="rounded-full bg-white/5 p-1 text-brand-muted hover:bg-white/10 hover:text-white transition-colors"
+                className="
+                  -m-2 p-3
+                  rounded-full bg-white/5
+                  text-brand-muted
+                  hover:bg-white/10 hover:text-white
+                  transition-colors
+                "
                 aria-label="Закрыть покупку"
               >
-                <span className="block h-4 w-4 leading-none">✕</span>
+                <span className="block h-4 w-4 leading-none text-base">✕</span>
               </button>
             </div>
 
@@ -670,6 +704,7 @@ export default function HomePage() {
                   value={buyFullName}
                   onChange={(e) => setBuyFullName(e.target.value)}
                   required
+                  autoComplete="name"
                   className="w-full rounded-2xl border border-white/10 bg-white/5 px-3 py-2 text-sm outline-none focus:border-brand-primary"
                   placeholder="Например: Анна Иванова"
                 />
@@ -684,6 +719,8 @@ export default function HomePage() {
                   value={buyEmail}
                   onChange={(e) => setBuyEmail(e.target.value)}
                   required
+                  inputMode="email"
+                  autoComplete="email"
                   className="w-full rounded-2xl border border-white/10 bg-white/5 px-3 py-2 text-sm outline-none focus:border-brand-primary"
                   placeholder="you@example.com"
                 />
@@ -698,6 +735,8 @@ export default function HomePage() {
                   value={buyPhone}
                   onChange={(e) => setBuyPhone(e.target.value)}
                   required
+                  inputMode="tel"
+                  autoComplete="tel"
                   className="w-full rounded-2xl border border-white/10 bg-white/5 px-3 py-2 text-sm outline-none focus:border-brand-primary"
                   placeholder="+7 900 000-00-00"
                 />
@@ -770,11 +809,23 @@ export default function HomePage() {
       {/* МОДАЛКА ЛОГИНА */}
       {isLoginModalOpen && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-4 sm:px-0"
+          className="
+            fixed inset-0 z-50 bg-black/60
+            flex items-end sm:items-center justify-center
+            px-3 sm:px-0
+          "
           onClick={closeLoginModal}
         >
           <div
-            className="w-full max-w-md rounded-3xl bg-brand-dark border border-white/10 p-5 sm:p-6 shadow-xl"
+            className="
+              w-full max-w-md
+              rounded-t-3xl sm:rounded-3xl
+              bg-brand-dark border border-white/10
+              p-5 sm:p-6
+              shadow-xl
+              max-h-[90dvh]
+              overflow-y-auto
+            "
             onClick={(e) => e.stopPropagation()}
           >
             <div className="mb-4 flex items-start justify-between gap-3">
@@ -791,10 +842,16 @@ export default function HomePage() {
               <button
                 type="button"
                 onClick={closeLoginModal}
-                className="rounded-full bg-white/5 p-1 text-brand-muted hover:bg-white/10 hover:text-white transition-colors"
+                className="
+                  -m-2 p-3
+                  rounded-full bg-white/5
+                  text-brand-muted
+                  hover:bg-white/10 hover:text-white
+                  transition-colors
+                "
                 aria-label="Закрыть форму входа"
               >
-                <span className="block h-4 w-4 leading-none">✕</span>
+                <span className="block h-4 w-4 leading-none text-base">✕</span>
               </button>
             </div>
 
@@ -808,6 +865,8 @@ export default function HomePage() {
                   value={loginEmail}
                   onChange={(e) => setLoginEmail(e.target.value)}
                   required
+                  inputMode="email"
+                  autoComplete="email"
                   className="w-full rounded-2xl border border-white/10 bg-white/5 px-3 py-2 text-sm outline-none focus:border-brand-primary"
                   placeholder="you@example.com"
                 />
@@ -822,6 +881,7 @@ export default function HomePage() {
                   value={loginPassword}
                   onChange={(e) => setLoginPassword(e.target.value)}
                   required
+                  autoComplete="current-password"
                   className="w-full rounded-2xl border border-white/10 bg-white/5 px-3 py-2 text-sm outline-none focus:border-brand-primary"
                   placeholder="Пароль"
                 />
@@ -843,13 +903,12 @@ export default function HomePage() {
             </form>
           </div>
         </div>
-        
       )}
+
       {/* Десктоп-чат (на мобилке скрыт) */}
       <div className="hidden md:block">
         <ChatWidget />
       </div>
-      
     </main>
   );
 }
