@@ -43,7 +43,7 @@ const faqs: FAQItem[] = [
 
 export function FAQ() {
   const sectionId = useId();
-  const [openIndex, setOpenIndex] = useState<number | null>(0);
+  const [openIndex, setOpenIndex] = useState<number | null>(null);
 
   const toggleIndex = (index: number) => {
     setOpenIndex((prev) => (prev === index ? null : index));
