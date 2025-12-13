@@ -560,11 +560,12 @@ export default function HomePage() {
       {/* МОДАЛКА ТЕСТА СИЛЫ */}
       {isTestModalOpen && (
         <div
-          className="fixed inset-0 z-50 bg-black/60 p-4 sm:p-0 flex items-center justify-center"
+          className="fixed inset-0 z-50 bg-black/60 p-4 sm:p-0 flex items-start justify-center overflow-y-auto"
           onClick={closeTestModal}
         >
           <div
-            className="w-full max-w-md rounded-3xl bg-brand-dark border border-white/10 p-5 sm:p-6 shadow-xl
+            className="w-full max-w-md rounded-3xl bg-brand-dark border border-white/10 shadow-xl p-5 sm:p-6
+                       mt-4 sm:mt-0
                        max-h-[calc(100dvh-2rem)] overflow-y-auto
                        pb-[max(1.25rem,env(safe-area-inset-bottom))]"
             onClick={(e) => e.stopPropagation()}
@@ -651,11 +652,12 @@ export default function HomePage() {
       {/* МОДАЛКА ПОКУПКИ ТАРИФА */}
       {isPurchaseModalOpen && purchaseOptions && (
         <div
-          className="fixed inset-0 z-50 bg-black/60 p-4 sm:p-0 flex items-center justify-center"
+          className="fixed inset-0 z-50 bg-black/60 p-4 sm:p-0 flex items-start justify-center overflow-y-auto"
           onClick={closePurchaseModal}
         >
           <div
-            className="w-full max-w-md rounded-3xl bg-brand-dark border border-white/10 p-5 sm:p-6 shadow-xl
+            className="w-full max-w-md rounded-3xl bg-brand-dark border border-white/10 shadow-xl p-5 sm:p-6
+                       mt-4 sm:mt-0
                        max-h-[calc(100dvh-2rem)] overflow-y-auto
                        pb-[max(1.25rem,env(safe-area-inset-bottom))]"
             onClick={(e) => e.stopPropagation()}
@@ -792,11 +794,12 @@ export default function HomePage() {
       {/* МОДАЛКА ЛОГИНА */}
       {isLoginModalOpen && (
         <div
-          className="fixed inset-0 z-50 bg-black/60 p-4 sm:p-0 flex items-center justify-center"
+          className="fixed inset-0 z-50 bg-black/60 p-4 sm:p-0 flex items-start justify-center overflow-y-auto"
           onClick={closeLoginModal}
         >
           <div
-            className="w-full max-w-md rounded-3xl bg-brand-dark border border-white/10 p-5 sm:p-6 shadow-xl
+            className="w-full max-w-md rounded-3xl bg-brand-dark border border-white/10 shadow-xl p-5 sm:p-6
+                       mt-4 sm:mt-0
                        max-h-[calc(100dvh-2rem)] overflow-y-auto
                        pb-[max(1.25rem,env(safe-area-inset-bottom))]"
             onClick={(e) => e.stopPropagation()}
