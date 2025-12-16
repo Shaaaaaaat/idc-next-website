@@ -2,7 +2,10 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
+
 import { CookieConsent } from "@/components/CookieConsent";
+import { YandexMetrika } from "@/components/YandexMetrika";
+import { CookieBanner } from "@/components/CookieBanner";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -40,8 +43,29 @@ export default function RootLayout({
       >
         {children}
 
-        {/* Cookie banner + настройки + загрузка Метрики по согласию */}
+        {/* Метрика грузится ТОЛЬКО если аналитика разрешена */}
+        <YandexMetrika />
+
+        {/* Cookie banner + настройки */}
         <CookieConsent />
+
+        <body
+        className={`
+          ${geistSans.variable} 
+          ${geistMono.variable} 
+          antialiased 
+          min-h-screen 
+          bg-brand-dark 
+          text-white 
+          overflow-x-hidden
+        `}
+      >
+        {children}
+
+        {/* Cookie banner */}
+        <CookieBanner />
+      </body>
+
       </body>
     </html>
   );
