@@ -3,7 +3,8 @@
 import { useEffect, useState } from "react";
 
 const COOKIE_KEY = "idc_cookie_consent";
-const METRIKA_ID = 105882814;
+const COUNTER_ID = 105882814;
+const CONSENT_EVENT = "idc:cookie-consent";
 
 type ConsentState = {
   analytics: boolean;
@@ -20,157 +21,180 @@ function readConsent(): ConsentState | null {
   }
 }
 
-function writeConsent(next: ConsentState) {
-  localStorage.setItem(COOKIE_KEY, JSON.stringify(next));
-  // чтобы другие компоненты могли отреагировать (если надо)
-  window.dispatchEvent(new Event("cookie-consent-updated"));
+function writeConsent(analytics: boolean) {
+  localStorage.setItem(
+    COOKIE_KEY,
+    JSON.stringify({ analytics, date: new Date().toISOString() })
+  );
+
+  // сообщаем всем слушателям (в т.ч. YandexMetrika), что согласие обновилось
+  if (typeof window !== "undefined") {
+    window.dispatchEvent(new Event(CONSENT_EVENT));
+  }
+}
+
+function applyYmConsent(analyticsAllowed: boolean) {
+  // если ym уже загружен — переключаем consent прямо сейчас
+  if (typeof window !== "undefined" && (window as any).ym) {
+    (window as any).ym(
+      COUNTER_ID,
+      "consent",
+      analyticsAllowed ? "grant" : "revoke"
+    );
+  }
+}
+
+function Toggle({
+  checked,
+  onChange,
+}: {
+  checked: boolean;
+  onChange: (v: boolean) => void;
+}) {
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={checked}
+      onClick={() => onChange(!checked)}
+      className={[
+        "relative inline-flex h-8 w-14 items-center rounded-full",
+        "border border-white/15 transition-colors",
+        checked ? "bg-brand-primary" : "bg-white/10",
+        "focus:outline-none focus:ring-2 focus:ring-brand-primary/60",
+        "overflow-hidden", // важно: ничего не вылезает
+      ].join(" ")}
+    >
+      <span
+        className={[
+          "absolute left-1 top-1 h-6 w-6 rounded-full bg-white shadow",
+          "transition-transform duration-200",
+          checked ? "translate-x-6" : "translate-x-0",
+        ].join(" ")}
+      />
+    </button>
+  );
 }
 
 export function CookieBanner() {
-  const [isVisible, setIsVisible] = useState(false);
+  const [isBannerVisible, setIsBannerVisible] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [analyticsAllowed, setAnalyticsAllowed] = useState(false);
 
   useEffect(() => {
     const saved = readConsent();
+
     if (!saved) {
-      setIsVisible(true);
+      setIsBannerVisible(true);
       setAnalyticsAllowed(false);
-    } else {
-      setIsVisible(false);
-      setIsSettingsOpen(false);
-      setAnalyticsAllowed(!!saved.analytics);
+      return;
     }
+
+    setIsBannerVisible(false);
+    setAnalyticsAllowed(Boolean(saved.analytics));
+
+    // если ранее было разрешено — просто синхронизируем consent (скрипт загрузит YandexMetrika)
+    applyYmConsent(Boolean(saved.analytics));
   }, []);
 
   function acceptAll() {
-    writeConsent({
-      analytics: true,
-      date: new Date().toISOString(),
-    });
-
-    // Сообщаем Метрике, что аналитика разрешена (если уже загружена)
-    if (typeof window !== "undefined" && (window as any).ym) {
-      try {
-        (window as any).ym(METRIKA_ID, "consent", "grant");
-      } catch {}
-    }
-
+    writeConsent(true);
     setAnalyticsAllowed(true);
+    applyYmConsent(true);
+
+    setIsBannerVisible(false);
     setIsSettingsOpen(false);
-    setIsVisible(false);
   }
 
   function openSettings() {
-    const saved = readConsent();
-    setAnalyticsAllowed(saved?.analytics ?? false);
     setIsSettingsOpen(true);
-    setIsVisible(false);
+  }
+
+  function closeSettings() {
+    setIsSettingsOpen(false);
   }
 
   function saveSettings() {
-    writeConsent({
-      analytics: analyticsAllowed,
-      date: new Date().toISOString(),
-    });
+    writeConsent(analyticsAllowed);
+    applyYmConsent(analyticsAllowed);
 
-    // Если Метрика уже загружена — можно уведомить
-    if (typeof window !== "undefined" && (window as any).ym) {
-      try {
-        (window as any).ym(
-          METRIKA_ID,
-          "consent",
-          analyticsAllowed ? "grant" : "deny"
-        );
-      } catch {}
-    }
-
+    setIsBannerVisible(false);
     setIsSettingsOpen(false);
-    setIsVisible(false);
   }
 
-  function closeAll() {
-    // Закрыть без аналитики (технические всегда остаются)
-    writeConsent({
-      analytics: false,
-      date: new Date().toISOString(),
-    });
-
-    if (typeof window !== "undefined" && (window as any).ym) {
-      try {
-        (window as any).ym(METRIKA_ID, "consent", "deny");
-      } catch {}
-    }
-
-    setAnalyticsAllowed(false);
-    setIsSettingsOpen(false);
-    setIsVisible(false);
-  }
-
-  if (!isVisible && !isSettingsOpen) return null;
+  // если баннер не нужен и модалка закрыта — ничего не рендерим
+  if (!isBannerVisible && !isSettingsOpen) return null;
 
   return (
-    <div className="fixed bottom-4 right-4 left-4 sm:left-auto z-[60] sm:max-w-sm">
-      {/* БАННЕР */}
-      {isVisible && (
-        <div className="rounded-3xl border border-white/10 bg-brand-dark/80 backdrop-blur-xl shadow-2xl px-5 py-4">
-          <div className="flex items-start justify-between gap-3">
-            <div className="min-w-0">
-              <p className="text-sm font-semibold text-white">
-                I Do Calisthenics использует файлы cookie
-              </p>
+    <>
+      {/* Баннер (справа снизу) */}
+      {isBannerVisible && (
+        <div className="fixed bottom-4 right-4 left-4 sm:left-auto z-[60] sm:max-w-sm">
+          <div className="rounded-3xl border border-white/10 bg-brand-dark/80 backdrop-blur-xl shadow-2xl px-5 py-4">
+            <p className="text-sm font-semibold text-white">
+              I Do Calisthenics использует файлы cookie
+            </p>
 
-              <p className="mt-1 text-[12px] text-brand-muted leading-relaxed">
-                Они необходимы для оптимальной работы сайтов и сервисов. Подробнее
-                прочитайте в{" "}
-                <a
-                  href="/cookie-policy"
-                  className="text-brand-primary underline decoration-dotted underline-offset-2 hover:text-white transition-colors"
-                >
-                  Политике использования файлов cookie
-                </a>
-                .
-              </p>
+            <p className="mt-1 text-[12px] text-brand-muted leading-relaxed">
+              Они необходимы для оптимальной работы сайтов и сервисов. Подробнее
+              прочитайте в{" "}
+              <a
+                href="/cookie-policy"
+                className="text-brand-primary underline decoration-dotted underline-offset-2 hover:text-white transition-colors"
+              >
+                Политике использования файлов cookie
+              </a>
+              .
+            </p>
+
+            <div className="mt-3 flex gap-2">
+              <button
+                onClick={acceptAll}
+                className="flex-1 rounded-full bg-brand-primary px-4 py-2 text-sm font-semibold hover:bg-brand-primary/90 transition-colors"
+              >
+                Разрешить все
+              </button>
+
+              <button
+                onClick={openSettings}
+                className="rounded-full border border-white/15 bg-white/5 px-4 py-2 text-sm font-medium text-white/90 hover:bg-white/10 hover:text-white transition-colors"
+              >
+                Настроить
+              </button>
             </div>
-
-            <button
-              type="button"
-              onClick={closeAll}
-              className="shrink-0 h-9 w-9 rounded-full bg-white/5 border border-white/10 hover:bg-white/10 transition-colors flex items-center justify-center text-white/80"
-              aria-label="Закрыть"
-            >
-              ✕
-            </button>
-          </div>
-
-          <div className="mt-3 flex gap-2">
-            <button
-              onClick={acceptAll}
-              className="flex-1 rounded-full bg-brand-primary px-4 py-2 text-sm font-semibold hover:bg-brand-primary/90 transition-colors"
-            >
-              Разрешить все
-            </button>
-
-            <button
-              onClick={openSettings}
-              className="rounded-full border border-white/15 bg-white/5 px-4 py-2 text-sm font-medium text-white/90 hover:bg-white/10 hover:text-white transition-colors"
-            >
-              Настроить
-            </button>
           </div>
         </div>
       )}
 
-      {/* НАСТРОЙКИ */}
+      {/* Модалка настроек */}
       {isSettingsOpen && (
-        <div className="rounded-3xl border border-white/10 bg-brand-dark/90 backdrop-blur-xl shadow-2xl px-5 py-4">
-          <div className="flex items-start justify-between gap-3">
-            <div className="min-w-0">
-              <p className="text-sm font-semibold text-white">
+        <div
+          className="fixed inset-0 z-[70] bg-black/60 p-4 sm:p-0 flex items-center justify-center"
+          onClick={closeSettings}
+        >
+          <div
+            className="w-full max-w-lg rounded-3xl bg-brand-dark border border-white/10 p-5 sm:p-6 shadow-xl
+                       max-h-[calc(100dvh-2rem)] overflow-y-auto
+                       pb-[max(1.25rem,env(safe-area-inset-bottom))]"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="mb-4 flex items-start justify-between gap-3">
+              <h2 className="text-lg sm:text-xl font-semibold">
                 Настройки файлов cookie
-              </p>
+              </h2>
 
-              <p className="mt-1 text-[12px] text-brand-muted leading-relaxed">
+              <button
+                type="button"
+                onClick={closeSettings}
+                className="rounded-full bg-white/5 p-1 text-brand-muted hover:bg-white/10 hover:text-white transition-colors"
+                aria-label="Закрыть"
+              >
+                <span className="block h-4 w-4 leading-none">✕</span>
+              </button>
+            </div>
+
+            <div className="space-y-4 text-sm sm:text-base text-white/80 leading-relaxed">
+              <p>
                 <span className="font-semibold text-white">
                   I Do Calisthenics использует технические файлы cookie
                 </span>
@@ -180,7 +204,9 @@ export function CookieBanner() {
                   аналитические cookie
                 </span>
                 , чтобы понимать, как пользователи взаимодействуют с сайтом и
-                улучшать его работу. Вы можете в любой момент изменить свой выбор.
+                улучшать его работу. Вы можете в любой момент изменить свой
+                выбор.
+                <br />
                 Подробнее — в{" "}
                 <a
                   href="/cookie-policy"
@@ -190,103 +216,79 @@ export function CookieBanner() {
                 </a>
                 .
               </p>
-            </div>
 
-            <button
-              type="button"
-              onClick={closeAll}
-              className="shrink-0 h-9 w-9 rounded-full bg-white/5 border border-white/10 hover:bg-white/10 transition-colors flex items-center justify-center text-white/80"
-              aria-label="Закрыть"
-            >
-              ✕
-            </button>
-          </div>
+              {/* Технические */}
+              <div className="rounded-3xl border border-white/10 bg-white/5 p-4">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="text-base font-semibold text-white">
+                      Технические
+                    </p>
+                    <p className="text-sm text-brand-muted mt-0.5">
+                      Всегда разрешено
+                    </p>
+                  </div>
 
-          <div className="mt-4 space-y-3">
-            {/* Технические */}
-            <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
-              <div className="flex items-center justify-between gap-3">
-                <div>
-                  <div className="text-sm font-medium text-white">
-                    Технические, всегда активны
-                  </div>
-                  <div className="mt-1 text-[12px] text-brand-muted">
-                    Всегда разрешено
-                  </div>
+                  <span className="text-xs text-brand-muted mt-2">
+                    всегда активны
+                  </span>
                 </div>
-                <span className="text-[12px] text-emerald-300/90">
-                  Всегда разрешено
-                </span>
+
+                <p className="mt-3 text-sm text-brand-muted leading-relaxed">
+                  Эти файлы cookie необходимы для корректной работы сайта I Do
+                  Calisthenics. Они обеспечивают базовые функции: навигацию,
+                  безопасность, авторизацию, сохранение сессии. Без них сайт
+                  может работать нестабильно, поэтому они активны по умолчанию
+                  и не требуют согласия пользователя.
+                </p>
               </div>
 
-              <p className="mt-3 text-[12px] text-brand-muted leading-relaxed">
-                Эти файлы cookie необходимы для корректной работы сайта I Do
-                Calisthenics. Они обеспечивают базовые функции: навигацию,
-                безопасность, авторизацию, сохранение сессии. Без них сайт может
-                работать нестабильно, поэтому они активны по умолчанию и не
-                требуют согласия пользователя.
-              </p>
-            </div>
+              {/* Аналитические */}
+              <div className="rounded-3xl border border-white/10 bg-white/5 p-4">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="text-base font-semibold text-white">
+                      Аналитические
+                    </p>
+                    <p className="text-sm text-brand-muted mt-0.5">
+                      {analyticsAllowed ? "Разрешено" : "Запрещено"}
+                    </p>
+                  </div>
 
-            {/* Аналитические */}
-            <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
-              <div className="flex items-center justify-between gap-3">
-                <div>
-                  <div className="text-sm font-medium text-white">
-                    Аналитические
-                  </div>
-                  <div className="mt-1 text-[12px] text-brand-muted">
-                    {analyticsAllowed ? "Разрешено" : "Запрещено"}
-                  </div>
+                  <Toggle
+                    checked={analyticsAllowed}
+                    onChange={setAnalyticsAllowed}
+                  />
                 </div>
+
+                <p className="mt-3 text-sm text-brand-muted leading-relaxed">
+                  Эти cookie помогают нам понимать, как пользователи
+                  взаимодействуют с сайтом: какие страницы посещаются, сколько
+                  времени проводят на сайте, откуда приходит трафик. Информация
+                  собирается обезличенно и используется только для улучшения
+                  структуры и функциональности сайта I Do Calisthenics.
+                </p>
+              </div>
+
+              <div className="pt-2 flex flex-col sm:flex-row gap-2">
+                <button
+                  onClick={acceptAll}
+                  className="w-full sm:w-auto rounded-full bg-brand-primary px-5 py-2.5 text-sm font-semibold hover:bg-brand-primary/90 transition-colors"
+                >
+                  Разрешить все
+                </button>
 
                 <button
-                  type="button"
-                  onClick={() => setAnalyticsAllowed((v) => !v)}
-                  className={[
-                    "h-7 w-12 rounded-full border transition-colors relative",
-                    analyticsAllowed
-                      ? "bg-brand-primary/90 border-brand-primary/50"
-                      : "bg-white/5 border-white/15",
-                  ].join(" ")}
-                  aria-label="Переключить аналитические cookie"
+                  onClick={saveSettings}
+                  className="w-full sm:w-auto rounded-full border border-white/15 bg-white/5 px-5 py-2.5 text-sm font-medium text-white/90 hover:bg-white/10 hover:text-white transition-colors"
                 >
-                  <span
-                    className={[
-                      "absolute top-0.5 h-6 w-6 rounded-full bg-white transition-transform",
-                      analyticsAllowed ? "translate-x-5" : "translate-x-0.5",
-                    ].join(" ")}
-                  />
+                  Сохранить
                 </button>
               </div>
-
-              <p className="mt-3 text-[12px] text-brand-muted leading-relaxed">
-                Эти cookie помогают нам понимать, как пользователи взаимодействуют
-                с сайтом: какие страницы посещаются, сколько времени проводят на
-                сайте, откуда приходит трафик. Информация собирается обезличенно
-                и используется только для улучшения структуры и функциональности
-                сайта I Do Calisthenics.
-              </p>
             </div>
-          </div>
-
-          <div className="mt-4 flex gap-2">
-            <button
-              onClick={saveSettings}
-              className="flex-1 rounded-full bg-brand-primary px-4 py-2 text-sm font-semibold hover:bg-brand-primary/90 transition-colors"
-            >
-              Согласиться
-            </button>
-
-            <button
-              onClick={acceptAll}
-              className="rounded-full border border-white/15 bg-white/5 px-4 py-2 text-sm font-medium text-white/90 hover:bg-white/10 hover:text-white transition-colors"
-            >
-              Разрешить все
-            </button>
           </div>
         </div>
       )}
-    </div>
+    </>
   );
 }
