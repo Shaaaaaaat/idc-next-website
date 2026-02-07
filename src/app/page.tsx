@@ -314,8 +314,8 @@ export default function HomePage() {
       <div className="mx-auto max-w-container px-4 sm:px-6 lg:px-8 py-8 sm:py-16 lg:py-20">
         {/* Top bar */}
         <header className="sticky top-0 z-40 mb-8 sm:mb-12 backdrop-blur-md">
-          <div className="flex items-center justify-between gap-4 py-3 md:grid md:grid-cols-[1fr_auto_1fr] md:items-center">
-            <div className="flex items-center gap-2 md:col-start-1 md:justify-self-start">
+          <div className="flex items-center gap-4 py-3 min-h-[56px] sm:min-h-[64px] w-full">
+            <div className="flex items-center gap-2 shrink-0">
               <Image
                 src="/logo-idc-white1.svg"
                 alt="I Do Calisthenics"
@@ -324,13 +324,13 @@ export default function HomePage() {
                 className="h-7 w-auto sm:h-8 lg:h-9"
                 priority
               />
-              <span className="text-base sm:text-lg font-medium tracking-tight">
-                I Do Calisthenics
+              <span className="text-base sm:text-lg font-medium tracking-tight whitespace-nowrap leading-none h-7 sm:h-8 lg:h-9 flex items-center">
+                {"I\u00A0Do\u00A0Calisthenics"}
               </span>
             </div>
 
             {/* Десктоп-навигация */}
-            <nav className="hidden md:flex items-center gap-4 lg:gap-6 text-sm text-brand-muted md:col-start-2 md:justify-self-center whitespace-nowrap">
+            <nav className="hidden md:flex flex-1 min-w-0 items-center justify-center gap-4 lg:gap-6 text-sm text-brand-muted whitespace-nowrap">
               <a href="#how" className="hover:text-white transition-colors">
                 Как это работает
               </a>
@@ -356,11 +356,12 @@ export default function HomePage() {
                 FAQ
               </a>
             </nav>
+            <div className="hidden md:block flex-1" />
 
             {/* Бургер — только мобилка */}
             <button
               type="button"
-              className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-white/20 bg-white/5 md:hidden"
+              className="ml-auto inline-flex h-9 w-9 items-center justify-center rounded-full border border-white/20 bg-white/5 md:hidden"
               onClick={() => setIsMobileNavOpen(true)}
               aria-label="Открыть меню"
             >
