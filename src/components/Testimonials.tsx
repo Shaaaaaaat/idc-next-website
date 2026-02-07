@@ -1,8 +1,8 @@
 "use client";
 
-import { useRef, useState, MouseEvent } from "react";
+import { useState } from "react";
 import { Swiper, SwiperSlide } from "swiper/react";
-import { Pagination, Mousewheel } from "swiper/modules";
+import { Pagination } from "swiper/modules";
 import type { Swiper as SwiperType } from "swiper";
 
 import "swiper/css";
@@ -70,38 +70,11 @@ const testimonials: Testimonial[] = [
 
 export function Testimonials() {
   const [swiper, setSwiper] = useState<SwiperType | null>(null);
-  const lastSlideTimeRef = useRef<number>(0);
-
-  function handleMouseMove(e: MouseEvent<HTMLDivElement>) {
-    if (!swiper) return;
-    const container = e.currentTarget;
-    const rect = container.getBoundingClientRect();
-    const x = e.clientX - rect.left;
-    const width = rect.width;
-
-    const now = Date.now();
-    const throttleMs = 600;
-    if (now - lastSlideTimeRef.current < throttleMs) return;
-
-    const edgeZone = width * 0.2;
-
-    if (x < edgeZone) {
-      swiper.slidePrev();
-      lastSlideTimeRef.current = now;
-    } else if (x > width - edgeZone) {
-      swiper.slideNext();
-      lastSlideTimeRef.current = now;
-    }
-  }
-
-  function handleMouseLeave() {
-    lastSlideTimeRef.current = 0;
-  }
 
   return (
     <section
       id="reviews"
-      className="py-16 sm:py-20 lg:py-24 border-t border-white/5 scroll-mt-24 md:scroll-mt-28"
+      className="py-16 sm:py-20 lg:py-24 border-t border-white/5 scroll-mt-[calc(var(--header-h)+var(--anchor-extra))]"
     >
       <div className="mx-auto max-w-container px-4 sm:px-6 lg:px-8">
         {/* Заголовок */}
@@ -128,17 +101,12 @@ export function Testimonials() {
         </div>
 
         {/* ВАЖНО: без масок/градиентов по бокам */}
-        <div
-          onMouseMove={handleMouseMove}
-          onMouseLeave={handleMouseLeave}
-          className="relative"
-        >
+        <div className="relative">
           <Swiper
-            modules={[Pagination, Mousewheel]}
+            modules={[Pagination]}
             spaceBetween={20}
             slidesPerView={1}
             pagination={{ clickable: true }}
-            mousewheel={{ forceToAxis: true, releaseOnEdges: true }}
             grabCursor
             onSwiper={(instance) => setSwiper(instance)}
             breakpoints={{

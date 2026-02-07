@@ -14,11 +14,9 @@ import { HowItWorks } from "@/components/HowItWorks";
 import { Courses } from "@/components/Courses";
 import { Pricing, type PurchaseOptions } from "@/components/Pricing";
 import { Locations } from "@/components/Locations";
-import { ChatWidget } from "@/components/ChatWidget";
 import { About } from "@/components/About";
 import { FAQ } from "@/components/FAQ";
 import { Testimonials } from "@/components/Testimonials";
-import { TestSignupButton } from "@/components/TestSignupButton";
 import { courseNames } from "@/data/courses";
 import { Footer } from "@/components/Footer";
 
@@ -129,12 +127,56 @@ export default function HomePage() {
   const [purchaseOptions, setPurchaseOptions] =
     useState<PurchaseOptions | null>(null);
 
+  /* ---------- Курсы: модалка-информация (Шаг 1) ---------- */
+  const [isCourseInfoOpen, setIsCourseInfoOpen] = useState(false);
+  const [selectedCourseName, setSelectedCourseName] = useState<string | null>(
+    null
+  );
+  const [cameFromCourseInfo, setCameFromCourseInfo] = useState(false);
+
+  function openCourseInfo(name: string) {
+    setSelectedCourseName(name);
+    setIsCourseInfoOpen(true);
+  }
+
+  function closeCourseInfo() {
+    setIsCourseInfoOpen(false);
+  }
+
   const [buyFullName, setBuyFullName] = useState("");
   const [buyEmail, setBuyEmail] = useState("");
   const [buyPhone, setBuyPhone] = useState("");
   const [buyCourse, setBuyCourse] = useState<string>("");
   const [buyAgreed, setBuyAgreed] = useState(false);
   const [isBuySubmitting, setIsBuySubmitting] = useState(false);
+
+  // Форматирование телефона под RU: +7 999 123 45 67
+  function formatRuPhoneInput(raw: string): string {
+    const digits = (raw.match(/\d/g) || []).join("");
+    if (!digits) return "";
+    let rest = digits;
+    // убрать префиксы 7/8 если вставили целиком
+    if (rest[0] === "7" || rest[0] === "8") {
+      rest = rest.slice(1);
+    }
+    // максимум 10 цифр после кода страны
+    rest = rest.slice(0, 10);
+
+    let result = "+7";
+    if (rest.length > 0) {
+      result += " " + rest.slice(0, Math.min(3, rest.length));
+    }
+    if (rest.length > 3) {
+      result += " " + rest.slice(3, Math.min(6, rest.length));
+    }
+    if (rest.length > 6) {
+      result += " " + rest.slice(6, Math.min(8, rest.length));
+    }
+    if (rest.length > 8) {
+      result += " " + rest.slice(8, Math.min(10, rest.length));
+    }
+    return result;
+  }
 
   function openPurchaseModal(options: PurchaseOptions) {
     setPurchaseOptions(options);
@@ -144,6 +186,8 @@ export default function HomePage() {
   function closePurchaseModal() {
     if (isBuySubmitting) return;
     setIsPurchaseModalOpen(false);
+    // сбросить флаг источника (из курсов), чтобы следующие открытия были чистыми
+    setCameFromCourseInfo(false);
   }
 
   async function handlePurchaseSubmit(e: FormEvent) {
@@ -223,7 +267,10 @@ export default function HomePage() {
   /* ---------- Scroll lock для iOS Safari, чтобы модалки не “уезжали вниз” ---------- */
   const scrollYRef = useRef(0);
   const anyModalOpen =
-    isTestModalOpen || isPurchaseModalOpen || isLoginModalOpen;
+    isTestModalOpen ||
+    isPurchaseModalOpen ||
+    isLoginModalOpen ||
+    isCourseInfoOpen;
 
     useEffect(() => {
       if (!anyModalOpen) return;
@@ -267,8 +314,8 @@ export default function HomePage() {
       <div className="mx-auto max-w-container px-4 sm:px-6 lg:px-8 py-8 sm:py-16 lg:py-20">
         {/* Top bar */}
         <header className="sticky top-0 z-40 mb-8 sm:mb-12 backdrop-blur-md">
-          <div className="flex items-center justify-between gap-4 py-3">
-            <div className="flex items-center gap-2">
+          <div className="flex items-center justify-between gap-4 py-3 md:grid md:grid-cols-[1fr_auto_1fr] md:items-center">
+            <div className="flex items-center gap-2 md:col-start-1 md:justify-self-start">
               <Image
                 src="/logo-idc-white1.svg"
                 alt="I Do Calisthenics"
@@ -283,7 +330,7 @@ export default function HomePage() {
             </div>
 
             {/* Десктоп-навигация */}
-            <nav className="hidden md:flex items-center gap-6 text-sm text-brand-muted">
+            <nav className="hidden md:flex items-center gap-4 lg:gap-6 text-sm text-brand-muted md:col-start-2 md:justify-self-center whitespace-nowrap">
               <a href="#how" className="hover:text-white transition-colors">
                 Как это работает
               </a>
@@ -297,7 +344,7 @@ export default function HomePage() {
                 href="#locations"
                 className="hover:text-white transition-colors"
               >
-                Локации
+                Залы
               </a>
               <a href="#about" className="hover:text-white transition-colors">
                 О проекте
@@ -309,15 +356,6 @@ export default function HomePage() {
                 FAQ
               </a>
             </nav>
-
-            {/* Кнопка Войти — десктоп */}
-            <button
-              className="hidden md:inline-flex items-center rounded-full border border-white/15 bg-white/5 px-4 py-2 text-sm font-medium hover:bg-white/10 transition-colors"
-              type="button"
-              onClick={openLoginModal}
-            >
-              Войти
-            </button>
 
             {/* Бургер — только мобилка */}
             <button
@@ -386,7 +424,7 @@ export default function HomePage() {
                   className="rounded-2xl px-3 py-2 hover:bg-white/5"
                   onClick={() => setIsMobileNavOpen(false)}
                 >
-                  Локации
+                  Залы
                 </a>
                 <a
                   href="#about"
@@ -452,15 +490,18 @@ export default function HomePage() {
             </p>
 
             <div className="flex flex-col sm:flex-row gap-3 sm:gap-4 pt-2">
-              <TestSignupButton
-                onClick={() => openTestModal("Главный блок: Пройти тест силы")}
-              />
-
               <a
                 href="#courses"
-                className="inline-flex items-center justify-center rounded-full border border-white/20 px-6 py-3 text-sm sm:text-base font-semibold hover:bg-white/5 transition-colors"
+                className="inline-flex items-center justify-center rounded-full bg-brand-primary px-6 py-3 text-sm sm:text-base font-semibold text-white shadow-soft hover:bg-brand-primary/90 transition-colors"
               >
                 Посмотреть курсы
+              </a>
+
+              <a
+                href="#locations"
+                className="inline-flex items-center justify-center rounded-full border border-white/20 px-6 py-3 text-sm sm:text-base font-semibold hover:bg-white/5 transition-colors"
+              >
+                Записаться в зал
               </a>
             </div>
 
@@ -473,9 +514,9 @@ export default function HomePage() {
               </div>
               <div className="flex items-center gap-2">
                 <span className="h-6 w-6 rounded-full bg-white/5 flex items-center justify-center text-[11px]">
-                  24/7
+                  👤
                 </span>
-                <span>чат поддержки</span>
+                <span>сопровождение тренера</span>
               </div>
             </div>
           </div>
@@ -525,19 +566,15 @@ export default function HomePage() {
                           Твой следующий шаг
                         </div>
                         <div className="text-sm font-semibold">
-                          Подбери программу под себя
+                          Узнай, как это работает
                         </div>
                       </div>
-                      <button
+                      <a
+                        href="#how"
                         className="shrink-0 rounded-full bg-brand-accent text-brand-dark px-4 py-2 text-xs font-semibold hover:bg-brand-accent/90 transition-colors"
-                        onClick={() =>
-                          openTestModal(
-                            "Главный блок: Подбери программу под себя"
-                          )
-                        }
                       >
-                        Начать
-                      </button>
+                        Узнать
+                      </a>
                     </div>
                   </div>
                 </div>
@@ -552,7 +589,7 @@ export default function HomePage() {
         <HowItWorks />
       </div>
 
-      <Courses onOpenTestModal={openTestModal} />
+      <Courses onOpenCourseInfo={openCourseInfo} />
 
       <div className="mx-auto max-w-container px-4 sm:px-6 lg:px-8 pb-16 sm:pb-20 lg:pb-24">
         <Pricing
@@ -566,6 +603,80 @@ export default function HomePage() {
       </div>
 
       <Footer />
+
+      {/* МОДАЛКА КУРСА: Шаг 1 из 2 */}
+      {isCourseInfoOpen && selectedCourseName && (
+        <div
+          className="fixed inset-0 z-50 bg-black/60 p-4 sm:p-0 flex items-center justify-center"
+          onClick={closeCourseInfo}
+        >
+          <div
+            className="w-full max-w-md rounded-3xl bg-brand-dark border border-white/10 p-5 sm:p-6 shadow-xl
+                       max-h-[calc(100dvh-2rem)] overflow-y-auto
+                       pb-[max(1.25rem,env(safe-area-inset-bottom))]"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="mb-3 flex items-start justify-between gap-3">
+              <div className="space-y-1">
+                <p className="text-[11px] sm:text-xs text-brand-muted">Шаг 1 из 2</p>
+                <h2 className="text-lg sm:text-xl font-semibold leading-snug">
+                  Отличный выбор!
+                  <span className="block">Онлайн курс «{selectedCourseName}»</span>
+                </h2>
+              </div>
+              <button
+                type="button"
+                onClick={closeCourseInfo}
+                className="rounded-full bg-white/5 p-1 text-brand-muted hover:bg-white/10 hover:text-white transition-colors"
+                aria-label="Закрыть"
+              >
+                <span className="block h-4 w-4 leading-none">✕</span>
+              </button>
+            </div>
+
+            <div className="space-y-3 text-[13px] sm:text-sm text-brand-muted">
+              <p>
+                <span className="mr-1">✅</span>
+                Первый шаг — пройти тест силы. Вот что тебя ждёт:
+              </p>
+              <ul className="ml-1 space-y-1.5">
+                <li>• Определим твой текущий уровень</li>
+                <li>• Разберём технику упражнений по видео</li>
+                <li>• Дадим рекомендации для дальнейших тренировок</li>
+              </ul>
+              <div className="mt-2">
+                <span className="text-brand-muted">Стоимость: </span>
+                <span className="inline-flex items-center rounded-full border border-white/15 bg-white/5 px-2.5 py-1 text-[12px] font-medium text-white">
+                  950 ₽
+                </span>
+              </div>
+            </div>
+
+            <button
+              type="button"
+              className="mt-5 inline-flex w-full items-center justify-center rounded-full bg-brand-primary px-4 py-2.5 text-sm font-semibold hover:bg-brand-primary/90 transition-colors"
+              onClick={() => {
+                // перейти к шагу 2 — оплате
+                setCameFromCourseInfo(true);
+                setBuyCourse(selectedCourseName);
+                closeCourseInfo();
+                openPurchaseModal({
+                  tariffId: "review",
+                  tariffLabel: `Старт курса · ${selectedCourseName}`,
+                  amount: 950,
+                  currency: "RUB",
+                });
+              }}
+            >
+              Записаться
+            </button>
+
+            <p className="mt-2 text-[11px] sm:text-xs text-brand-muted/80 text-center">
+              После оплаты ты сразу получишь инструкции для старта
+            </p>
+          </div>
+        </div>
+      )}
 
       {/* МОДАЛКА ТЕСТА СИЛЫ */}
       {isTestModalOpen && (
@@ -658,7 +769,7 @@ export default function HomePage() {
         </div>
       )}
 
-      {/* МОДАЛКА ПОКУПКИ ТАРИФА */}
+      {/* МОДАЛКА ПОКУПКИ ТАРИФА (Шаг 2, если пришли из курса) */}
       {isPurchaseModalOpen && purchaseOptions && (
         <div
           className="fixed inset-0 z-50 bg-black/60 p-4 sm:p-0 flex items-center justify-center"
@@ -672,14 +783,40 @@ export default function HomePage() {
           >
             <div className="mb-4 flex items-start justify-between gap-3">
               <div>
+                {cameFromCourseInfo && (
+                  <p className="text-[11px] sm:text-xs text-brand-muted">
+                    Шаг 2 из 2
+                  </p>
+                )}
                 <h2 className="text-lg sm:text-xl font-semibold">
-                  Оплата блока тренировок
+                  {cameFromCourseInfo ? "Оплата теста силы" : "Оплата блока тренировок"}
                 </h2>
                 <p className="mt-1 text-[11px] sm:text-xs text-brand-muted">
-                  Тариф: {purchaseOptions.tariffLabel} ·{" "}
-                  {purchaseOptions.amount.toLocaleString("ru-RU")}{" "}
-                  {purchaseOptions.currency === "RUB" ? "₽" : "€"}
+                  {cameFromCourseInfo && selectedCourseName
+                    ? `Старт курса «${selectedCourseName}»`
+                    : purchaseOptions.studioName
+                    ? `Тариф: ${purchaseOptions.tariffLabel}`
+                    : `Тариф: ${purchaseOptions.tariffLabel} · ${purchaseOptions.amount.toLocaleString("ru-RU")} ${
+                        purchaseOptions.currency === "RUB" ? "₽" : "€"
+                      }`}
                 </p>
+                {cameFromCourseInfo && (
+                  <button
+                    type="button"
+                    className="mt-1 text-[12px] underline decoration-dotted text-brand-muted hover:text-white transition-colors"
+                    onClick={() => {
+                      closePurchaseModal();
+                      // вернуться к шагу 1
+                      setTimeout(() => {
+                        if (selectedCourseName) {
+                          setIsCourseInfoOpen(true);
+                        }
+                      }, 0);
+                    }}
+                  >
+                    Назад
+                  </button>
+                )}
               </div>
 
               <button
@@ -723,19 +860,39 @@ export default function HomePage() {
 
               <div className="space-y-1">
                 <label className="text-xs sm:text-sm text-brand-muted">
-                  Телефон
+                  Телефон{" "}
                 </label>
                 <input
                   type="tel"
                   value={buyPhone}
-                  onChange={(e) => setBuyPhone(e.target.value)}
+                  onChange={(e) => {
+                    const formatted = formatRuPhoneInput(e.target.value);
+                    setBuyPhone(formatted);
+                  }}
+                  onFocus={() => {
+                    try {
+                      if (!buyPhone || !buyPhone.startsWith("+7")) {
+                        setBuyPhone("+7 ");
+                      }
+                    } catch {}
+                  }}
+                  onBlur={() => {
+                    try {
+                      const v = buyPhone || "";
+                      if (!v.startsWith("+7")) {
+                        const stripped = v.replace(/^\+?7?\s?/, "").trim();
+                        setBuyPhone(stripped ? `+7 ${stripped}` : "+7 ");
+                      }
+                    } catch {}
+                  }}
                   required
                   className="w-full rounded-2xl border border-white/10 bg-white/5 px-3 py-2 text-sm outline-none focus:border-brand-primary"
-                  placeholder="+7 900 000-00-00"
+                  placeholder="900 000-00-00"
                 />
               </div>
 
-              {!purchaseOptions.studioName && (
+              {/* Если пришли из курсов, селект курса не нужен */}
+              {!purchaseOptions.studioName && !cameFromCourseInfo && (
                 <div className="space-y-1">
                   <label className="text-xs sm:text-sm text-brand-muted">
                     Курс
@@ -777,13 +934,21 @@ export default function HomePage() {
                 <span>
                   Я согласен(на) с{" "}
                   <a
+                    href="/offer"
+                    target="_blank"
+                    className="underline decoration-dotted hover:text-white"
+                  >
+                    условиями Договора оферты
+                  </a>{" "}
+                  и{" "}
+                  <a
                     href="/privacy"
                     target="_blank"
                     className="underline decoration-dotted hover:text-white"
                   >
-                    политикой обработки персональных данных
-                  </a>{" "}
-                  и условиями оплаты.
+                    Политикой обработки персональных данных
+                  </a>
+                  .
                 </span>
               </label>
 
@@ -792,7 +957,11 @@ export default function HomePage() {
                 disabled={isBuySubmitting || !buyAgreed}
                 className="mt-2 inline-flex w-full items-center justify-center rounded-full bg-brand-primary px-4 py-2.5 text-sm font-semibold disabled:opacity-60 disabled:pointer-events-none hover:bg-brand-primary/90 transition-colors"
               >
-                {isBuySubmitting ? "Переходим к оплате..." : "Перейти к оплате"}
+                {isBuySubmitting
+                  ? "Переходим к оплате..."
+                  : `Оплатить ${purchaseOptions.amount.toLocaleString("ru-RU")} ${
+                      purchaseOptions.currency === "RUB" ? "₽" : "€"
+                    }`}
               </button>
             </form>
           </div>
@@ -880,9 +1049,7 @@ export default function HomePage() {
       )}
 
       {/* Десктоп-чат (на мобилке скрыт) */}
-      <div className="hidden md:block">
-        <ChatWidget />
-      </div>
+      {/* Чат поддержки временно скрыт */}
     </main>
   );
 }

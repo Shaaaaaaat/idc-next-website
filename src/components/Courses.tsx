@@ -1,17 +1,15 @@
 // src/components/Courses.tsx
 "use client";
 
-import { TestSignupButton } from "@/components/TestSignupButton";
-
 type CoursesProps = {
-  onOpenTestModal?: (context?: string) => void;
+  onOpenCourseInfo?: (name: string) => void;
 };
 
-export function Courses({ onOpenTestModal }: CoursesProps) {
+export function Courses({ onOpenCourseInfo }: CoursesProps) {
   return (
     <section
       id="courses"
-      className="border-t border-black/5 bg-[#F5F7FB] text-brand-dark py-16 sm:py-20 lg:py-24"
+      className="border-t border-black/5 bg-[#F5F7FB] text-brand-dark py-16 sm:py-20 lg:py-24 scroll-mt-[-50px] sm:scroll-mt-0"
     >
       <div className="mx-auto max-w-container px-4 sm:px-6 lg:px-8">
         {/* Заголовок + бейдж */}
@@ -87,13 +85,13 @@ export function Courses({ onOpenTestModal }: CoursesProps) {
               </ul>
 
               <div className="mt-auto pt-3">
-                <TestSignupButton
-                  label="Пройти тест силы"
-                  buttonClassName="w-full rounded-full bg-brand-primary px-4 py-2 text-[13px] font-semibold text-white hover:bg-brand-primary/90"
-                  onClick={() =>
-                    onOpenTestModal?.("Курс: Calisthenics Light")
-                  }
-                />
+                <button
+                  type="button"
+                  className="w-full rounded-full bg-brand-primary px-4 py-2 text-[13px] font-semibold text-white hover:bg-brand-primary/90"
+                  onClick={() => onOpenCourseInfo?.("Calisthenics Light")}
+                >
+                  Выбрать курс
+                </button>
               </div>
             </article>
 
@@ -116,7 +114,7 @@ export function Courses({ onOpenTestModal }: CoursesProps) {
               </div>
 
               <h3 className="text-base sm:text-lg font-semibold mb-2 text-gray-900">
-                Super Calisthenics
+                Calisthenics Classic
               </h3>
               <p className="text-sm text-gray-600 mb-4 leading-relaxed">
                 Главный курс, если хочешь просто стать сильным: всё тело,
@@ -130,13 +128,13 @@ export function Courses({ onOpenTestModal }: CoursesProps) {
               </ul>
 
               <div className="mt-auto pt-3">
-                <TestSignupButton
-                  label="Пройти тест силы"
-                  buttonClassName="w-full rounded-full bg-brand-primary px-4 py-2 text-[13px] font-semibold text-white hover:bg-brand-primary/90"
-                  onClick={() =>
-                    onOpenTestModal?.("Курс: Super Calisthenics")
-                  }
-                />
+                <button
+                  type="button"
+                  className="w-full rounded-full bg-brand-primary px-4 py-2 text-[13px] font-semibold text-white hover:bg-brand-primary/90"
+                  onClick={() => onOpenCourseInfo?.("Calisthenics Classic")}
+                >
+                  Выбрать курс
+                </button>
               </div>
             </article>
 
@@ -169,17 +167,17 @@ export function Courses({ onOpenTestModal }: CoursesProps) {
               <ul className="mb-4 space-y-1.5 text-sm text-gray-600">
                 <li>• 45–60 минут, нужен турник</li>
                 <li>• Пошаговый путь от 0 → 1 и дальше</li>
-                <li>• Super Calisthenics с выбранной целью</li>
+                <li>• Calisthenics Classic с выбранной целью</li>
               </ul>
 
               <div className="mt-auto pt-3">
-                <TestSignupButton
-                  label="Пройти тест силы"
-                  buttonClassName="w-full rounded-full bg-brand-primary px-4 py-2 text-[13px] font-semibold text-white hover:bg-brand-primary/90"
-                  onClick={() =>
-                    onOpenTestModal?.("Курс: Подтягивания для девушек")
-                  }
-                />
+                <button
+                  type="button"
+                  className="w-full rounded-full bg-brand-primary px-4 py-2 text-[13px] font-semibold text-white hover:bg-brand-primary/90"
+                  onClick={() => onOpenCourseInfo?.("Подтягивания для девушек")}
+                >
+                  Выбрать курс
+                </button>
               </div>
             </article>
 
@@ -216,13 +214,13 @@ export function Courses({ onOpenTestModal }: CoursesProps) {
               </ul>
 
               <div className="mt-auto pt-3">
-                <TestSignupButton
-                  label="Пройти тест силы"
-                  buttonClassName="w-full rounded-full bg-brand-primary px-4 py-2 text-[13px] font-semibold text-white hover:bg-brand-primary/90"
-                  onClick={() =>
-                    onOpenTestModal?.("Курс: Стойка на руках")
-                  }
-                />
+                <button
+                  type="button"
+                  className="w-full rounded-full bg-brand-primary px-4 py-2 text-[13px] font-semibold text-white hover:bg-brand-primary/90"
+                  onClick={() => onOpenCourseInfo?.("Стойка на руках")}
+                >
+                  Выбрать курс
+                </button>
               </div>
             </article>
 
@@ -260,13 +258,13 @@ export function Courses({ onOpenTestModal }: CoursesProps) {
               </ul>
 
               <div className="mt-auto pt-3">
-                <TestSignupButton
-                  label="Пройти тест силы"
-                  buttonClassName="w-full rounded-full bg-brand-primary px-4 py-2 text-[13px] font-semibold text-white hover:bg-brand-primary/90"
-                  onClick={() =>
-                    onOpenTestModal?.("Курс: Калистеника для кроссфитеров")
-                  }
-                />
+                <button
+                  type="button"
+                  className="w-full rounded-full bg-brand-primary px-4 py-2 text-[13px] font-semibold text-white hover:bg-brand-primary/90"
+                  onClick={() => onOpenCourseInfo?.("Калистеника для кроссфитеров")}
+                >
+                  Выбрать курс
+                </button>
               </div>
             </article>
           </div>

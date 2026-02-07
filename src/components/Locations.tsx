@@ -31,7 +31,7 @@ const cities: City[] = [
         name: "м. Октябрьская · 6 мин. пешком",
         address: "Адрес: Калужская площадь, 1к2, 3 этаж",
         schedule: "Групповые: пн, ср, пт · 20:00. Персональные — по записи.",
-        price: "Стоимость пробного занятия: 950 ₽",
+            price: "Стоимость пробного занятия: 1 100 ₽",
       },
       {
         id: "msk-2",
@@ -39,7 +39,7 @@ const cities: City[] = [
         address: "Адрес: ул. Большая Декабрьская, д.3 с25",
         schedule:
           "Групповые: вт, чт · 18:40 и 20:00, сб · 12:00. Персональные — по записи.",
-        price: "Стоимость пробного занятия: 950 ₽",
+            price: "Стоимость пробного занятия: 1 100 ₽",
       },
     ],
   },
@@ -55,14 +55,14 @@ const cities: City[] = [
         address: "Адрес: ул. Заставская, 33П",
         schedule:
           "Групповые: вт, чт · 21:00, сб · 14:00. Персональные — по записи.",
-        price: "Стоимость пробного занятия: 950 ₽",
+            price: "Стоимость пробного занятия: 1 100 ₽",
       },
       {
         id: "spb-2",
         name: "м. Выборгская · 5 мин. пешком",
         address: "Адрес: Малый Сампсониевский пр., дом 2",
-        schedule: "Групповые: пн, ср · 20:30, сб · 14:00.",
-        price: "Стоимость пробного занятия: 950 ₽",
+        schedule: "Групповые: пн, ср · 20:30, сб · 14:00. Персональные — по записи.",
+            price: "Стоимость пробного занятия: 1 100 ₽",
       },
     ],
   },
@@ -79,12 +79,16 @@ export function Locations({ onOpenPurchaseModal }: LocationsProps) {
     cityName: string;
     studioName: string;
   } | null>(null);
+  const [activeTariffTab, setActiveTariffTab] = useState<"group" | "personal">(
+    "group"
+  );
 
   const activeCity =
     cities.find((city) => city.id === activeCityId) ?? cities[0];
 
   function openTariffs(cityName: string, studioName: string) {
     setTariffsContext({ cityName, studioName });
+    setActiveTariffTab("group");
     setIsTariffsOpen(true);
   }
 
@@ -92,27 +96,53 @@ export function Locations({ onOpenPurchaseModal }: LocationsProps) {
     setIsTariffsOpen(false);
   }
 
+  // Убираем из названия студии хвост вида " · N мин. пешком"
+  function cleanStudioName(input: string): string {
+    try {
+      return input.replace(/\s·\s\d+\s*мин\. пешком/i, "");
+    } catch {
+      return input;
+    }
+  }
+
   function handleTrialPurchase(studioName: string) {
+    const clean = cleanStudioName(studioName);
     onOpenPurchaseModal?.({
       tariffId: "review", // используем существующий тариф-id, чтобы не ломать типы
-      tariffLabel: `Пробное занятие в студии · ${studioName}`,
-      amount: 950, // ₽
+      tariffLabel: `Пробное занятие в студии · ${clean}`,
+      amount: 1100, // ₽ — пробная единая для всех городов
       currency: "RUB",
-      studioName,
+      studioName: clean,
+    });
+  }
+
+  function handleTariffPurchase(
+    studioName: string,
+    label: string,
+    amount: number,
+    id: "review" | "month" | "slow12" | "long36" = "review"
+  ) {
+    const clean = cleanStudioName(studioName);
+    onOpenPurchaseModal?.({
+      tariffId: id,
+      tariffLabel: `${label} · ${clean}`,
+      amount,
+      currency: "RUB",
+      studioName: clean,
     });
   }
 
   return (
     <section
       id="locations"
-      className="py-16 sm:py-20 lg:py-24 scroll-mt-24 md:scroll-mt-28 border-t border-white/5"
+      className="py-16 sm:py-20 lg:py-24 border-t border-white/5 scroll-mt-[calc(var(--header-h)+var(--anchor-extra))]"
     >
       <div className="mx-auto max-w-container px-4 sm:px-6 lg:px-8">
         {/* Заголовок + переключатель */}
         <div className="mb-8 sm:mb-10 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
           <div>
             <p className="text-xs font-medium uppercase tracking-[0.2em] text-brand-muted mb-3">
-              Локации
+              Залы
             </p>
             <h2 className="text-[26px] sm:text-3xl lg:text-4xl font-semibold tracking-tight mb-3">
               Где можно тренироваться в студиях
@@ -224,15 +254,215 @@ export function Locations({ onOpenPurchaseModal }: LocationsProps) {
               </button>
             </div>
 
-            <div className="space-y-3 text-[14px] sm:text-base text-brand-muted">
-              <p>👉🏻 Абонемент на 12 тренировок (длительность 8 недель) — 13 200₽</p>
-              <p>👉🏻 1 тренировка (по-разово) — 1 400₽</p>
+            {/* Переключатель тарифов */}
+            <div className="mb-4 flex items-center justify-center">
+              <div className="inline-flex rounded-full bg-white/5 border border-white/10 p-1 text-[12px] sm:text-xs">
+                <button
+                  type="button"
+                  onClick={() => setActiveTariffTab("group")}
+                  className={[
+                    "px-3 sm:px-4 py-1.5 rounded-full transition-colors",
+                    activeTariffTab === "group"
+                      ? "bg-white text-brand-dark"
+                      : "text-brand-muted hover:text-white",
+                  ].join(" ")}
+                >
+                  Групповые
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setActiveTariffTab("personal")}
+                  className={[
+                    "px-3 sm:px-4 py-1.5 rounded-full transition-colors",
+                    activeTariffTab === "personal"
+                      ? "bg-white text-brand-dark"
+                      : "text-brand-muted hover:text-white",
+                  ].join(" ")}
+                >
+                  Персональные
+                </button>
+              </div>
             </div>
 
-            <p className="mt-4 text-[11px] sm:text-xs text-brand-muted/80">
-              Оплатить можно на месте после пробного занятия или через
-              онлайн-оплату по ссылке от тренера.
-            </p>
+            <div className="space-y-4 text-[14px] sm:text-base text-brand-muted">
+              {/* Групповые тарифы */}
+              {activeTariffTab === "group" && (
+                <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 sm:px-5 sm:py-4">
+                <div className="text-[11px] uppercase tracking-[0.16em] text-brand-muted mb-2">
+                  Групповые тарифы
+                </div>
+                {tariffsContext.cityName === "Москва" ? (
+                  <>
+                    <div className="flex items-center justify-between gap-3">
+                      <p>👉🏻 Пробная тренировка — 1 100 ₽</p>
+                      <button
+                        className="shrink-0 rounded-full border border-white/20 px-3 py-1.5 text-[12px] hover:bg-white/10 whitespace-nowrap"
+                        onClick={() =>
+                          handleTariffPurchase(
+                            tariffsContext.studioName,
+                            "Пробная тренировка",
+                            1100,
+                            "review"
+                          )
+                        }
+                      >
+                        Оплатить
+                      </button>
+                    </div>
+                    <p className="mt-0.5 text-[12px] sm:text-xs text-brand-muted/70">действует 4 недели</p>
+                    <div className="flex items-center justify-between gap-3">
+                      <p>👉🏻 По‑разово — 1 500 ₽</p>
+                      <button
+                        className="shrink-0 rounded-full border border-white/20 px-3 py-1.5 text-[12px] hover:bg-white/10 whitespace-nowrap"
+                        onClick={() =>
+                          handleTariffPurchase(
+                            tariffsContext.studioName,
+                            "Групповая 1 тренировка",
+                            1500,
+                            "review"
+                          )
+                        }
+                      >
+                        Оплатить
+                      </button>
+                    </div>
+                    <p className="mt-0.5 text-[12px] sm:text-xs text-brand-muted/70">действует 4 недели</p>
+                    <div className="flex items-center justify-between gap-3">
+                      <p>👉🏻 12 тренировок — 14 400 ₽</p>
+                      <button
+                        className="shrink-0 rounded-full border border-white/20 px-3 py-1.5 text-[12px] hover:bg-white/10 whitespace-nowrap"
+                        onClick={() =>
+                          handleTariffPurchase(
+                            tariffsContext.studioName,
+                            "Групповой абонемент 12 тренировок",
+                            14400,
+                            "month"
+                          )
+                        }
+                      >
+                        Оплатить
+                      </button>
+                    </div>
+                    <p className="mt-0.5 text-[12px] sm:text-xs text-brand-muted/70">действует 8 недель</p>
+                  </> 
+                ) : (
+                  <>
+                    <div className="flex items-center justify-between gap-3">
+                      <p>👉🏻 Пробная тренировка — 1 100 ₽</p>
+                      <button
+                        className="shrink-0 rounded-full border border-white/20 px-3 py-1.5 text-[12px] hover:bg-white/10 whitespace-nowrap"
+                        onClick={() =>
+                          handleTariffPurchase(
+                            tariffsContext.studioName,
+                            "Пробная тренировка",
+                            1100,
+                            "review"
+                          )
+                        }
+                      >
+                        Оплатить
+                      </button>
+                    </div>
+                    <p className="mt-0.5 text-[12px] sm:text-xs text-brand-muted/70">действует 4 недели</p>
+                    <div className="flex items-center justify-between gap-3">
+                      <p>👉🏻 По‑разово — 1 400 ₽</p>
+                      <button
+                        className="shrink-0 rounded-full border border-white/20 px-3 py-1.5 text-[12px] hover:bg-white/10 whitespace-nowrap"
+                        onClick={() =>
+                          handleTariffPurchase(
+                            tariffsContext.studioName,
+                            "Групповая 1 тренировка",
+                            1400,
+                            "review"
+                          )
+                        }
+                      >
+                        Оплатить
+                      </button>
+                    </div>
+                    <p className="mt-0.5 text-[12px] sm:text-xs text-brand-muted/70">действует 4 недели</p>
+                    <div className="flex items-center justify-between gap-3">
+                      <p>👉🏻 12 тренировок — 13 200 ₽</p>
+                      <button
+                        className="shrink-0 rounded-full border border-white/20 px-3 py-1.5 text-[12px] hover:bg-white/10 whitespace-nowrap"
+                        onClick={() =>
+                          handleTariffPurchase(
+                            tariffsContext.studioName,
+                            "Групповой абонемент 12 тренировок",
+                            13200,
+                            "month"
+                          )
+                        }
+                      >
+                        Оплатить
+                      </button>
+                    </div>
+                    <p className="mt-0.5 text-[12px] sm:text-xs text-brand-muted/70">действует 8 недель</p>
+                  </>
+                )}
+                </div>
+              )}
+
+              {/* Персональные тарифы — одинаково для всех городов */}
+              {activeTariffTab === "personal" && (
+                <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 sm:px-5 sm:py-4">
+                <div className="text-[11px] uppercase tracking-[0.16em] text-brand-muted mb-2">
+                  Персональные тарифы
+                </div>
+                <div className="flex items-center justify-between gap-3">
+                  <p>👉🏻 1 тренировка (1 чел.) — 4 900₽</p>
+                  <button
+                    className="shrink-0 rounded-full border border-white/20 px-3 py-1.5 text-[12px] hover:bg-white/10 whitespace-nowrap"
+                    onClick={() =>
+                      handleTariffPurchase(
+                        tariffsContext.studioName,
+                        "Персональная 1 тренировка (1 чел.)",
+                        4900,
+                        "review"
+                      )
+                    }
+                  >
+                    Оплатить
+                  </button>
+                </div>
+                <p className="mt-0.5 text-[12px] sm:text-xs text-brand-muted/70">действует 4 недели</p>
+                <div className="flex items-center justify-between gap-3">
+                  <p>👉🏻 1 тренировка (2 чел.) — 6 800₽</p>
+                  <button
+                    className="shrink-0 rounded-full border border-white/20 px-3 py-1.5 text-[12px] hover:bg-white/10 whitespace-nowrap"
+                    onClick={() =>
+                      handleTariffPurchase(
+                        tariffsContext.studioName,
+                        "Персональная 1 тренировка (2 чел.)",
+                        6800,
+                        "review"
+                      )
+                    }
+                  >
+                    Оплатить
+                  </button>
+                </div>
+                <p className="mt-0.5 text-[12px] sm:text-xs text-brand-muted/70">действует 4 недели</p>
+                <div className="flex items-center justify-between gap-3">
+                  <p>👉🏻 1 тренировка (3 чел.) — 8 100₽</p>
+                  <button
+                    className="shrink-0 rounded-full border border-white/20 px-3 py-1.5 text-[12px] hover:bg-white/10 whitespace-nowrap"
+                    onClick={() =>
+                      handleTariffPurchase(
+                        tariffsContext.studioName,
+                        "Персональная 1 тренировка (3 чел.)",
+                        8100,
+                        "review"
+                      )
+                    }
+                  >
+                    Оплатить
+                  </button>
+                </div>
+                <p className="mt-0.5 text-[12px] sm:text-xs text-brand-muted/70">действует 4 недели</p>
+                </div>
+              )}
+            </div>
           </div>
         </div>
       )}

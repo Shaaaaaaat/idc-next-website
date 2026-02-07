@@ -1,7 +1,7 @@
 // src/data/courses.ts
 export const courseNames = [
     "Calisthenics Light",
-    "Super Calisthenics",
+    "Calisthenics Classic",
     "Подтягивания для девушек",
     "Стойка на руках",
     "Калистеника для кроссфитеров",

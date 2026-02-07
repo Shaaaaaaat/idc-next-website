@@ -5,6 +5,7 @@ import "./globals.css";
 
 import { YandexMetrika } from "@/components/YandexMetrika";
 import { CookieBanner } from "@/components/CookieBanner";
+import { HeaderHeightVar } from "@/components/HeaderHeightVar";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -40,6 +41,9 @@ export default function RootLayout({
           overflow-x-hidden
         `}
       >
+        {/* Устанавливаем CSS-переменную высоты липкого хэдера */}
+        <HeaderHeightVar />
+
         {children}
 
         {/* Метрика грузится ТОЛЬКО если аналитика разрешена */}
