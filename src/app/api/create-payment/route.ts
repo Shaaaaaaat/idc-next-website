@@ -168,7 +168,6 @@ export async function POST(req: Request) {
       course_name: courseName ?? "",
       studio_name: studioName ?? "",
       tg_link_token: tgToken,
-      source: "website",
     });
     if (!(createRes as any)?.ok) {
       console.warn("⚠️ Airtable create failed or disabled", createRes);
