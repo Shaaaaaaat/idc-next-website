@@ -163,7 +163,7 @@ export async function POST(req: Request) {
       Phone: body?.phone ?? "",
       Sum: Number(amount),
       Currency: currency,
-      Tadg: tariffId,
+      Tag: tariffId,
       tariff_label: tariffLabel,
       course_name: courseName ?? "",
       studio_name: studioName ?? "",
