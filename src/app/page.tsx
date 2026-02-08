@@ -150,31 +150,25 @@ export default function HomePage() {
   const [buyAgreed, setBuyAgreed] = useState(false);
   const [isBuySubmitting, setIsBuySubmitting] = useState(false);
 
-  // Форматирование телефона под RU: +7 999 123 45 67
+  // Форматирование телефона под RU: +7 (999) 123-45-67
   function formatRuPhoneInput(raw: string): string {
     const digits = (raw.match(/\d/g) || []).join("");
     if (!digits) return "";
     let rest = digits;
-    // убрать префиксы 7/8 если вставили целиком
-    if (rest[0] === "7" || rest[0] === "8") {
-      rest = rest.slice(1);
-    }
-    // максимум 10 цифр после кода страны
+    if (rest[0] === "7" || rest[0] === "8") rest = rest.slice(1);
     rest = rest.slice(0, 10);
-
+    const p1 = rest.slice(0, 3);
+    const p2 = rest.slice(3, 6);
+    const p3 = rest.slice(6, 8);
+    const p4 = rest.slice(8, 10);
     let result = "+7";
-    if (rest.length > 0) {
-      result += " " + rest.slice(0, Math.min(3, rest.length));
+    if (p1) {
+      result += ` (${p1}`;
+      if (p1.length === 3) result += `)`;
     }
-    if (rest.length > 3) {
-      result += " " + rest.slice(3, Math.min(6, rest.length));
-    }
-    if (rest.length > 6) {
-      result += " " + rest.slice(6, Math.min(8, rest.length));
-    }
-    if (rest.length > 8) {
-      result += " " + rest.slice(8, Math.min(10, rest.length));
-    }
+    if (p2) result += ` ${p2}`;
+    if (p3) result += `-${p3}`;
+    if (p4) result += `-${p4}`;
     return result;
   }
 
@@ -887,7 +881,7 @@ export default function HomePage() {
                   }}
                   required
                   className="w-full rounded-2xl border border-white/10 bg-white/5 px-3 py-2 text-sm outline-none focus:border-brand-primary"
-                  placeholder="900 000-00-00"
+                  placeholder="(___) ___-__-__"
                 />
               </div>
 

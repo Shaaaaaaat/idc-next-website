@@ -112,28 +112,34 @@ export function Locations({ onOpenPurchaseModal }: LocationsProps) {
   // Map cleaned studio name to studioId (for schedule API and storage)
   function mapStudioToId(cleanName: string): string {
     const map: Record<string, string> = {
-      "м. Октябрьская": "msk_oktyabrskaya",
-      "м. 1905 года": "msk_1905",
-      "м. Московские Ворота": "spb_moskovskie_vorota",
-      "м. Выборгская": "spb_vyborgskaya",
+      "м. 1905 года": "msk_youcan",
+      "м. Октябрьская": "msk_elfit",
+      "м. Московские Ворота": "spb_spirit",
+      "м. Выборгская": "spb_hkc",
     };
     return map[cleanName] || cleanName.toLowerCase().replace(/\s+/g, "_");
   }
 
-  // Phone formatting same as courses modal: +7 and 3-3-2-2 grouping
-  function formatRuPhoneInput(input: string) {
-    const digits = String(input || "").replace(/\D/g, "").replace(/^8/, "7");
-    let out = "+7 ";
-    const body = digits.replace(/^7/, "");
-    const p1 = body.slice(0, 3);
-    const p2 = body.slice(3, 6);
-    const p3 = body.slice(6, 8);
-    const p4 = body.slice(8, 10);
-    if (p1) out += p1;
-    if (p2) out += (p1 ? " " : "") + p2;
-    if (p3) out += (p2 ? "-" : " ") + p3;
-    if (p4) out += "-" + p4;
-    return out.trimEnd();
+  // Phone formatting unified: +7 (999) 123-45-67
+  function formatRuPhoneInput(raw: string): string {
+    const digits = (raw.match(/\d/g) || []).join("");
+    if (!digits) return "";
+    let rest = digits;
+    if (rest[0] === "7" || rest[0] === "8") rest = rest.slice(1);
+    rest = rest.slice(0, 10);
+    const p1 = rest.slice(0, 3);
+    const p2 = rest.slice(3, 6);
+    const p3 = rest.slice(6, 8);
+    const p4 = rest.slice(8, 10);
+    let result = "+7";
+    if (p1) {
+      result += ` (${p1}`;
+      if (p1.length === 3) result += `)`;
+    }
+    if (p2) result += ` ${p2}`;
+    if (p3) result += `-${p3}`;
+    if (p4) result += `-${p4}`;
+    return result;
   }
 
   function openTariffs(cityName: string, studioName: string) {
@@ -661,7 +667,7 @@ export function Locations({ onOpenPurchaseModal }: LocationsProps) {
                       }
                     }}
                     className="w-full rounded-2xl border border-white/10 bg-white/5 px-3 py-2 text-sm outline-none focus:border-brand-primary"
-                    placeholder="900 000-00-00"
+                    placeholder="(___) ___-__-__"
                   />
                 </div>
                 <div>
