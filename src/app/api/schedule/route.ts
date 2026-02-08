@@ -112,20 +112,36 @@ export async function GET(req: NextRequest) {
     // Notices list (messages from exceptions)
     const notices: string[] = [];
 
-    const resultSlots: { id: string; studioId: string; startAtLocal: string; startAtISO: string }[] =
-      [];
-    // generate for the next N days (including today)
+    const resultSlots: { id: string; studioId: string; startAtLocal: string; startAtISO: string }[] = [];
+
+    // compute base "today" in Moscow time (+03:00) and iterate from there
+    const MSK_OFFSET_MIN = 180;
+    const nowUtc = new Date();
+    const nowMsk = new Date(nowUtc.getTime() + MSK_OFFSET_MIN * 60 * 1000);
+    const startOfTodayMskUtc = Date.UTC(
+      nowMsk.getUTCFullYear(),
+      nowMsk.getUTCMonth(),
+      nowMsk.getUTCDate(),
+      0,
+      0,
+      0,
+      0
+    );
+
     for (let di = 0; di < days; di++) {
-      const d = new Date();
-      d.setHours(0, 0, 0, 0);
-      d.setDate(d.getDate() + di);
-      const jsWeekday = d.getDay(); // 0..6
-      const todaysRules = rules.filter((r) => typeof r.weekday === "number" && r.weekday === jsWeekday);
+      const dayMskUtc = new Date(startOfTodayMskUtc + di * 24 * 60 * 60 * 1000); // UTC date representing MSK midnight
+      const weekdayMsk = dayMskUtc.getUTCDay(); // 0..6 (0=Sun) in MSK context
+
+      const todaysRules = rules.filter((r) => {
+        const rw = Number((r as any).weekday);
+        return Number.isFinite(rw) && rw === weekdayMsk;
+      });
       if (todaysRules.length === 0) continue;
-      // check exceptions on this date
-      const y = d.getFullYear();
-      const m = d.getMonth() + 1;
-      const day = d.getDate();
+
+      // YYYY-MM-DD key in MSK
+      const y = dayMskUtc.getUTCFullYear();
+      const m = dayMskUtc.getUTCMonth() + 1;
+      const day = dayMskUtc.getUTCDate();
       const dateKey = `${y}-${toTwo(m)}-${toTwo(day)}`;
       const dayHasBlock = exceptions.some((e) => {
         if (!e.start_date) return false;
@@ -153,17 +169,12 @@ export async function GET(req: NextRequest) {
         const localIso = `${y}-${toTwo(m)}-${toTwo(day)}T${toTwo(hh)}:${toTwo(mm)}:00+03:00`;
         // derive ISO UTC for reference
         const iso = new Date(localIso).toISOString();
-        // Filter out same-day slots starting in < 3 hours from now
+        // Filter out same-day slots starting in < 3 hours from now (MSK)
         if (di === 0) {
-          const now = new Date();
-          const nowLocal = new Date(now); // server local
-          // Build local Date for slot
-          const slotLocalDate = new Date(localIso);
-          const diffMs = slotLocalDate.getTime() - nowLocal.getTime();
+          const slotUtc = new Date(localIso); // Date parses +03:00 and stores UTC internally
+          const diffMs = slotUtc.getTime() - nowUtc.getTime();
           const threeHoursMs = 3 * 60 * 60 * 1000;
-          if (diffMs < threeHoursMs) {
-            continue;
-          }
+          if (diffMs < threeHoursMs) continue;
         }
         resultSlots.push({
           id,
