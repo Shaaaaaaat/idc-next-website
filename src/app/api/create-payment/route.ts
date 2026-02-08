@@ -130,6 +130,9 @@ export async function POST(req: Request) {
       tariffLabel,
       // studioName — опционально
       studioName,
+      // trial booking extras
+      slotStartAt,
+      studioId,
     } = body as {
       amount: number;
       currency: "RUB" | "EUR";
@@ -139,6 +142,8 @@ export async function POST(req: Request) {
       tariffId: string;
       tariffLabel: string;
       studioName?: string | null;
+      slotStartAt?: string | null; // ISO, e.g. "2026-02-08T12:00:00+03:00"
+      studioId?: string | null; // e.g. "msk_oktyabrskaya"
     };
 
     if (!amount || !email || !fullName || !tariffId) {
@@ -167,6 +172,8 @@ export async function POST(req: Request) {
       tariff_label: tariffLabel,
       course_name: courseName ?? "",
       studio_name: studioName ?? "",
+      studio_id: studioId ?? "",
+      slot_start_at: slotStartAt ?? "",
       tg_link_token: tgToken,
     });
     if (!(createRes as any)?.ok) {
