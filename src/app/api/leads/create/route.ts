@@ -55,7 +55,8 @@ export async function POST(req: Request) {
       Phone: phone,
       City: city,
       Studio: studio,
-      Source: "site",
+      // Multi-select must be an array of option names
+      Source: ["website"],
     };
     if (email) fields.email = email;
 

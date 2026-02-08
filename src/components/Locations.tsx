@@ -1,7 +1,7 @@
 // src/components/Locations.tsx
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import type { PurchaseOptions } from "@/components/Pricing";
 
 type Studio = {
@@ -118,6 +118,22 @@ export function Locations({ onOpenPurchaseModal }: LocationsProps) {
       "м. Выборгская": "spb_vyborgskaya",
     };
     return map[cleanName] || cleanName.toLowerCase().replace(/\s+/g, "_");
+  }
+
+  // Phone formatting same as courses modal: +7 and 3-3-2-2 grouping
+  function formatRuPhoneInput(input: string) {
+    const digits = String(input || "").replace(/\D/g, "").replace(/^8/, "7");
+    let out = "+7 ";
+    const body = digits.replace(/^7/, "");
+    const p1 = body.slice(0, 3);
+    const p2 = body.slice(3, 6);
+    const p3 = body.slice(6, 8);
+    const p4 = body.slice(8, 10);
+    if (p1) out += p1;
+    if (p2) out += (p1 ? " " : "") + p2;
+    if (p3) out += (p2 ? "-" : " ") + p3;
+    if (p4) out += "-" + p4;
+    return out.trimEnd();
   }
 
   function openTariffs(cityName: string, studioName: string) {
@@ -631,9 +647,21 @@ export function Locations({ onOpenPurchaseModal }: LocationsProps) {
                   <input
                     type="tel"
                     value={leadPhone}
-                    onChange={(e) => setLeadPhone(e.target.value)}
+                    onChange={(e) => setLeadPhone(formatRuPhoneInput(e.target.value))}
+                    onFocus={() => {
+                      if (!leadPhone || !leadPhone.startsWith("+7")) {
+                        setLeadPhone("+7 ");
+                      }
+                    }}
+                    onBlur={() => {
+                      const v = leadPhone || "";
+                      if (!v.startsWith("+7")) {
+                        const stripped = v.replace(/^\+?7?\s?/, "").trim();
+                        setLeadPhone(stripped ? `+7 ${stripped}` : "+7 ");
+                      }
+                    }}
                     className="w-full rounded-2xl border border-white/10 bg-white/5 px-3 py-2 text-sm outline-none focus:border-brand-primary"
-                    placeholder="+7 900 000-00-00"
+                    placeholder="900 000-00-00"
                   />
                 </div>
                 <div>
