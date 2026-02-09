@@ -138,9 +138,15 @@ export async function GET(req: NextRequest) {
     );
 
     const hd = new Holidays("RU");
+    // Planned weekdays for this studio (0..6)
+    const plannedWeekdays = Object.keys(studioRules[studioKey] || {})
+      .map((k) => Number(k))
+      .filter((n) => Number.isFinite(n)) as Weekday[];
+    const coveredWeekdays = new Set<number>();
     for (let di = 0; di < days; di++) {
       const dayMskUtc = new Date(startOfTodayMskUtc + di * 24 * 60 * 60 * 1000); // UTC date representing MSK midnight
-      let weekdayMsk: Weekday = dayMskUtc.getUTCDay() as Weekday; // 0..6 (0=Sun) in MSK context
+      const originalWeekday: Weekday = dayMskUtc.getUTCDay() as Weekday; // 0..6 (0=Sun)
+      let weekdayMsk: Weekday = originalWeekday; // may adjust below
 
       // YYYY-MM-DD key in MSK
       const y = dayMskUtc.getUTCFullYear();
@@ -188,6 +194,7 @@ export async function GET(req: NextRequest) {
       const times = studioRules[studioKey]?.[weekdayMsk] ?? [];
       if (!times.length) continue;
 
+      let producedForThisDate = false;
       for (const t of times) {
         const [hhStr = "00", mmStr = "00"] = String(t || "00:00").split(":");
         const hh = parseInt(hhStr, 10);
@@ -209,6 +216,69 @@ export async function GET(req: NextRequest) {
           startAtLocal: localIso,
           startAtISO: iso,
         });
+        producedForThisDate = true;
+      }
+      if (producedForThisDate) coveredWeekdays.add(originalWeekday);
+    }
+
+    // If some planned weekdays were not covered in the base window, try to add the next such day
+    if (plannedWeekdays.length > 0) {
+      const windowEndUtcMs = startOfTodayMskUtc + days * 24 * 60 * 60 * 1000;
+      const maxExtendDays = 7; // extend at most +7 days
+      for (const w of plannedWeekdays) {
+        if (coveredWeekdays.has(w)) continue;
+        // Find first date within (days, days+7] that matches weekday w
+        for (let extra = 1; extra <= maxExtendDays; extra++) {
+          const candUtc = new Date(windowEndUtcMs + extra * 24 * 60 * 60 * 1000);
+          if (candUtc.getUTCDay() !== w) continue;
+          const y = candUtc.getUTCFullYear();
+          const m = candUtc.getUTCMonth() + 1;
+          const day = candUtc.getUTCDate();
+          const dateKey = `${y}-${toTwo(m)}-${toTwo(day)}`;
+          // Skip if blocked by exceptions
+          const isBlocked = exceptions.some((e) => {
+            if (!e.start_date) return false;
+            const start = e.start_date!;
+            const end = e.end_date || e.start_date;
+            return dateKey >= start && dateKey <= end;
+          });
+          if (isBlocked) continue;
+          // Apply holiday/working-weekend logic
+          let weekdayMsk: Weekday = candUtc.getUTCDay() as Weekday;
+          const dateNoonUtc = new Date(Date.UTC(y, m - 1, day, 12, 0, 0));
+          const isHoliday = !!hd.isHoliday(dateNoonUtc);
+          const isWeekend = weekdayMsk === 0 || weekdayMsk === 6;
+          let isWorkingWeekend = false;
+          // @ts-ignore
+          if (typeof (hd as any).isBusinessDay === "function" && isWeekend) {
+            // @ts-ignore
+            isWorkingWeekend = (hd as any).isBusinessDay(dateNoonUtc) === true;
+          }
+          if (!isWeekend && isHoliday) {
+            weekdayMsk = 6 as Weekday;
+          } else if (isWeekend && isWorkingWeekend) {
+            const mapped = workingWeekendWeekdayByStudio[studioKey];
+            weekdayMsk = mapped;
+          }
+          const times = studioRules[studioKey]?.[weekdayMsk] ?? [];
+          if (!times.length) continue;
+          // Push all times for this candidate date (no 3h filter since it's not "today")
+          for (const t of times) {
+            const [hhStr = "00", mmStr = "00"] = String(t || "00:00").split(":");
+            const hh = parseInt(hhStr, 10);
+            const mm = parseInt(mmStr, 10);
+            const id = buildSlotId(studioId, y, m, day, hh, mm);
+            const localIso = `${y}-${toTwo(m)}-${toTwo(day)}T${toTwo(hh)}:${toTwo(mm)}:00+03:00`;
+            const iso = new Date(localIso).toISOString();
+            resultSlots.push({
+              id,
+              studioId: studioId,
+              startAtLocal: localIso,
+              startAtISO: iso,
+            });
+          }
+          break; // added one date for this weekday
+        }
       }
     }
 
