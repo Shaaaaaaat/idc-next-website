@@ -125,26 +125,34 @@ export function Locations({ onOpenPurchaseModal }: LocationsProps) {
     return map[cleanName] || cleanName.toLowerCase().replace(/\s+/g, "_");
   }
 
-  // Phone formatting unified: +7 (999) 123-45-67
-  function formatRuPhoneInput(raw: string): string {
-    const digits = (raw.match(/\d/g) || []).join("");
-    if (!digits) return "";
-    let rest = digits;
-    if (rest[0] === "7" || rest[0] === "8") rest = rest.slice(1);
-    rest = rest.slice(0, 10);
-    const p1 = rest.slice(0, 3);
-    const p2 = rest.slice(3, 6);
-    const p3 = rest.slice(6, 8);
-    const p4 = rest.slice(8, 10);
-    let result = "+7";
-    if (p1) {
-      result += ` (${p1}`;
-      if (p1.length === 3) result += `)`;
+  // Phone formatting:
+  // - If +7 → mask as +7 (999) 123-45-67
+  // - Else: keep international form (+XXXXXXXX...) without masking
+  function formatPhoneInput(raw: string): string {
+    const s = String(raw || "");
+    const plusDigits = s.replace(/[^\d+]/g, "");
+    const isRu = /^\+?7/.test(plusDigits) || /^8/.test(plusDigits);
+    if (isRu) {
+      let digits = (plusDigits.match(/\d/g) || []).join("");
+      if (!digits) return "+7 ";
+      if (digits[0] === "8") digits = "7" + digits.slice(1);
+      if (digits[0] !== "7") digits = "7" + digits; // normalize to 7
+      const rest = digits.slice(1, 11);
+      const p1 = rest.slice(0, 3);
+      const p2 = rest.slice(3, 6);
+      const p3 = rest.slice(6, 8);
+      const p4 = rest.slice(8, 10);
+      let out = "+7";
+      if (p1) out += ` (${p1}${p1.length === 3 ? ")" : ""}`;
+      if (p2) out += ` ${p2}`;
+      if (p3) out += `-${p3}`;
+      if (p4) out += `-${p4}`;
+      return out;
     }
-    if (p2) result += ` ${p2}`;
-    if (p3) result += `-${p3}`;
-    if (p4) result += `-${p4}`;
-    return result;
+    // International free form (keep only + and digits, ensure single + at start)
+    let out = plusDigits.replace(/(?!^)\+/g, "");
+    if (out && out[0] !== "+") out = "+" + out.replace(/[^\d]/g, "");
+    return out;
   }
 
   function openTariffs(cityName: string, studioName: string) {
@@ -208,6 +216,11 @@ export function Locations({ onOpenPurchaseModal }: LocationsProps) {
     const first = digits[0];
     return first === "7" || first === "8";
   }
+  function isValidIntlPhone(v: string) {
+    const compact = v.replace(/[\s()-]/g, "");
+    if (/^\+7/.test(compact)) return isValidRuPhone(v);
+    return /^\+\d{8,15}$/.test(compact);
+  }
   function isValidEmail(v: string) {
     return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v.trim());
   }
@@ -215,7 +228,7 @@ export function Locations({ onOpenPurchaseModal }: LocationsProps) {
   async function submitLead() {
     if (!trialContext) return;
     // validate phone
-    if (!isValidRuPhone(leadPhone)) {
+    if (!isValidIntlPhone(leadPhone)) {
       setLeadPhoneError("Проверьте номер телефона: нужно 11 цифр, формат +7 (XXX) XXX-XX-XX");
       return;
     }
@@ -341,7 +354,7 @@ export function Locations({ onOpenPurchaseModal }: LocationsProps) {
               Залы
             </p>
             <h2 className="text-[26px] sm:text-3xl lg:text-4xl font-semibold tracking-tight mb-3">
-              Где можно тренироваться в студиях
+              Залы — цены и запись
             </h2>
             <p className="max-w-2xl text-[15px] sm:text-base text-brand-muted leading-relaxed">
               Можно заниматься только онлайн, совмещать онлайн с залом или
@@ -713,17 +726,25 @@ export function Locations({ onOpenPurchaseModal }: LocationsProps) {
                   <input
                     type="tel"
                     value={leadPhone}
-                    onChange={(e) => setLeadPhone(formatRuPhoneInput(e.target.value))}
+                    onChange={(e) => setLeadPhone(formatPhoneInput(e.target.value))}
                     onFocus={() => {
-                      if (!leadPhone || !leadPhone.startsWith("+7")) {
+                      if (!leadPhone) {
                         setLeadPhone("+7 ");
                       }
                     }}
                     onBlur={() => {
-                      const v = leadPhone || "";
-                      if (!v.startsWith("+7")) {
-                        const stripped = v.replace(/^\+?7?\s?/, "").trim();
-                        setLeadPhone(stripped ? `+7 ${stripped}` : "+7 ");
+                      const v = (leadPhone || "").trim();
+                      if (!v) return;
+                      if (v === "+7" || v === "+7)") {
+                        setLeadPhone("");
+                        return;
+                      }
+                      // If starts with +7 reformat, else keep sanitized international
+                      if (/^\+?7/.test(v) || /^8/.test(v)) {
+                        setLeadPhone(formatPhoneInput(v));
+                      } else {
+                        const cleaned = v.replace(/[^\d+]/g, "").replace(/(?!^)\+/g, "");
+                        setLeadPhone(cleaned.startsWith("+") ? cleaned : "+" + cleaned);
                       }
                     }}
                     className="w-full rounded-2xl border border-white/10 bg-white/5 px-3 py-2 text-sm outline-none focus:border-brand-primary"

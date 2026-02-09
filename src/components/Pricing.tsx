@@ -65,39 +65,46 @@ export function Pricing({
   const [isCertSubmitting, setIsCertSubmitting] = useState(false);
   const [certPhoneError, setCertPhoneError] = useState<string | null>(null);
 
-  // Маска телефона RU: +7 (999) 123-45-67
-  function formatRuPhoneInput(raw: string): string {
-    const digits = (raw.match(/\d/g) || []).join("");
-    if (!digits) return "";
-    let rest = digits;
-    if (rest[0] === "7" || rest[0] === "8") rest = rest.slice(1);
-    rest = rest.slice(0, 10);
-    const p1 = rest.slice(0, 3);
-    const p2 = rest.slice(3, 6);
-    const p3 = rest.slice(6, 8);
-    const p4 = rest.slice(8, 10);
-    let result = "+7";
-    if (p1) {
-      result += ` (${p1}`;
-      if (p1.length === 3) result += `)`;
+  // Телефон: +7 маска, иначе интернац. формат
+  function formatPhoneInput(raw: string): string {
+    const s = String(raw || "");
+    const plusDigits = s.replace(/[^\d+]/g, "");
+    const isRu = /^\+?7/.test(plusDigits) || /^8/.test(plusDigits);
+    if (isRu) {
+      let digits = (plusDigits.match(/\d/g) || []).join("");
+      if (!digits) return "+7 ";
+      if (digits[0] === "8") digits = "7" + digits.slice(1);
+      if (digits[0] !== "7") digits = "7" + digits;
+      const rest = digits.slice(1, 11);
+      const p1 = rest.slice(0, 3);
+      const p2 = rest.slice(3, 6);
+      const p3 = rest.slice(6, 8);
+      const p4 = rest.slice(8, 10);
+      let out = "+7";
+      if (p1) out += ` (${p1}${p1.length === 3 ? ")" : ""}`;
+      if (p2) out += ` ${p2}`;
+      if (p3) out += `-${p3}`;
+      if (p4) out += `-${p4}`;
+      return out;
     }
-    if (p2) result += ` ${p2}`;
-    if (p3) result += `-${p3}`;
-    if (p4) result += `-${p4}`;
-    return result;
+    let out = plusDigits.replace(/(?!^)\+/g, "");
+    if (out && out[0] !== "+") out = "+" + out.replace(/[^\d]/g, "");
+    return out;
   }
 
-  function isValidRuPhone(v: string) {
-    const digits = (v.match(/\d/g) || []).join("");
-    if (!digits) return false;
-    if (digits[0] !== "7" && digits[0] !== "8") return false;
-    return digits.length === 11;
+  function isValidIntlPhone(v: string) {
+    const compact = v.replace(/[\s()-]/g, "");
+    if (/^\+7/.test(compact)) {
+      const digits = (compact.match(/\d/g) || []).join("");
+      return digits.length === 11 && digits[0] === "7";
+    }
+    return /^\+\d{8,15}$/.test(compact);
   }
 
   async function handleCertificateSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (isCertSubmitting || !certAgreed) return;
-    if (!isValidRuPhone(certPhone)) {
+    if (!isValidIntlPhone(certPhone)) {
       setCertPhoneError("Проверьте номер телефона: нужно 11 цифр, формат +7 (XXX) XXX-XX-XX");
       return;
     }
@@ -150,7 +157,7 @@ export function Pricing({
               Цены
             </p>
             <h2 className="text-[26px] sm:text-3xl lg:text-4xl font-semibold tracking-tight mb-3 leading-tight">
-              Сколько стоят тренировки
+              Сколько стоят онлайн‑тренировки
             </h2>
 
             <p className="mt-2 max-w-2xl text-[14px] sm:text-base text-brand-muted leading-relaxed">
@@ -433,21 +440,26 @@ export function Pricing({
                   <input
                     type="tel"
                     value={certPhone}
-                    onChange={(e) => setCertPhone(formatRuPhoneInput(e.target.value))}
+                    onChange={(e) => setCertPhone(formatPhoneInput(e.target.value))}
                     onFocus={() => {
-                      if (!certPhone || !certPhone.startsWith("+7")) {
+                      if (!certPhone) {
                         setCertPhone("+7 ");
                       }
                     }}
                     onBlur={() => {
-                      const v = certPhone || "";
-                      if (!v.startsWith("+7")) {
-                        const stripped = v.replace(/^\+?7?\s?/, "").trim();
-                        setCertPhone(stripped ? `+7 ${stripped}` : "+7 ");
+                      const v = (certPhone || "").trim();
+                      if (!v) return;
+                      if (v === "+7" || v === "+7)") {
+                        setCertPhone("");
+                        return;
+                      }
+                      if (/^\+?7/.test(v) || /^8/.test(v)) {
+                        setCertPhone(formatPhoneInput(v));
+                      } else {
+                        const cleaned = v.replace(/[^\d+]/g, "").replace(/(?!^)\+/g, "");
+                        setCertPhone(cleaned.startsWith("+") ? cleaned : "+" + cleaned);
                       }
                     }}
-                    pattern="^\\+7\\s\\(\\d{3}\\)\\s\\d{3}-\\d{2}-\\d{2}$"
-                    title="Формат: +7 (999) 123-45-67"
                     inputMode="tel"
                     required
                     className="w-full rounded-2xl border border-white/10 bg-white/5 px-3 py-2 text-sm outline-none focus:border-brand-primary"
@@ -493,7 +505,7 @@ export function Pricing({
 
                 <button
                   type="submit"
-                  disabled={isCertSubmitting || !certAgreed || !isValidRuPhone(certPhone)}
+                  disabled={isCertSubmitting || !certAgreed || !isValidIntlPhone(certPhone)}
                   className="mt-2 inline-flex w-full items-center justify-center rounded-full bg-brand-primary px-4 py-2.5 text-sm font-semibold disabled:opacity-60 disabled:pointer-events-none hover:bg-brand-primary/90 transition-colors"
                 >
                   {isCertSubmitting ? "Переходим к оплате..." : "Оплатить сертификат"}

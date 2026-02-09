@@ -150,27 +150,34 @@ export default function HomePage() {
   const [buyCourse, setBuyCourse] = useState<string>("");
   const [buyAgreed, setBuyAgreed] = useState(false);
   const [isBuySubmitting, setIsBuySubmitting] = useState(false);
+  const [isPricesPopoverOpen, setIsPricesPopoverOpen] = useState(false);
+  const [isMobilePricesOpen, setIsMobilePricesOpen] = useState(false);
 
-  // Форматирование телефона под RU: +7 (999) 123-45-67
-  function formatRuPhoneInput(raw: string): string {
-    const digits = (raw.match(/\d/g) || []).join("");
-    if (!digits) return "";
-    let rest = digits;
-    if (rest[0] === "7" || rest[0] === "8") rest = rest.slice(1);
-    rest = rest.slice(0, 10);
-    const p1 = rest.slice(0, 3);
-    const p2 = rest.slice(3, 6);
-    const p3 = rest.slice(6, 8);
-    const p4 = rest.slice(8, 10);
-    let result = "+7";
-    if (p1) {
-      result += ` (${p1}`;
-      if (p1.length === 3) result += `)`;
+  // Телефон: +7 маска, иначе интернац. формат
+  function formatPhoneInput(raw: string): string {
+    const s = String(raw || "");
+    const plusDigits = s.replace(/[^\d+]/g, "");
+    const isRu = /^\+?7/.test(plusDigits) || /^8/.test(plusDigits);
+    if (isRu) {
+      let digits = (plusDigits.match(/\d/g) || []).join("");
+      if (!digits) return "+7 ";
+      if (digits[0] === "8") digits = "7" + digits.slice(1);
+      if (digits[0] !== "7") digits = "7" + digits;
+      const rest = digits.slice(1, 11);
+      const p1 = rest.slice(0, 3);
+      const p2 = rest.slice(3, 6);
+      const p3 = rest.slice(6, 8);
+      const p4 = rest.slice(8, 10);
+      let out = "+7";
+      if (p1) out += ` (${p1}${p1.length === 3 ? ")" : ""}`;
+      if (p2) out += ` ${p2}`;
+      if (p3) out += `-${p3}`;
+      if (p4) out += `-${p4}`;
+      return out;
     }
-    if (p2) result += ` ${p2}`;
-    if (p3) result += `-${p3}`;
-    if (p4) result += `-${p4}`;
-    return result;
+    let out = plusDigits.replace(/(?!^)\+/g, "");
+    if (out && out[0] !== "+") out = "+" + out.replace(/[^\d]/g, "");
+    return out;
   }
 
   function isValidRuPhone(v: string) {
@@ -178,6 +185,11 @@ export default function HomePage() {
     if (digits.length !== 11) return false;
     const first = digits[0];
     return first === "7" || first === "8";
+  }
+  function isValidIntlPhone(v: string) {
+    const compact = v.replace(/[\s()-]/g, "");
+    if (/^\+7/.test(compact)) return isValidRuPhone(v);
+    return /^\+\d{8,15}$/.test(compact);
   }
 
   function openPurchaseModal(options: PurchaseOptions) {
@@ -195,7 +207,7 @@ export default function HomePage() {
   async function handlePurchaseSubmit(e: FormEvent) {
     e.preventDefault();
     if (!purchaseOptions || !buyAgreed || isBuySubmitting) return;
-    if (!isValidRuPhone(buyPhone)) {
+    if (!isValidIntlPhone(buyPhone)) {
       setBuyPhoneError("Проверьте номер телефона: нужно 11 цифр, формат +7 (XXX) XXX-XX-XX");
       return;
     }
@@ -315,6 +327,16 @@ export default function HomePage() {
       };
     }, [anyModalOpen]);
     
+    useEffect(() => {
+      const handler = () => setIsPricesPopoverOpen(false);
+      // @ts-ignore
+      document.addEventListener("close-prices-popover", handler);
+      return () => {
+        // @ts-ignore
+        document.removeEventListener("close-prices-popover", handler);
+      };
+    }, []);
+
 
   return (
     <main className="min-h-screen bg-brand-dark text-white">
@@ -337,16 +359,47 @@ export default function HomePage() {
             </div>
 
             {/* Десктоп-навигация */}
-            <nav className="hidden md:flex items-center gap-4 lg:gap-6 text-sm text-brand-muted md:col-start-2 md:justify-self-center whitespace-nowrap">
+            <nav className="hidden md:flex items-center gap-4 lg:gap-6 text-sm text-brand-muted md:col-start-2 md:justify-self-center whitespace-nowrap relative">
               <a href="#how" className="hover:text-white transition-colors">
                 Как это работает
               </a>
               <a href="#courses" className="hover:text-white transition-colors">
                 Курсы
               </a>
-              <a href="#pricing" className="hover:text-white transition-colors">
-                Цены
-              </a>
+              <div className="relative">
+                <button
+                  type="button"
+                  onClick={() => setIsPricesPopoverOpen((v) => !v)}
+                  className="hover:text-white transition-colors"
+                  aria-haspopup="menu"
+                  aria-expanded={isPricesPopoverOpen}
+                >
+                  Цены
+                </button>
+                {isPricesPopoverOpen && (
+                  <div
+                    className="absolute left-1/2 -translate-x-1/2 mt-2 w-56 rounded-2xl border border-white/10 bg-brand-dark shadow-xl p-2"
+                    role="menu"
+                  >
+                    <a
+                      href="#pricing"
+                      onClick={() => setIsPricesPopoverOpen(false)}
+                      className="block rounded-xl px-3 py-2 text-left hover:bg-white/5"
+                      role="menuitem"
+                    >
+                      Онлайн‑курсы
+                    </a>
+                    <a
+                      href="#locations"
+                      onClick={() => setIsPricesPopoverOpen(false)}
+                      className="mt-1 block rounded-xl px-3 py-2 text-left hover:bg-white/5"
+                      role="menuitem"
+                    >
+                      Залы (в студии)
+                    </a>
+                  </div>
+                )}
+              </div>
               <a
                 href="#locations"
                 className="hover:text-white transition-colors"
@@ -380,6 +433,16 @@ export default function HomePage() {
             </button>
           </div>
         </header>
+        {/* auto-close popover on scroll */}
+        {isPricesPopoverOpen && (
+          <script dangerouslySetInnerHTML={{__html: `
+            (function(){
+              var onScroll = function(){ try { document.dispatchEvent(new CustomEvent('close-prices-popover')); } catch(e){} };
+              window.addEventListener('scroll', onScroll, { once: true });
+              setTimeout(function(){ window.removeEventListener('scroll', onScroll); }, 3000);
+            })();
+          `}} />
+        )}
 
         {/* Мобильное меню */}
         {isMobileNavOpen && (
@@ -419,13 +482,38 @@ export default function HomePage() {
                 >
                   Курсы
                 </a>
-                <a
-                  href="#pricing"
-                  className="rounded-2xl px-3 py-2 hover:bg-white/5"
-                  onClick={() => setIsMobileNavOpen(false)}
+                <button
+                  type="button"
+                  className="rounded-2xl px-3 py-2 text-left hover:bg-white/5"
+                  onClick={() => setIsMobilePricesOpen((v) => !v)}
+                  aria-expanded={isMobilePricesOpen}
                 >
                   Цены
-                </a>
+                </button>
+                {isMobilePricesOpen && (
+                  <div className="ml-2 flex flex-col gap-1 mb-2">
+                    <a
+                      href="#pricing"
+                      className="rounded-2xl px-3 py-2 hover:bg-white/5"
+                      onClick={() => {
+                        setIsMobileNavOpen(false);
+                        setIsMobilePricesOpen(false);
+                      }}
+                    >
+                      Онлайн‑курсы
+                    </a>
+                    <a
+                      href="#locations"
+                      className="rounded-2xl px-3 py-2 hover:bg-white/5"
+                      onClick={() => {
+                        setIsMobileNavOpen(false);
+                        setIsMobilePricesOpen(false);
+                      }}
+                    >
+                      Залы (в студии)
+                    </a>
+                  </div>
+                )}
                 <a
                   href="#locations"
                   className="rounded-2xl px-3 py-2 hover:bg-white/5"
@@ -873,22 +961,28 @@ export default function HomePage() {
                   type="tel"
                   value={buyPhone}
                   onChange={(e) => {
-                    const formatted = formatRuPhoneInput(e.target.value);
-                    setBuyPhone(formatted);
+                    setBuyPhone(formatPhoneInput(e.target.value));
                   }}
                   onFocus={() => {
                     try {
-                      if (!buyPhone || !buyPhone.startsWith("+7")) {
+                      if (!buyPhone) {
                         setBuyPhone("+7 ");
                       }
                     } catch {}
                   }}
                   onBlur={() => {
                     try {
-                      const v = buyPhone || "";
-                      if (!v.startsWith("+7")) {
-                        const stripped = v.replace(/^\+?7?\s?/, "").trim();
-                        setBuyPhone(stripped ? `+7 ${stripped}` : "+7 ");
+                      const v = (buyPhone || "").trim();
+                      if (!v) return;
+                      if (v === "+7" || v === "+7)") {
+                        setBuyPhone("");
+                        return;
+                      }
+                      if (/^\+?7/.test(v) || /^8/.test(v)) {
+                        setBuyPhone(formatPhoneInput(v));
+                      } else {
+                        const cleaned = v.replace(/[^\d+]/g, "").replace(/(?!^)\+/g, "");
+                        setBuyPhone(cleaned.startsWith("+") ? cleaned : "+" + cleaned);
                       }
                     } catch {}
                   }}
@@ -964,7 +1058,7 @@ export default function HomePage() {
 
               <button
                 type="submit"
-                disabled={isBuySubmitting || !buyAgreed || !isValidRuPhone(buyPhone)}
+                disabled={isBuySubmitting || !buyAgreed || !isValidIntlPhone(buyPhone)}
                 className="mt-2 inline-flex w-full items-center justify-center rounded-full bg-brand-primary px-4 py-2.5 text-sm font-semibold disabled:opacity-60 disabled:pointer-events-none hover:bg-brand-primary/90 transition-colors"
               >
                 {isBuySubmitting

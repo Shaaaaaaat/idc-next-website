@@ -198,6 +198,7 @@ export async function POST(req: Request) {
     const isTrialStudio =
       !!studioId && (/пробн/i.test(String(tariffLabel)) || tariffId === "review");
     const lessonsField = isTrialStudio ? 1 : undefined;
+    const formatField = isTrialStudio ? "gym" : "ds";
 
     const createRes = await airtableCreateRecord({
       id_payment: String(paymentId),
@@ -214,6 +215,7 @@ export async function POST(req: Request) {
       studio_id: studioId ?? "",
       slot_start_at: slotStartAt ?? "",
       ...(typeof lessonsField === "number" ? { Lessons: lessonsField } : {}),
+      format: formatField,
       tg_link_token: tgToken,
     });
     if (!(createRes as any)?.ok) {
