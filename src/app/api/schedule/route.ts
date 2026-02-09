@@ -1,7 +1,12 @@
 // src/app/api/schedule/route.ts
 import { NextRequest, NextResponse } from "next/server";
 import Holidays from "date-holidays";
-import { studioRules, workingWeekendWeekdayByStudio, type StudioId } from "@/data/studioRules";
+import {
+  studioRules,
+  workingWeekendWeekdayByStudio,
+  type StudioId,
+  type Weekday,
+} from "@/data/studioRules";
 
 type Rule = {
   id: string;
@@ -135,7 +140,7 @@ export async function GET(req: NextRequest) {
     const hd = new Holidays("RU");
     for (let di = 0; di < days; di++) {
       const dayMskUtc = new Date(startOfTodayMskUtc + di * 24 * 60 * 60 * 1000); // UTC date representing MSK midnight
-      let weekdayMsk = dayMskUtc.getUTCDay(); // 0..6 (0=Sun) in MSK context
+      let weekdayMsk: Weekday = dayMskUtc.getUTCDay() as Weekday; // 0..6 (0=Sun) in MSK context
 
       // YYYY-MM-DD key in MSK
       const y = dayMskUtc.getUTCFullYear();
@@ -173,15 +178,15 @@ export async function GET(req: NextRequest) {
       }
       if (!isWeekend && isHoliday) {
         // weekday holiday → use Saturday template
-        weekdayMsk = 6;
+        weekdayMsk = 6 as Weekday;
       } else if (isWeekend && isWorkingWeekend) {
         // working weekend → map to studio-specific weekday
         const mapped = workingWeekendWeekdayByStudio[studioKey];
-        if (typeof mapped === "number") weekdayMsk = mapped;
+        weekdayMsk = mapped;
       }
 
-      const times = studioRules[studioKey]?.[weekdayMsk] as string[] | undefined;
-      if (!times || times.length === 0) continue;
+      const times = studioRules[studioKey]?.[weekdayMsk] ?? [];
+      if (!times.length) continue;
 
       for (const t of times) {
         const [hhStr = "00", mmStr = "00"] = String(t || "00:00").split(":");
