@@ -174,6 +174,26 @@ export function Locations({ onOpenPurchaseModal }: LocationsProps) {
     setSlotsError(null);
     setTrialStep(1);
     setIsTrialOpen(true);
+    // Prefetch schedule to minimize loading on step 2
+    (async () => {
+      try {
+        setSlotsLoading(true);
+        const qs = new URLSearchParams({
+          studioId,
+          days: "7",
+          product: "trial",
+        }).toString();
+        const rs = await fetch(`/api/schedule?${qs}`, { cache: "no-store" });
+        if (rs.ok) {
+          const data = await rs.json();
+          setSlots(Array.isArray(data?.slots) ? data.slots : []);
+          setNotices(Array.isArray(data?.notices) ? data.notices : []);
+        }
+      } catch {}
+      finally {
+        setSlotsLoading(false);
+      }
+    })();
   }
 
   async function submitLead() {

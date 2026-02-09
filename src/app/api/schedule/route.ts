@@ -1,5 +1,7 @@
 // src/app/api/schedule/route.ts
 import { NextRequest, NextResponse } from "next/server";
+import Holidays from "date-holidays";
+import { studioRules, workingWeekendWeekdayByStudio } from "@/data/studioRules";
 
 type Rule = {
   id: string;
@@ -25,7 +27,6 @@ type Exception = {
 const AIRTABLE_API = "https://api.airtable.com/v0";
 const AIRTABLE_KEY = process.env.AIRTABLE_API_KEY!;
 const AIRTABLE_BASE_ID = process.env.AIRTABLE_BASE_ID!;
-const RULES_TABLE_ID = process.env.AIRTABLE_SCHEDULE_RULES_TABLE_ID!;
 const EXCEPTIONS_TABLE_ID = process.env.AIRTABLE_EXCEPTIONS_TABLE_ID!;
 
 if (!AIRTABLE_KEY || !AIRTABLE_BASE_ID) {
@@ -50,13 +51,13 @@ function* iterateDays(startLocal: Date, days: number) {
   }
 }
 
-async function fetchAirtableTable(tableId: string) {
+async function fetchAirtableTable(tableId: string, revalidateSec = 60) {
   const url = `${AIRTABLE_API}/${encodeURIComponent(AIRTABLE_BASE_ID)}/${encodeURIComponent(
     tableId
   )}?pageSize=100`;
   const resp = await fetch(url, {
     headers: { Authorization: `Bearer ${AIRTABLE_KEY}` },
-    cache: "no-store",
+    next: { revalidate: revalidateSec },
   });
   if (!resp.ok) {
     const text = await resp.text();
@@ -76,28 +77,23 @@ export async function GET(req: NextRequest) {
     if (!studioId) {
       return NextResponse.json({ error: "studioId is required" }, { status: 400 });
     }
-    if (!AIRTABLE_KEY || !AIRTABLE_BASE_ID || RULES_TABLEID_MISSING_GUARD()) {
+    if (!AIRTABLE_KEY || !AIRTABLE_BASE_ID) {
       return NextResponse.json(
         { error: "Server is missing Airtable configuration (env vars)" },
         { status: 500 }
       );
     }
 
-    // Load rules
-    const allRules = (await fetchAirtableTable(RULES_TABLE_ID)) as any as Rule[];
-    const rules = allRules.filter(
-      (r) =>
-        r &&
-        r.active === true &&
-        r.studio_id === studioId &&
-        (!r.product_scope || String(r.product_scope).toLowerCase() === product)
-    );
+    // Validate studio id for local rules
+    if (!studioRules[studioId as any]) {
+      return NextResponse.json({ slots: [], notices: [`Нет расписания для студии ${studioId}`] }, { status: 200 });
+    }
 
     // Load exceptions (optional)
     let exceptions: Exception[] = [];
     if (!EXCEPTIONS_TABLEID_MISSING_GUARD()) {
       try {
-        const allEx = (await fetchAirtableTable(EXCEPTIONS_TABLE_ID)) as any as Exception[];
+        const allEx = (await fetchAirtableTable(EXCEPTIONS_TABLE_ID, 60)) as any as Exception[];
         exceptions = allEx.filter(
           (e) =>
             (e.status || "active") !== "archived" &&
@@ -128,15 +124,10 @@ export async function GET(req: NextRequest) {
       0
     );
 
+    const hd = new Holidays("RU");
     for (let di = 0; di < days; di++) {
       const dayMskUtc = new Date(startOfTodayMskUtc + di * 24 * 60 * 60 * 1000); // UTC date representing MSK midnight
-      const weekdayMsk = dayMskUtc.getUTCDay(); // 0..6 (0=Sun) in MSK context
-
-      const todaysRules = rules.filter((r) => {
-        const rw = Number((r as any).weekday);
-        return Number.isFinite(rw) && rw === weekdayMsk;
-      });
-      if (todaysRules.length === 0) continue;
+      let weekdayMsk = dayMskUtc.getUTCDay(); // 0..6 (0=Sun) in MSK context
 
       // YYYY-MM-DD key in MSK
       const y = dayMskUtc.getUTCFullYear();
@@ -161,8 +152,31 @@ export async function GET(req: NextRequest) {
         }
         continue; // skip generating slots for blocked days
       }
-      for (const r of todaysRules) {
-        const [hhStr = "00", mmStr = "00"] = String(r.start_time_local || "00:00").split(":");
+      // Holiday / working weekend adjustments
+      const dateNoonUtc = new Date(Date.UTC(y, m - 1, day, 12, 0, 0));
+      const isHoliday = !!hd.isHoliday(dateNoonUtc);
+      const isWeekend = weekdayMsk === 0 || weekdayMsk === 6;
+      let isWorkingWeekend = false;
+      // @ts-ignore optional API across versions
+      if (typeof (hd as any).isBusinessDay === "function" && isWeekend) {
+        // Business day on weekend (official working Sat/Sun)
+        // @ts-ignore
+        isWorkingWeekend = (hd as any).isBusinessDay(dateNoonUtc) === true;
+      }
+      if (!isWeekend && isHoliday) {
+        // weekday holiday → use Saturday template
+        weekdayMsk = 6;
+      } else if (isWeekend && isWorkingWeekend) {
+        // working weekend → map to studio-specific weekday
+        const mapped = workingWeekendWeekdayByStudio[studioId as any];
+        if (typeof mapped === "number") weekdayMsk = mapped;
+      }
+
+      const times = (studioRules as any)[studioId]?.[weekdayMsk] as string[] | undefined;
+      if (!times || times.length === 0) continue;
+
+      for (const t of times) {
+        const [hhStr = "00", mmStr = "00"] = String(t || "00:00").split(":");
         const hh = parseInt(hhStr, 10);
         const mm = parseInt(mmStr, 10);
         const id = buildSlotId(studioId, y, m, day, hh, mm);
@@ -188,21 +202,15 @@ export async function GET(req: NextRequest) {
     // Sort by time
     resultSlots.sort((a, b) => (a.startAtISO < b.startAtISO ? -1 : a.startAtISO > b.startAtISO ? 1 : 0));
 
-    return NextResponse.json({ slots: resultSlots, notices });
+    const res = NextResponse.json({ slots: resultSlots, notices });
+    res.headers.set("Cache-Control", "s-maxage=30, stale-while-revalidate=300");
+    return res;
   } catch (e: any) {
     console.error("[/api/schedule] error", e);
     return NextResponse.json({ error: e?.message || "Internal error" }, { status: 500 });
   }
 }
 
-// Helpers for missing env
-function RULES_TABLEID_MISSING_GUARD() {
-  if (!RULES_TABLE_ID) {
-    console.warn("[schedule] Missing AIRTABLE_SCHEDULE_RULES_TABLE_ID");
-    return true;
-  }
-  return false;
-}
 function EXCEPTIONS_TABLEID_MISSING_GUARD() {
   if (!EXCEPTIONS_TABLE_ID) {
     console.warn("[schedule] Missing AIRTABLE_EXCEPTIONS_TABLE_ID (optional)");
