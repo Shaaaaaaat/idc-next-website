@@ -397,9 +397,6 @@ export default function HomePage() {
                     className="absolute left-1/2 -translate-x-1/2 mt-2 w-60 rounded-2xl border border-white/10 bg-brand-dark shadow-xl p-2"
                     role="menu"
                   >
-                    <div className="px-3 py-1.5 text-[12px] text-brand-muted/80">
-                      Цены
-                    </div>
                     <a
                       href="#pricing"
                       onClick={() => setIsPricesPopoverOpen(false)}
