@@ -289,7 +289,7 @@ export function Locations({ onOpenPurchaseModal }: LocationsProps) {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          amount: 1100,
+          amount: 2,
           currency: "RUB",
           email: leadEmail,
           fullName: leadFullName,
