@@ -1,7 +1,7 @@
 // src/app/api/schedule/route.ts
 import { NextRequest, NextResponse } from "next/server";
 import Holidays from "date-holidays";
-import { studioRules, workingWeekendWeekdayByStudio } from "@/data/studioRules";
+import { studioRules, workingWeekendWeekdayByStudio, type StudioId } from "@/data/studioRules";
 
 type Rule = {
   id: string;
@@ -84,10 +84,18 @@ export async function GET(req: NextRequest) {
       );
     }
 
-    // Validate studio id for local rules
-    if (!studioRules[studioId as any]) {
-      return NextResponse.json({ slots: [], notices: [`Нет расписания для студии ${studioId}`] }, { status: 200 });
+    // Type guard for known studio ids
+    function isStudioId(x: string): x is StudioId {
+      return x === "msk_youcan" || x === "msk_elfit" || x === "spb_spirit" || x === "spb_hkc";
     }
+    // Validate studio id for local rules
+    if (!isStudioId(studioId)) {
+      return NextResponse.json(
+        { slots: [], notices: [`Нет расписания для студии ${studioId}`] },
+        { status: 200 }
+      );
+    }
+    const studioKey: StudioId = studioId;
 
     // Load exceptions (optional)
     let exceptions: Exception[] = [];
@@ -97,7 +105,7 @@ export async function GET(req: NextRequest) {
         exceptions = allEx.filter(
           (e) =>
             (e.status || "active") !== "archived" &&
-            (!e.studio_id || e.studio_id === studioId) &&
+            (!e.studio_id || e.studio_id === studioKey) &&
             (!e.product_scope || String(e.product_scope).toLowerCase() === product)
         );
       } catch (e) {
@@ -168,11 +176,11 @@ export async function GET(req: NextRequest) {
         weekdayMsk = 6;
       } else if (isWeekend && isWorkingWeekend) {
         // working weekend → map to studio-specific weekday
-        const mapped = workingWeekendWeekdayByStudio[studioId as any];
+        const mapped = workingWeekendWeekdayByStudio[studioKey];
         if (typeof mapped === "number") weekdayMsk = mapped;
       }
 
-      const times = (studioRules as any)[studioId]?.[weekdayMsk] as string[] | undefined;
+      const times = studioRules[studioKey]?.[weekdayMsk] as string[] | undefined;
       if (!times || times.length === 0) continue;
 
       for (const t of times) {
