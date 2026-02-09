@@ -738,15 +738,17 @@ export function Locations({ onOpenPurchaseModal }: LocationsProps) {
                       )}
                       {slots.map((s) => {
                         const dt = new Date(s.startAtLocal);
-                        const dateStr = dt.toLocaleDateString("ru-RU", {
+                        const dateStr = new Intl.DateTimeFormat("ru-RU", {
                           weekday: "short",
                           day: "2-digit",
                           month: "short",
-                        });
-                        const timeStr = dt.toLocaleTimeString("ru-RU", {
+                          timeZone: "Europe/Moscow",
+                        }).format(dt);
+                        const timeStr = new Intl.DateTimeFormat("ru-RU", {
                           hour: "2-digit",
                           minute: "2-digit",
-                        });
+                          timeZone: "Europe/Moscow",
+                        }).format(dt);
                         const selected = selectedSlotId === s.id;
                         return (
                           <button
