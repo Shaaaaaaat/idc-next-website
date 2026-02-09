@@ -63,6 +63,7 @@ export function Pricing({
   const [certAmount, setCertAmount] = useState<string>("");
   const [certAgreed, setCertAgreed] = useState(false);
   const [isCertSubmitting, setIsCertSubmitting] = useState(false);
+  const [certPhoneError, setCertPhoneError] = useState<string | null>(null);
 
   // Маска телефона RU: +7 (999) 123-45-67
   function formatRuPhoneInput(raw: string): string {
@@ -86,9 +87,21 @@ export function Pricing({
     return result;
   }
 
+  function isValidRuPhone(v: string) {
+    const digits = (v.match(/\d/g) || []).join("");
+    if (!digits) return false;
+    if (digits[0] !== "7" && digits[0] !== "8") return false;
+    return digits.length === 11;
+  }
+
   async function handleCertificateSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (isCertSubmitting || !certAgreed) return;
+    if (!isValidRuPhone(certPhone)) {
+      setCertPhoneError("Проверь номер телефона: нужно 11 цифр, формат +7 (XXX) XXX-XX-XX");
+      return;
+    }
+    setCertPhoneError(null);
     const amountNumber = Number((certAmount || "").replace(/[^\d]/g, ""));
     if (!amountNumber || amountNumber <= 0) return;
 
@@ -433,13 +446,16 @@ export function Pricing({
                         setCertPhone(stripped ? `+7 ${stripped}` : "+7 ");
                       }
                     }}
-                    pattern="^\\+7\\s\\d{3}\\s\\d{3}\\s\\d{2}\\s\\d{2}$"
-                    title="Формат: +7 999 123 45 67"
+                    pattern="^\\+7\\s\\(\\d{3}\\)\\s\\d{3}-\\d{2}-\\d{2}$"
+                    title="Формат: +7 (999) 123-45-67"
                     inputMode="tel"
                     required
                     className="w-full rounded-2xl border border-white/10 bg-white/5 px-3 py-2 text-sm outline-none focus:border-brand-primary"
                     placeholder="(___) ___-__-__"
                   />
+                  {certPhoneError && (
+                    <p className="mt-1 text-[12px] text-red-400">{certPhoneError}</p>
+                  )}
                 </div>
                 <div className="space-y-1">
                   <label className="text-xs sm:text-sm text-brand-muted">Сумма (RUB)</label>
@@ -477,7 +493,7 @@ export function Pricing({
 
                 <button
                   type="submit"
-                  disabled={isCertSubmitting || !certAgreed}
+                  disabled={isCertSubmitting || !certAgreed || !isValidRuPhone(certPhone)}
                   className="mt-2 inline-flex w-full items-center justify-center rounded-full bg-brand-primary px-4 py-2.5 text-sm font-semibold disabled:opacity-60 disabled:pointer-events-none hover:bg-brand-primary/90 transition-colors"
                 >
                   {isCertSubmitting ? "Переходим к оплате..." : "Оплатить сертификат"}

@@ -146,6 +146,7 @@ export default function HomePage() {
   const [buyFullName, setBuyFullName] = useState("");
   const [buyEmail, setBuyEmail] = useState("");
   const [buyPhone, setBuyPhone] = useState("");
+  const [buyPhoneError, setBuyPhoneError] = useState<string | null>(null);
   const [buyCourse, setBuyCourse] = useState<string>("");
   const [buyAgreed, setBuyAgreed] = useState(false);
   const [isBuySubmitting, setIsBuySubmitting] = useState(false);
@@ -172,6 +173,13 @@ export default function HomePage() {
     return result;
   }
 
+  function isValidRuPhone(v: string) {
+    const digits = (v.match(/\d/g) || []).join("");
+    if (digits.length !== 11) return false;
+    const first = digits[0];
+    return first === "7" || first === "8";
+  }
+
   function openPurchaseModal(options: PurchaseOptions) {
     setPurchaseOptions(options);
     setIsPurchaseModalOpen(true);
@@ -187,6 +195,11 @@ export default function HomePage() {
   async function handlePurchaseSubmit(e: FormEvent) {
     e.preventDefault();
     if (!purchaseOptions || !buyAgreed || isBuySubmitting) return;
+    if (!isValidRuPhone(buyPhone)) {
+      setBuyPhoneError("Проверь номер телефона: нужно 11 цифр, формат +7 (XXX) XXX-XX-XX");
+      return;
+    }
+    setBuyPhoneError(null);
 
     setIsBuySubmitting(true);
 
@@ -883,6 +896,9 @@ export default function HomePage() {
                   className="w-full rounded-2xl border border-white/10 bg-white/5 px-3 py-2 text-sm outline-none focus:border-brand-primary"
                   placeholder="(___) ___-__-__"
                 />
+                {buyPhoneError && (
+                  <p className="mt-1 text-[12px] text-red-400">{buyPhoneError}</p>
+                )}
               </div>
 
               {/* Если пришли из курсов, селект курса не нужен */}
@@ -948,7 +964,7 @@ export default function HomePage() {
 
               <button
                 type="submit"
-                disabled={isBuySubmitting || !buyAgreed}
+                disabled={isBuySubmitting || !buyAgreed || !isValidRuPhone(buyPhone)}
                 className="mt-2 inline-flex w-full items-center justify-center rounded-full bg-brand-primary px-4 py-2.5 text-sm font-semibold disabled:opacity-60 disabled:pointer-events-none hover:bg-brand-primary/90 transition-colors"
               >
                 {isBuySubmitting

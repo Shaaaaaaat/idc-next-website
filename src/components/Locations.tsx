@@ -92,6 +92,7 @@ export function Locations({ onOpenPurchaseModal }: LocationsProps) {
   const [leadFullName, setLeadFullName] = useState("");
   const [leadPhone, setLeadPhone] = useState("");
   const [leadEmail, setLeadEmail] = useState("");
+  const [leadPhoneError, setLeadPhoneError] = useState<string | null>(null);
   const [leadLoading, setLeadLoading] = useState(false);
   const [slotsLoading, setSlotsLoading] = useState(false);
   const [slotsError, setSlotsError] = useState<string | null>(null);
@@ -196,8 +197,22 @@ export function Locations({ onOpenPurchaseModal }: LocationsProps) {
     })();
   }
 
+  function isValidRuPhone(v: string) {
+    const digits = (v.match(/\d/g) || []).join("");
+    // Accept 11 digits starting with 7 (or 8 which we normalize to 7)
+    if (digits.length !== 11) return false;
+    const first = digits[0];
+    return first === "7" || first === "8";
+  }
+
   async function submitLead() {
     if (!trialContext) return;
+    // validate phone
+    if (!isValidRuPhone(leadPhone)) {
+      setLeadPhoneError("Проверь номер телефона: нужно 11 цифр, формат +7 (XXX) XXX-XX-XX");
+      return;
+    }
+    setLeadPhoneError(null);
     setLeadLoading(true);
     try {
       const r = await fetch("/api/leads/create", {
@@ -689,6 +704,9 @@ export function Locations({ onOpenPurchaseModal }: LocationsProps) {
                     className="w-full rounded-2xl border border-white/10 bg-white/5 px-3 py-2 text-sm outline-none focus:border-brand-primary"
                     placeholder="(___) ___-__-__"
                   />
+                  {leadPhoneError && (
+                    <p className="mt-1 text-[12px] text-red-400">{leadPhoneError}</p>
+                  )}
                 </div>
                 <div>
                   <label className="block text-[12px] sm:text-xs text-brand-muted mb-1">
@@ -705,7 +723,7 @@ export function Locations({ onOpenPurchaseModal }: LocationsProps) {
                 <button
                   type="button"
                   onClick={submitLead}
-                  disabled={leadLoading || !leadFullName || !leadPhone}
+                  disabled={leadLoading || !leadFullName || !isValidRuPhone(leadPhone)}
                   className="mt-2 inline-flex w-full items-center justify-center rounded-full bg-brand-primary px-4 py-2.5 text-sm font-semibold hover:bg-brand-primary/90 transition-colors disabled:opacity-60"
                 >
                   {leadLoading ? "Отправляем..." : "Выбрать день"}

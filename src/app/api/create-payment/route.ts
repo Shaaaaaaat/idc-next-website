@@ -160,6 +160,45 @@ export async function POST(req: Request) {
 
     // Сохраняем заказ в Airtable (status=created) и генерим tg-токен для success-страницы
     const tgToken = crypto.randomBytes(16).toString("hex");
+    // Helpers for studio Tag mapping
+    function mapStudioToCityCode(id?: string | null) {
+      if (!id) return null;
+      if (id.startsWith("msk")) return "MSC";
+      if (id.startsWith("spb")) return "SPB";
+      return null;
+    }
+    function mapStudioToGymCode(id?: string | null) {
+      switch (id) {
+        case "msk_youcan":
+          return "YCG";
+        case "msk_elfit":
+          return "ELF";
+        case "spb_spirit":
+          return "SPI";
+        case "spb_hkc":
+          return "HKC";
+        default:
+          return null;
+      }
+    }
+    function detectGroupOrPersonal(label?: string | null) {
+      const l = String(label || "");
+      return /персонал/i.test(l) ? "personal" : "group";
+    }
+    // If studio purchase, build specific Tag; else fallback to tariffId
+    let finalTag: string = tariffId;
+    const cityCode = mapStudioToCityCode(studioId);
+    const gymCode = mapStudioToGymCode(studioId);
+    if (cityCode && gymCode) {
+      const kind = detectGroupOrPersonal(tariffLabel);
+      finalTag = `${cityCode}_${kind}_${gymCode}`;
+    }
+
+    // Lessons for trial (studio probation): 1
+    const isTrialStudio =
+      !!studioId && (/пробн/i.test(String(tariffLabel)) || tariffId === "review");
+    const lessonsField = isTrialStudio ? 1 : undefined;
+
     const createRes = await airtableCreateRecord({
       id_payment: String(paymentId),
       Status: "created",
@@ -168,12 +207,13 @@ export async function POST(req: Request) {
       Phone: body?.phone ?? "",
       Sum: Number(amount),
       Currency: currency,
-      Tag: tariffId,
+      Tag: finalTag,
       tariff_label: tariffLabel,
       course_name: courseName ?? "",
       studio_name: studioName ?? "",
       studio_id: studioId ?? "",
       slot_start_at: slotStartAt ?? "",
+      ...(typeof lessonsField === "number" ? { Lessons: lessonsField } : {}),
       tg_link_token: tgToken,
     });
     if (!(createRes as any)?.ok) {
