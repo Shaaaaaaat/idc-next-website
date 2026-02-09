@@ -152,6 +152,8 @@ export default function HomePage() {
   const [isBuySubmitting, setIsBuySubmitting] = useState(false);
   const [isPricesPopoverOpen, setIsPricesPopoverOpen] = useState(false);
   const [isMobilePricesOpen, setIsMobilePricesOpen] = useState(false);
+  const pricesBtnRef = useRef<HTMLButtonElement | null>(null);
+  const pricesPopoverRef = useRef<HTMLDivElement | null>(null);
 
   // Телефон: +7 маска, иначе интернац. формат
   function formatPhoneInput(raw: string): string {
@@ -337,6 +339,18 @@ export default function HomePage() {
       };
     }, []);
 
+    // Close desktop popover on outside click
+    useEffect(() => {
+      if (!isPricesPopoverOpen) return;
+      const onDocClick = (e: MouseEvent) => {
+        const t = e.target as Node;
+        if (pricesBtnRef.current?.contains(t)) return;
+        if (pricesPopoverRef.current?.contains(t)) return;
+        setIsPricesPopoverOpen(false);
+      };
+      document.addEventListener("click", onDocClick);
+      return () => document.removeEventListener("click", onDocClick);
+    }, [isPricesPopoverOpen]);
 
   return (
     <main className="min-h-screen bg-brand-dark text-white">
@@ -369,6 +383,7 @@ export default function HomePage() {
               <div className="relative">
                 <button
                   type="button"
+                  ref={pricesBtnRef}
                   onClick={() => setIsPricesPopoverOpen((v) => !v)}
                   className="hover:text-white transition-colors"
                   aria-haspopup="menu"
@@ -378,16 +393,20 @@ export default function HomePage() {
                 </button>
                 {isPricesPopoverOpen && (
                   <div
-                    className="absolute left-1/2 -translate-x-1/2 mt-2 w-56 rounded-2xl border border-white/10 bg-brand-dark shadow-xl p-2"
+                    ref={pricesPopoverRef}
+                    className="absolute left-1/2 -translate-x-1/2 mt-2 w-60 rounded-2xl border border-white/10 bg-brand-dark shadow-xl p-2"
                     role="menu"
                   >
+                    <div className="px-3 py-1.5 text-[12px] text-brand-muted/80">
+                      Цены
+                    </div>
                     <a
                       href="#pricing"
                       onClick={() => setIsPricesPopoverOpen(false)}
                       className="block rounded-xl px-3 py-2 text-left hover:bg-white/5"
                       role="menuitem"
                     >
-                      Онлайн‑курсы
+                      на онлайн‑тренировки
                     </a>
                     <a
                       href="#locations"
@@ -395,7 +414,7 @@ export default function HomePage() {
                       className="mt-1 block rounded-xl px-3 py-2 text-left hover:bg-white/5"
                       role="menuitem"
                     >
-                      Залы (в студии)
+                      на тренировки в залах
                     </a>
                   </div>
                 )}
@@ -500,7 +519,7 @@ export default function HomePage() {
                         setIsMobilePricesOpen(false);
                       }}
                     >
-                      Онлайн‑курсы
+                      на онлайн‑тренировки
                     </a>
                     <a
                       href="#locations"
@@ -510,7 +529,7 @@ export default function HomePage() {
                         setIsMobilePricesOpen(false);
                       }}
                     >
-                      Залы (в студии)
+                      на тренировки в залах
                     </a>
                   </div>
                 )}
