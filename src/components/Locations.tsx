@@ -93,6 +93,10 @@ export function Locations({ onOpenPurchaseModal }: LocationsProps) {
   const [leadPhone, setLeadPhone] = useState("");
   const [leadEmail, setLeadEmail] = useState("");
   const [leadPhoneError, setLeadPhoneError] = useState<string | null>(null);
+  const [leadEmailError, setLeadEmailError] = useState<string | null>(null);
+  const [leadNameError, setLeadNameError] = useState<string | null>(null);
+  const [leadAgreed, setLeadAgreed] = useState(false);
+  const [leadAgreeError, setLeadAgreeError] = useState<string | null>(null);
   const [leadLoading, setLeadLoading] = useState(false);
   const [slotsLoading, setSlotsLoading] = useState(false);
   const [slotsError, setSlotsError] = useState<string | null>(null);
@@ -204,6 +208,9 @@ export function Locations({ onOpenPurchaseModal }: LocationsProps) {
     const first = digits[0];
     return first === "7" || first === "8";
   }
+  function isValidEmail(v: string) {
+    return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v.trim());
+  }
 
   async function submitLead() {
     if (!trialContext) return;
@@ -213,6 +220,24 @@ export function Locations({ onOpenPurchaseModal }: LocationsProps) {
       return;
     }
     setLeadPhoneError(null);
+    // validate name
+    if (!leadFullName.trim()) {
+      setLeadNameError("Введите имя и фамилию");
+      return;
+    }
+    setLeadNameError(null);
+    // validate email (required)
+    if (!isValidEmail(leadEmail)) {
+      setLeadEmailError("Проверьте email: формат name@example.com");
+      return;
+    }
+    setLeadEmailError(null);
+    // validate consent
+    if (!leadAgreed) {
+      setLeadAgreeError("Подтвердите согласие с офертой и политикой");
+      return;
+    }
+    setLeadAgreeError(null);
     setLeadLoading(true);
     try {
       const r = await fetch("/api/leads/create", {
@@ -718,12 +743,50 @@ export function Locations({ onOpenPurchaseModal }: LocationsProps) {
                     onChange={(e) => setLeadEmail(e.target.value)}
                     className="w-full rounded-2xl border border-white/10 bg-white/5 px-3 py-2 text-sm outline-none focus:border-brand-primary"
                     placeholder="name@example.com"
+                    required
                   />
+                  {leadEmailError && (
+                    <p className="mt-1 text-[12px] text-red-400">{leadEmailError}</p>
+                  )}
                 </div>
+                {leadNameError && (
+                  <p className="text-[12px] text-red-400">{leadNameError}</p>
+                )}
+                {/* Согласие */}
+                <label className="flex items-start gap-2 text-[11px] sm:text-xs text-brand-muted">
+                  <input
+                    type="checkbox"
+                    checked={leadAgreed}
+                    onChange={(e) => setLeadAgreed(e.target.checked)}
+                    className="mt-0.5 h-3.5 w-3.5 rounded border-white/20 bg-transparent text-brand-primary focus:ring-0"
+                  />
+                  <span>
+                    Я согласен(на) с{" "}
+                    <a
+                      href="/offer"
+                      target="_blank"
+                      className="underline decoration-dotted hover:text-white"
+                    >
+                      условиями Договора оферты
+                    </a>{" "}
+                    и{" "}
+                    <a
+                      href="/privacy"
+                      target="_blank"
+                      className="underline decoration-dotted hover:text-white"
+                    >
+                      Политикой обработки персональных данных
+                    </a>
+                    .
+                  </span>
+                </label>
+                {leadAgreeError && (
+                  <p className="text-[12px] text-red-400">{leadAgreeError}</p>
+                )}
                 <button
                   type="button"
                   onClick={submitLead}
-                  disabled={leadLoading || !leadFullName || !isValidRuPhone(leadPhone)}
+                  disabled={leadLoading}
                   className="mt-2 inline-flex w-full items-center justify-center rounded-full bg-brand-primary px-4 py-2.5 text-sm font-semibold hover:bg-brand-primary/90 transition-colors disabled:opacity-60"
                 >
                   {leadLoading ? "Отправляем..." : "Выбрать день"}
