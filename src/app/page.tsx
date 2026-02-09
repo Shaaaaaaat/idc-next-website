@@ -196,7 +196,7 @@ export default function HomePage() {
     e.preventDefault();
     if (!purchaseOptions || !buyAgreed || isBuySubmitting) return;
     if (!isValidRuPhone(buyPhone)) {
-      setBuyPhoneError("Проверь номер телефона: нужно 11 цифр, формат +7 (XXX) XXX-XX-XX");
+      setBuyPhoneError("Проверьте номер телефона: нужно 11 цифр, формат +7 (XXX) XXX-XX-XX");
       return;
     }
     setBuyPhoneError(null);

@@ -98,7 +98,7 @@ export function Pricing({
     e.preventDefault();
     if (isCertSubmitting || !certAgreed) return;
     if (!isValidRuPhone(certPhone)) {
-      setCertPhoneError("Проверь номер телефона: нужно 11 цифр, формат +7 (XXX) XXX-XX-XX");
+      setCertPhoneError("Проверьте номер телефона: нужно 11 цифр, формат +7 (XXX) XXX-XX-XX");
       return;
     }
     setCertPhoneError(null);

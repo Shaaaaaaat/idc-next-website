@@ -216,7 +216,7 @@ export function Locations({ onOpenPurchaseModal }: LocationsProps) {
     if (!trialContext) return;
     // validate phone
     if (!isValidRuPhone(leadPhone)) {
-      setLeadPhoneError("Проверь номер телефона: нужно 11 цифр, формат +7 (XXX) XXX-XX-XX");
+      setLeadPhoneError("Проверьте номер телефона: нужно 11 цифр, формат +7 (XXX) XXX-XX-XX");
       return;
     }
     setLeadPhoneError(null);
