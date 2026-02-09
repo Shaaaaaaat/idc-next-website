@@ -85,7 +85,7 @@ export default function PaymentSuccessPage() {
   const subtitle = (() => {
     if (loading) return "Проверяем статус...";
     if (statusLabel === "PAID")
-      return "Спасибо! Доступ будет подключён в ближайшее время.";
+      return "Спасибо! Мы отправили вам письмо с инструкциями по дальнейшим шагам.";
     if (statusLabel === "PENDING")
       return "Ждём подтверждение от банка. Обнови страницу через минуту.";
     if (statusLabel === "UNKNOWN")
@@ -109,12 +109,18 @@ export default function PaymentSuccessPage() {
           <p className="text-sm sm:text-base text-brand-muted">{subtitle}</p>
 
           {statusLabel === "PAID" && (
-            <a
-              href={botUrl}
-              className="mt-6 inline-flex w-full items-center justify-center rounded-full bg-brand-primary px-4 py-2.5 text-sm font-semibold hover:bg-brand-primary/90 transition-colors"
-            >
-              Открыть Telegram-бот
-            </a>
+            <>
+              <a
+                href={botUrl}
+                className="mt-6 inline-flex w-full items-center justify-center rounded-full bg-brand-primary px-4 py-2.5 text-sm font-semibold hover:bg-brand-primary/90 transition-colors"
+              >
+                Открыть Telegram-бот
+              </a>
+              <p className="mt-3 text-[13px] text-brand-muted leading-relaxed">
+                В боте вы увидите баланс оставшихся тренировок, сможете заморозить
+                абонемент, докупить новый тариф и быстро связаться с поддержкой.
+              </p>
+            </>
           )}
 
           <div className="mt-4 flex flex-col gap-3">
