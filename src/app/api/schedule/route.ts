@@ -228,7 +228,7 @@ export async function GET(req: NextRequest) {
       for (const w of plannedWeekdays) {
         if (coveredWeekdays.has(w)) continue;
         // Find first date within (days, days+7] that matches weekday w
-        for (let extra = 1; extra <= maxExtendDays; extra++) {
+        for (let extra = 0; extra <= maxExtendDays; extra++) {
           const candUtc = new Date(windowEndUtcMs + extra * 24 * 60 * 60 * 1000);
           if (candUtc.getUTCDay() !== w) continue;
           const y = candUtc.getUTCFullYear();
