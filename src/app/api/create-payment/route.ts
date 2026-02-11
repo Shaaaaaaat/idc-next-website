@@ -116,6 +116,48 @@ async function airtableCreateRecord(fields: Record<string, any>) {
   }
 }
 
+/* ---------------- YDB CF (RU-first) ---------------- */
+async function postToYdbCF(payload: {
+  name: string;
+  phone: string;
+  email?: string;
+  notes?: string;
+}) {
+  const url = process.env.YDB_CF_URL;
+  if (!url) {
+    return { ok: false as const, reason: "cf_url_missing" as const };
+  }
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 7000); // 7s
+  try {
+    const r = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+      signal: controller.signal,
+      cache: "no-store",
+    });
+    clearTimeout(timer);
+    const text = await r.text();
+    let json: any = null;
+    try {
+      json = JSON.parse(text);
+    } catch {}
+    if (!r.ok || !json?.ok) {
+      return {
+        ok: false as const,
+        reason: "cf_failed" as const,
+        status: r.status,
+        text,
+      };
+    }
+    return { ok: true as const, ydb_id: json?.ydb_id ?? null };
+  } catch (e: any) {
+    clearTimeout(timer);
+    return { ok: false as const, reason: "cf_crashed" as const, error: e?.message };
+  }
+}
+
 export async function POST(req: Request) {
   try {
     const body = await req.json();
@@ -157,6 +199,14 @@ export async function POST(req: Request) {
     const paymentId = Date.now();
 
     const paymentUrl = generatePaymentLink(paymentId, amount, email);
+
+    // RU-first: Cloud Function (покупка)
+    const cfRes = await postToYdbCF({
+      name: fullName,
+      phone: body?.phone ?? "",
+      email,
+      notes: "покупка",
+    });
 
     // Сохраняем заказ в Airtable (status=created) и генерим tg-токен для success-страницы
     const tgToken = crypto.randomBytes(16).toString("hex");
@@ -215,6 +265,13 @@ export async function POST(req: Request) {
       studio_id: studioId ?? "",
       slot_start_at: slotStartAt ?? "",
       ...(typeof lessonsField === "number" ? { Lessons: lessonsField } : {}),
+      // RU-first flags
+      ru_first_ok: (cfRes as any)?.ok === true,
+      ydb_id: (cfRes as any)?.ydb_id ?? "",
+      ydb_error:
+        (cfRes as any)?.ok === true
+          ? ""
+          : `${(cfRes as any)?.reason ?? "unknown"}${(cfRes as any)?.status ? `:${(cfRes as any).status}` : ""}`,
       format: formatField,
       tg_link_token: tgToken,
     });

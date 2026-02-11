@@ -25,6 +25,47 @@ function airtableTableUrl(baseId: string, tableId: string) {
   )}`;
 }
 
+async function postToYdbCF(payload: {
+  name: string;
+  phone: string;
+  email?: string;
+  notes?: string;
+}) {
+  const url = process.env.YDB_CF_URL;
+  if (!url) {
+    return { ok: false as const, reason: "cf_url_missing" as const };
+  }
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 7000); // 7s timeout
+  try {
+    const r = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+      signal: controller.signal,
+      cache: "no-store",
+    });
+    clearTimeout(timer);
+    const text = await r.text();
+    let json: any = null;
+    try {
+      json = JSON.parse(text);
+    } catch {}
+    if (!r.ok || !json?.ok) {
+      return {
+        ok: false as const,
+        reason: "cf_failed" as const,
+        status: r.status,
+        text,
+      };
+    }
+    return { ok: true as const, ydb_id: json?.ydb_id ?? null };
+  } catch (e: any) {
+    clearTimeout(timer);
+    return { ok: false as const, reason: "cf_crashed" as const, error: e?.message };
+  }
+}
+
 export async function POST(req: Request) {
   try {
     const body = (await req.json()) as LeadBody;
@@ -40,6 +81,14 @@ export async function POST(req: Request) {
         { status: 400 }
       );
     }
+
+    // 1) RU-first: отправка ПДн в Cloud Function (YDB)
+    const cfRes = await postToYdbCF({
+      name: fullName,
+      phone,
+      email: email || undefined,
+      notes: "лид",
+    });
 
     const env = airtableEnv();
     if (!env.ok) {
@@ -57,6 +106,13 @@ export async function POST(req: Request) {
       Studio: studio,
       // Multi-select must be an array of option names
       Source: ["website"],
+      // RU-first flags
+      ru_first_ok: cfRes.ok === true,
+      ydb_id: (cfRes as any)?.ydb_id ?? "",
+      ydb_error:
+        cfRes.ok === true
+          ? ""
+          : `${(cfRes as any)?.reason ?? "unknown"}${(cfRes as any)?.status ? `:${(cfRes as any).status}` : ""}`,
     };
     if (email) fields.email = email;
 
