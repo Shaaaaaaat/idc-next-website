@@ -40,11 +40,11 @@ async function postToYdbCF(payload: {
   try {
     const internalToken = process.env.CF_INTERNAL_TOKEN;
     const headers: Record<string, string> = { "Content-Type": "application/json" };
-    if (internalToken) headers["X-Internal-Token"] = internalToken;
+    const bodyWithToken = internalToken ? { ...payload, token: internalToken } : payload;
     const r = await fetch(url, {
       method: "POST",
       headers,
-      body: JSON.stringify(payload),
+      body: JSON.stringify(bodyWithToken),
       signal: controller.signal,
       cache: "no-store",
     });
