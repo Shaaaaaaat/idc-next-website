@@ -10,7 +10,7 @@ type Consent = {
 };
 
 const STORAGE_KEY = "idc_cookie_consent_v1";
-const METRIKA_ID = 105882814;
+const METRIKA_ID = Number(process.env.NEXT_PUBLIC_YANDEX_METRIKA_ID);
 
 function readConsent(): Consent | null {
   try {
@@ -47,7 +47,7 @@ export function CookieConsent() {
     if (existing) setAnalyticsEnabled(existing.analytics);
   }, []);
 
-  const metrikaAllowed = !!consent?.analytics;
+  const metrikaAllowed = Number.isFinite(METRIKA_ID) && !!consent?.analytics;
 
   const policyHref = "/cookie-policy";
 
@@ -119,6 +119,8 @@ export function CookieConsent() {
                   webvisor:true,
                   clickmap:true,
                   ecommerce:"dataLayer",
+                  referrer:document.referrer,
+                  url:location.href,
                   accurateTrackBounce:true,
                   trackLinks:true
                 });

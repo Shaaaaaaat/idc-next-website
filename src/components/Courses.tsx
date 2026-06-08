@@ -1,13 +1,38 @@
 // src/components/Courses.tsx
 "use client";
 
+import { useEffect, useRef } from "react";
+import { detectDeviceType, trackGoal } from "@/lib/metrika";
+
 type CoursesProps = {
   onOpenCourseInfo?: (name: string) => void;
 };
 
 export function Courses({ onOpenCourseInfo }: CoursesProps) {
+  const sectionRef = useRef<HTMLElement | null>(null);
+
+  useEffect(() => {
+    const node = sectionRef.current;
+    if (!node) return;
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (!entry.isIntersecting) return;
+        trackGoal("products_view", {
+          product_type: "online",
+          source: "scroll",
+          device: detectDeviceType(),
+        });
+        observer.disconnect();
+      },
+      { threshold: 0.35 }
+    );
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, []);
+
   return (
     <section
+      ref={sectionRef}
       id="courses"
       className="border-t border-black/5 bg-[#F5F7FB] text-brand-dark py-16 sm:py-20 lg:py-24 scroll-mt-[-50px] sm:scroll-mt-0"
     >
@@ -53,16 +78,7 @@ export function Courses({ onOpenCourseInfo }: CoursesProps) {
             "
           >
             {/* 1. Calisthenics Light */}
-            <article
-              className="
-                snap-start flex flex-col shrink-0
-                w-[86%] sm:w-[60%] lg:w-[40%]
-                rounded-3xl bg-white border border-black/5 shadow-sm
-                p-5 sm:p-6
-                transition-all duration-300 ease-out
-                hover:-translate-y-1 hover:shadow-xl hover:border-brand-primary/50
-              "
-            >
+            <article className="snap-start flex flex-col shrink-0 w-[86%] sm:w-[60%] lg:w-[40%] rounded-3xl bg-white border border-black/5 shadow-sm p-5 sm:p-6 transition-all duration-300 ease-out hover:-translate-y-1 hover:shadow-xl hover:border-brand-primary/50">
               <div className="flex items-center justify-between gap-2 mb-3 text-xs">
                 <span className="inline-flex items-center gap-2 rounded-full bg-gray-50 border border-black/10 px-3 py-1 text-gray-600">
                   <span className="h-2 w-2 rounded-full bg-brand-accent" />
@@ -88,9 +104,16 @@ export function Courses({ onOpenCourseInfo }: CoursesProps) {
                 <button
                   type="button"
                   className="w-full rounded-full bg-brand-primary px-4 py-2 text-[13px] font-semibold text-white hover:bg-brand-primary/90"
-                  onClick={() => onOpenCourseInfo?.("Calisthenics Light")}
+                  onClick={() => {
+                    trackGoal("product_select", {
+                      product_type: "online",
+                      product_name: "Calisthenics Light",
+                      source: "scroll",
+                    });
+                    onOpenCourseInfo?.("Calisthenics Light");
+                  }}
                 >
-                  Выбрать курс
+                  Начать с теста-силы
                 </button>
               </div>
             </article>
@@ -131,9 +154,16 @@ export function Courses({ onOpenCourseInfo }: CoursesProps) {
                 <button
                   type="button"
                   className="w-full rounded-full bg-brand-primary px-4 py-2 text-[13px] font-semibold text-white hover:bg-brand-primary/90"
-                  onClick={() => onOpenCourseInfo?.("Calisthenics Classic")}
+                  onClick={() => {
+                    trackGoal("product_select", {
+                      product_type: "online",
+                      product_name: "Calisthenics Classic",
+                      source: "scroll",
+                    });
+                    onOpenCourseInfo?.("Calisthenics Classic");
+                  }}
                 >
-                  Выбрать курс
+                  Начать с теста-силы
                 </button>
               </div>
             </article>
@@ -174,9 +204,16 @@ export function Courses({ onOpenCourseInfo }: CoursesProps) {
                 <button
                   type="button"
                   className="w-full rounded-full bg-brand-primary px-4 py-2 text-[13px] font-semibold text-white hover:bg-brand-primary/90"
-                  onClick={() => onOpenCourseInfo?.("Подтягивания для девушек")}
+                  onClick={() => {
+                    trackGoal("product_select", {
+                      product_type: "online",
+                      product_name: "Подтягивания для девушек",
+                      source: "scroll",
+                    });
+                    onOpenCourseInfo?.("Подтягивания для девушек");
+                  }}
                 >
-                  Выбрать курс
+                  Начать с теста-силы
                 </button>
               </div>
             </article>
@@ -217,9 +254,16 @@ export function Courses({ onOpenCourseInfo }: CoursesProps) {
                 <button
                   type="button"
                   className="w-full rounded-full bg-brand-primary px-4 py-2 text-[13px] font-semibold text-white hover:bg-brand-primary/90"
-                  onClick={() => onOpenCourseInfo?.("Стойка на руках")}
+                  onClick={() => {
+                    trackGoal("product_select", {
+                      product_type: "online",
+                      product_name: "Стойка на руках",
+                      source: "scroll",
+                    });
+                    onOpenCourseInfo?.("Стойка на руках");
+                  }}
                 >
-                  Выбрать курс
+                  Начать с теста-силы
                 </button>
               </div>
             </article>
@@ -253,17 +297,24 @@ export function Courses({ onOpenCourseInfo }: CoursesProps) {
 
               <ul className="mb-4 space-y-1.5 text-sm text-gray-600">
                 <li>• 60–80 минут на тренировку, нужен турник</li>
-                <li>• Сила лопаток и корпуса под гимнастику</li>
-                <li>• Строгие подтягивания и HSPU</li>
+                <li>• Изучение строгих движений</li>
+                <li>• Подтягивания, выходы силой, HSPU</li>
               </ul>
 
               <div className="mt-auto pt-3">
                 <button
                   type="button"
                   className="w-full rounded-full bg-brand-primary px-4 py-2 text-[13px] font-semibold text-white hover:bg-brand-primary/90"
-                  onClick={() => onOpenCourseInfo?.("Калистеника для кроссфитеров")}
+                  onClick={() => {
+                    trackGoal("product_select", {
+                      product_type: "online",
+                      product_name: "Калистеника для кроссфитеров",
+                      source: "scroll",
+                    });
+                    onOpenCourseInfo?.("Калистеника для кроссфитеров");
+                  }}
                 >
-                  Выбрать курс
+                  Начать с теста-силы
                 </button>
               </div>
             </article>

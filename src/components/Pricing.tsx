@@ -1,6 +1,7 @@
 // src/components/Pricing.tsx
 "use client";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { detectDeviceType, trackGoal } from "@/lib/metrika";
 
 function StepDot({ color = "bg-emerald-400" }: { color?: string }) {
   return (
@@ -8,40 +9,25 @@ function StepDot({ color = "bg-emerald-400" }: { color?: string }) {
   );
 }
 
-// отдельные цены для RUB и EUR
 const prices = {
-  review: {
-    RUB: { total: 1100, per: 1100 }, // разовый формат
-    EUR: { total: 11, per: 11 },
-  },
-  month: {
-    RUB: { total: 9600, per: 800 }, // 12 тренировок
-    EUR: { total: 108, per: 9 },
-  },
-  slow12: {
-    RUB: { total: 11400, per: 950 }, // 12 тренировок в спокойном темпе
-    EUR: { total: 120, per: 10 },
-  },
-  long36: {
-    RUB: { total: 25200, per: 700 }, // 36 тренировок
-    EUR: { total: 252, per: 7 },
-  },
+  review: { total: 1100, per: 1100 }, // разовый формат
+  month: { total: 9600, per: 800 }, // 12 тренировок
+  fast12: { total: 11400, per: 950 }, // 12 тренировок в спокойном темпе
+  long36: { total: 25200, per: 700 }, // 36 тренировок
 } as const;
 
-type Currency = "RUB" | "EUR";
-
-function formatPrice(value: number, currency: Currency) {
-  const suffix = currency === "RUB" ? "₽" : "€";
-  return `${value.toLocaleString("ru-RU")} ${suffix}`;
+function formatPrice(value: number) {
+  return `${value.toLocaleString("ru-RU")} ₽`;
 }
 
 // то, что передаём вверх в модалку покупки
 export type PurchaseOptions = {
-  tariffId: "review" | "month" | "slow12" | "long36";
+  tariffId: "review" | "month" | "fast12" | "long36";
   tariffLabel: string;
   amount: number;
-  currency: Currency;
+  currency: "RUB";
   studioName?: string;
+  studioId?: string;
 };
 
 type PricingProps = {
@@ -53,7 +39,27 @@ export function Pricing({
   onOpenTestModal,
   onOpenPurchaseModal,
 }: PricingProps) {
-  const currency: Currency = "RUB";
+  const sectionRef = useRef<HTMLElement | null>(null);
+
+  useEffect(() => {
+    const node = sectionRef.current;
+    if (!node) return;
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (!entry.isIntersecting) return;
+        trackGoal("pricing_view", {
+          product_type: "online",
+          source: "scroll",
+          device: detectDeviceType(),
+        });
+        observer.disconnect();
+      },
+      { threshold: 0.35 }
+    );
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, []);
+
   // Подарочный сертификат — состояние модалки и формы
   const [isCertOpen, setIsCertOpen] = useState(false);
   const [certPayerName, setCertPayerName] = useState("");
@@ -64,6 +70,11 @@ export function Pricing({
   const [certAgreed, setCertAgreed] = useState(false);
   const [isCertSubmitting, setIsCertSubmitting] = useState(false);
   const [certPhoneError, setCertPhoneError] = useState<string | null>(null);
+  const [certPayerNameError, setCertPayerNameError] = useState<string | null>(null);
+  const [certRecipientNameError, setCertRecipientNameError] = useState<string | null>(null);
+  const [certEmailError, setCertEmailError] = useState<string | null>(null);
+  const [certAmountError, setCertAmountError] = useState<string | null>(null);
+  const [certAgreedError, setCertAgreedError] = useState<string | null>(null);
 
   // Телефон: +7 маска, иначе интернац. формат
   function formatPhoneInput(raw: string): string {
@@ -101,18 +112,60 @@ export function Pricing({
     return /^\+\d{8,15}$/.test(compact);
   }
 
+  function isValidEmail(v: string) {
+    return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v.trim());
+  }
+
   async function handleCertificateSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (isCertSubmitting || !certAgreed) return;
+    if (isCertSubmitting) return;
+
+    let hasError = false;
+    if (!certPayerName.trim()) {
+      setCertPayerNameError("Введите ваше имя");
+      hasError = true;
+    } else {
+      setCertPayerNameError(null);
+    }
+    if (!certRecipientName.trim()) {
+      setCertRecipientNameError("Введите имя получателя");
+      hasError = true;
+    } else {
+      setCertRecipientNameError(null);
+    }
+    if (!isValidEmail(certEmail)) {
+      setCertEmailError("Проверьте email: формат name@example.com");
+      hasError = true;
+    } else {
+      setCertEmailError(null);
+    }
     if (!isValidIntlPhone(certPhone)) {
       setCertPhoneError("Проверьте номер телефона: нужно 11 цифр, формат +7 (XXX) XXX-XX-XX");
-      return;
+      hasError = true;
+    } else {
+      setCertPhoneError(null);
     }
-    setCertPhoneError(null);
     const amountNumber = Number((certAmount || "").replace(/[^\d]/g, ""));
-    if (!amountNumber || amountNumber <= 0) return;
+    if (!amountNumber || amountNumber <= 0) {
+      setCertAmountError("Укажите сумму");
+      hasError = true;
+    } else {
+      setCertAmountError(null);
+    }
+    if (!certAgreed) {
+      setCertAgreedError("Подтвердите согласие с офертой и политикой");
+      hasError = true;
+    } else {
+      setCertAgreedError(null);
+    }
+    if (hasError) return;
 
     setIsCertSubmitting(true);
+    trackGoal("signup_submit", {
+      product_type: "online",
+      product_name: "Подарочный сертификат",
+      source: "scroll",
+    });
     try {
       const res = await fetch("/api/create-payment", {
         method: "POST",
@@ -125,7 +178,7 @@ export function Pricing({
           tariffId: "review",
           tariffLabel: "Подарочный сертификат",
           amount: amountNumber,
-          currency,
+          currency: "RUB",
           studioName: null,
         }),
       });
@@ -146,6 +199,7 @@ export function Pricing({
 
   return (
     <section
+      ref={sectionRef}
       id="pricing"
       className="py-16 sm:py-20 lg:py-24 border-t border-white/5 scroll-mt-[calc(var(--header-h)+var(--anchor-extra))]"
     >
@@ -203,7 +257,7 @@ export function Pricing({
                 1 тренировка
               </h3>
               <p className="text-[15px] font-semibold mb-1 min-h-[24px] sm:min-h-[28px]">
-                {formatPrice(prices.review[currency].total, currency)}
+                {formatPrice(prices.review.total)}
               </p>
               <p className="text-[11px] text-brand-muted mb-4 min-h-[18px] sm:min-h-[20px]">
                 доступ 4 недели
@@ -220,14 +274,19 @@ export function Pricing({
             <div className="mt-auto pt-4">
               <button
                 className="w-full rounded-full border border-white/40 px-4 py-2.5 text-[13px] sm:text-sm font-semibold hover:bg-white/10 transition-colors"
-                onClick={() =>
+                onClick={() => {
+                  trackGoal("signup_click", {
+                    product_type: "online",
+                    product_name: "1 тренировка",
+                    source: "scroll",
+                  });
                   onOpenPurchaseModal?.({
                     tariffId: "review",
                     tariffLabel: "1 тренировка",
-                    amount: prices.review[currency].total,
-                    currency,
-                  })
-                }
+                    amount: prices.review.total,
+                    currency: "RUB",
+                  });
+                }}
               >
                 Купить
               </button>
@@ -245,7 +304,7 @@ export function Pricing({
                 12 тренировок
               </h3>
               <p className="text-[15px] font-semibold mb-1 min-h-[24px] sm:min-h-[28px]">
-                {formatPrice(prices.month[currency].total, currency)}
+                {formatPrice(prices.month.total)}
               </p>
               <p className="text-[11px] text-brand-muted mb-4 min-h-[18px] sm:min-h-[20px]">доступ 4 недели</p>
               <ul className="mb-4 space-y-1.5 text-[12px] sm:text-xs text-brand-muted">
@@ -260,14 +319,19 @@ export function Pricing({
             <div className="mt-auto pt-4">
               <button
                 className="w-full rounded-full border border-white/40 px-4 py-2.5 text-[13px] sm:text-sm font-semibold hover:bg-white/10 transition-colors"
-                onClick={() =>
+                onClick={() => {
+                  trackGoal("signup_click", {
+                    product_type: "online",
+                    product_name: "12 тренировок (интенсивный блок)",
+                    source: "scroll",
+                  });
                   onOpenPurchaseModal?.({
                     tariffId: "month",
                     tariffLabel: "12 тренировок (интенсивный блок)",
-                    amount: prices.month[currency].total,
-                    currency,
-                  })
-                }
+                    amount: prices.month.total,
+                    currency: "RUB",
+                  });
+                }}
               >
                 Купить
               </button>
@@ -288,7 +352,7 @@ export function Pricing({
                   12 тренировок
                 </h3>
                 <p className="text-[15px] font-semibold mb-1 min-h-[24px] sm:min-h-[28px]">
-                  {formatPrice(prices.slow12[currency].total, currency)}
+                  {formatPrice(prices.fast12.total)}
                 </p>
                 <p className="text-[11px] text-brand-muted mb-4 min-h-[18px] sm:min-h-[20px]">доступ 8 недель</p>
                 <ul className="mb-4 space-y-1.5 text-[12px] sm:text-xs text-brand-muted">
@@ -303,14 +367,19 @@ export function Pricing({
               <div className="mt-auto pt-4">
                 <button
                   className="mt-3 w-full rounded-full border border-white/40 bg-transparent px-4 py-2.5 text-[13px] sm:text-sm font-semibold text-white hover:bg-white/10 transition-colors"
-                  onClick={() =>
+                  onClick={() => {
+                    trackGoal("signup_click", {
+                      product_type: "online",
+                      product_name: "12 тренировок (спокойный формат)",
+                      source: "scroll",
+                    });
                     onOpenPurchaseModal?.({
-                      tariffId: "slow12",
+                      tariffId: "fast12",
                       tariffLabel: "12 тренировок (спокойный формат)",
-                      amount: prices.slow12[currency].total,
-                      currency,
-                    })
-                  }
+                      amount: prices.fast12.total,
+                      currency: "RUB",
+                    });
+                  }}
                 >
                   Купить
                 </button>
@@ -332,7 +401,7 @@ export function Pricing({
                 </h3>
 
                 <p className="text-[15px] font-semibold text-white min-h-[24px] sm:min-h-[28px]">
-                  {formatPrice(prices.long36[currency].total, currency)}
+                  {formatPrice(prices.long36.total)}
                 </p>
                 <p className="text-[11px] text-brand-muted mb-4 min-h-[18px] sm:min-h-[20px]">доступ 18 недель</p>
                 <ul className="mb-4 space-y-1.5 text-[12px] sm:text-xs text-brand-muted">
@@ -346,14 +415,19 @@ export function Pricing({
 
               <button
                 className="mt-3 w-full rounded-full border border-white/40 bg-transparent px-4 py-2.5 text-[13px] sm:text-sm font-semibold text-white hover:bg-white/10 transition-colors"
-                onClick={() =>
+                onClick={() => {
+                  trackGoal("signup_click", {
+                    product_type: "online",
+                    product_name: "36 тренировок",
+                    source: "scroll",
+                  });
                   onOpenPurchaseModal?.({
                     tariffId: "long36",
                     tariffLabel: "36 тренировок",
-                    amount: prices.long36[currency].total,
-                    currency,
-                  })
-                }
+                    amount: prices.long36.total,
+                    currency: "RUB",
+                  });
+                }}
               >
                 Купить
               </button>
@@ -366,7 +440,14 @@ export function Pricing({
           <div className="mt-3">
             <button
               type="button"
-              onClick={() => setIsCertOpen(true)}
+              onClick={() => {
+                trackGoal("signup_click", {
+                  product_type: "online",
+                  product_name: "Подарочный сертификат",
+                  source: "scroll",
+                });
+                setIsCertOpen(true);
+              }}
               className="text-white underline decoration-dotted hover:opacity-90"
             >
               Подарить сертификат
@@ -403,66 +484,91 @@ export function Pricing({
 
               <form className="space-y-4" onSubmit={handleCertificateSubmit}>
                 <div className="space-y-1">
-                  <label className="text-xs sm:text-sm text-brand-muted">Ваше имя</label>
+                  <label className="text-xs sm:text-sm text-brand-muted">Фамилия и имя</label>
                   <input
                     type="text"
                     value={certPayerName}
-                    onChange={(e) => setCertPayerName(e.target.value)}
+                    onChange={(e) => {
+                      setCertPayerName(e.target.value);
+                      setCertPayerNameError(null);
+                    }}
                     required
-                    className="w-full rounded-2xl border border-white/10 bg-white/5 px-3 py-2 text-sm outline-none focus:border-brand-primary"
-                    placeholder="Например: Анна Иванова"
+                    className={`w-full rounded-2xl border bg-white/5 px-3 py-2 text-sm outline-none focus:border-brand-primary ${certPayerNameError ? "border-red-400 ring-1 ring-red-400" : "border-white/10"}`}
+                    placeholder="Например: Иванова Анна"
                   />
+                  {certPayerNameError && (
+                    <p className="mt-1 text-[12px] text-red-400">{certPayerNameError}</p>
+                  )}
                 </div>
                 <div className="space-y-1">
                   <label className="text-xs sm:text-sm text-brand-muted">Имя получателя</label>
                   <input
                     type="text"
                     value={certRecipientName}
-                    onChange={(e) => setCertRecipientName(e.target.value)}
+                    onChange={(e) => {
+                      setCertRecipientName(e.target.value);
+                      setCertRecipientNameError(null);
+                    }}
                     required
-                    className="w-full rounded-2xl border border-white/10 bg-white/5 px-3 py-2 text-sm outline-none focus:border-brand-primary"
+                    className={`w-full rounded-2xl border bg-white/5 px-3 py-2 text-sm outline-none focus:border-brand-primary ${certRecipientNameError ? "border-red-400 ring-1 ring-red-400" : "border-white/10"}`}
                     placeholder="Кому дарим сертификат"
                   />
+                  {certRecipientNameError && (
+                    <p className="mt-1 text-[12px] text-red-400">{certRecipientNameError}</p>
+                  )}
                 </div>
                 <div className="space-y-1">
                   <label className="text-xs sm:text-sm text-brand-muted">Email</label>
                   <input
                     type="email"
                     value={certEmail}
-                    onChange={(e) => setCertEmail(e.target.value)}
+                    onChange={(e) => {
+                      setCertEmail(e.target.value);
+                      setCertEmailError(null);
+                    }}
                     required
-                    className="w-full rounded-2xl border border-white/10 bg-white/5 px-3 py-2 text-sm outline-none focus:border-brand-primary"
-                    placeholder="you@example.com"
+                    className={`w-full rounded-2xl border bg-white/5 px-3 py-2 text-sm outline-none focus:border-brand-primary ${certEmailError ? "border-red-400 ring-1 ring-red-400" : "border-white/10"}`}
+                    placeholder="name@example.com"
                   />
+                  {certEmailError && (
+                    <p className="mt-1 text-[12px] text-red-400">{certEmailError}</p>
+                  )}
                 </div>
                 <div className="space-y-1">
                   <label className="text-xs sm:text-sm text-brand-muted">Телефон</label>
                   <input
                     type="tel"
                     value={certPhone}
-                    onChange={(e) => setCertPhone(formatPhoneInput(e.target.value))}
+                    onChange={(e) => {
+                      setCertPhone(formatPhoneInput(e.target.value));
+                      setCertPhoneError(null);
+                    }}
                     onFocus={() => {
                       if (!certPhone) {
                         setCertPhone("+7 ");
                       }
                     }}
-                    onBlur={() => {
-                      const v = (certPhone || "").trim();
+                    onBlur={(e) => {
+                      const v = (e.currentTarget.value || "").trim();
                       if (!v) return;
+
+                      let next = v;
                       if (v === "+7" || v === "+7)") {
                         setCertPhone("");
                         return;
                       }
                       if (/^\+?7/.test(v) || /^8/.test(v)) {
-                        setCertPhone(formatPhoneInput(v));
+                        next = formatPhoneInput(v);
                       } else {
                         const cleaned = v.replace(/[^\d+]/g, "").replace(/(?!^)\+/g, "");
-                        setCertPhone(cleaned.startsWith("+") ? cleaned : "+" + cleaned);
+                        next = cleaned.startsWith("+") ? cleaned : "+" + cleaned;
                       }
+                      setCertPhone(next);
+                      if (certPhoneError && isValidIntlPhone(next)) setCertPhoneError(null);
                     }}
                     inputMode="tel"
                     required
-                    className="w-full rounded-2xl border border-white/10 bg-white/5 px-3 py-2 text-sm outline-none focus:border-brand-primary"
+                    className={`w-full rounded-2xl border bg-white/5 px-3 py-2 text-sm outline-none focus:border-brand-primary ${certPhoneError ? "border-red-400 ring-1 ring-red-400" : "border-white/10"}`}
                     placeholder="(___) ___-__-__"
                   />
                   {certPhoneError && (
@@ -475,18 +581,27 @@ export function Pricing({
                     type="text"
                     inputMode="numeric"
                     value={certAmount}
-                    onChange={(e) => setCertAmount(e.target.value.replace(/[^\d]/g, ""))}
+                    onChange={(e) => {
+                      setCertAmount(e.target.value.replace(/[^\d]/g, ""));
+                      setCertAmountError(null);
+                    }}
                     required
-                    className="w-full rounded-2xl border border-white/10 bg-white/5 px-3 py-2 text-sm outline-none focus:border-brand-primary"
+                    className={`w-full rounded-2xl border bg-white/5 px-3 py-2 text-sm outline-none focus:border-brand-primary ${certAmountError ? "border-red-400 ring-1 ring-red-400" : "border-white/10"}`}
                     placeholder="Например: 5000"
                   />
+                  {certAmountError && (
+                    <p className="mt-1 text-[12px] text-red-400">{certAmountError}</p>
+                  )}
                 </div>
 
                 <label className="flex items-start gap-2 text-[11px] sm:text-xs text-brand-muted">
                   <input
                     type="checkbox"
                     checked={certAgreed}
-                    onChange={(e) => setCertAgreed(e.target.checked)}
+                    onChange={(e) => {
+                      setCertAgreed(e.target.checked);
+                      setCertAgreedError(null);
+                    }}
                     className="mt-0.5 h-3.5 w-3.5 rounded border-white/20 bg-transparent text-brand-primary focus:ring-0"
                     required
                   />
@@ -502,10 +617,13 @@ export function Pricing({
                     .
                   </span>
                 </label>
+                {certAgreedError && (
+                  <p className="text-[12px] text-red-400">{certAgreedError}</p>
+                )}
 
                 <button
                   type="submit"
-                  disabled={isCertSubmitting || !certAgreed || !isValidIntlPhone(certPhone)}
+                  disabled={isCertSubmitting}
                   className="mt-2 inline-flex w-full items-center justify-center rounded-full bg-brand-primary px-4 py-2.5 text-sm font-semibold disabled:opacity-60 disabled:pointer-events-none hover:bg-brand-primary/90 transition-colors"
                 >
                   {isCertSubmitting ? "Переходим к оплате..." : "Оплатить сертификат"}

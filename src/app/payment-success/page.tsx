@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { inferProductType, mapTagToTariffLabel, trackGoal } from "@/lib/metrika";
 
 type CheckPaymentResp =
   | {
@@ -11,6 +12,7 @@ type CheckPaymentResp =
       purchasePayload?: {
         transaction_id: string;
         tariff_label?: string;
+        tag?: string;
         currency?: string;
         value?: number;
         course_name?: string;
@@ -27,6 +29,7 @@ export default function PaymentSuccessPage() {
   const [resp, setResp] = useState<CheckPaymentResp | null>(null);
   const [paymentId, setPaymentId] = useState<string>("");
   const tgToken = useMemo(() => String((resp as any)?.tgToken ?? "").trim(), [resp]);
+  const purchaseSentRef = useRef(false);
 
   useEffect(() => {
     const sp = new URLSearchParams(window.location.search);
@@ -97,6 +100,28 @@ export default function PaymentSuccessPage() {
     ? `https://t.me/IDCMAIN_bot?start=${encodeURIComponent(tgToken)}`
     : "https://t.me/IDCMAIN_bot";
 
+  const purchasePayload = (resp as any)?.purchasePayload ?? null;
+  const productName = String(purchasePayload?.course_name ?? "").trim();
+  const priceValue = Number(purchasePayload?.value ?? 0) || 0;
+  const tariffLabel = mapTagToTariffLabel(
+    String(purchasePayload?.tag ?? purchasePayload?.tariff_label ?? "")
+  );
+
+  useEffect(() => {
+    if (purchaseSentRef.current) return;
+    if (statusLabel !== "PAID") return;
+    if (!paymentId) return;
+    purchaseSentRef.current = true;
+
+    trackGoal("purchase", {
+      product_type: inferProductType(productName),
+      product_name: productName || "unknown",
+      tariff_label: tariffLabel || "unknown",
+      order_price: priceValue,
+      payment_id: paymentId,
+    });
+  }, [statusLabel, paymentId, productName, tariffLabel, priceValue]);
+
   return (
     <main className="min-h-screen bg-brand-dark text-white flex items-center justify-center px-4">
       <div className="w-full max-w-md">
@@ -112,6 +137,15 @@ export default function PaymentSuccessPage() {
             <>
               <a
                 href={botUrl}
+                onClick={() =>
+                  trackGoal("telegram_bot_open_click", {
+                    payment_id: paymentId,
+                    tariff_label: tariffLabel || "unknown",
+                    product_name: productName || "unknown",
+                    order_price: priceValue,
+                    source: "CTA",
+                  })
+                }
                 className="mt-6 inline-flex w-full items-center justify-center rounded-full bg-brand-primary px-4 py-2.5 text-sm font-semibold hover:bg-brand-primary/90 transition-colors"
               >
                 Открыть Telegram-бот
@@ -122,27 +156,6 @@ export default function PaymentSuccessPage() {
               </p>
             </>
           )}
-
-          <div className="mt-4 flex flex-col gap-3">
-            <a
-              href="/#pricing"
-              className="rounded-full border border-white/40 px-4 py-2 text-sm font-semibold text-white hover:bg-white/10 transition-colors"
-            >
-              Вернуться к тарифам
-            </a>
-            <a
-              href="/"
-              className="rounded-full bg-white/10 px-4 py-2 text-sm font-semibold hover:bg-white/15 transition-colors"
-            >
-              На главную
-            </a>
-          </div>
-
-          {paymentId ? (
-            <p className="mt-5 text-[11px] text-brand-muted/80 break-all">
-              InvId: <span className="text-white/90">{paymentId}</span>
-            </p>
-          ) : null}
         </div>
       </div>
     </main>

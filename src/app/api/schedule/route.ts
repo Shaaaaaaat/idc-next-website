@@ -7,6 +7,10 @@ import {
   type StudioId,
   type Weekday,
 } from "@/data/studioRules";
+import {
+  getProductionCalendarOverride,
+  getStudioDateTimesOverride,
+} from "@/data/productionCalendar";
 
 type Rule = {
   id: string;
@@ -173,25 +177,30 @@ export async function GET(req: NextRequest) {
       }
       // Holiday / working weekend adjustments
       const dateNoonUtc = new Date(Date.UTC(y, m - 1, day, 12, 0, 0));
-      const isHoliday = !!hd.isHoliday(dateNoonUtc);
+      const override = getProductionCalendarOverride(dateKey);
+      const isHoliday = override === "non_working" || !!hd.isHoliday(dateNoonUtc);
       const isWeekend = weekdayMsk === 0 || weekdayMsk === 6;
-      let isWorkingWeekend = false;
+      let isWorkingWeekend = override === "working";
       // @ts-ignore optional API across versions
-      if (typeof (hd as any).isBusinessDay === "function" && isWeekend) {
+      if (!isWorkingWeekend && typeof (hd as any).isBusinessDay === "function" && isWeekend) {
         // Business day on weekend (official working Sat/Sun)
         // @ts-ignore
         isWorkingWeekend = (hd as any).isBusinessDay(dateNoonUtc) === true;
       }
-      if (!isWeekend && isHoliday) {
-        // weekday holiday → use Saturday template
-        weekdayMsk = 6 as Weekday;
+      const isWeekdayHoliday = !isWeekend && isHoliday;
+      if (isWeekdayHoliday) {
+        // weekday holiday → use Saturday template only if studio normally trains on this weekday
+        const hasOverride = !!getStudioDateTimesOverride(studioKey, dateKey);
+        const trainsOnThisWeekday = !!(studioRules[studioKey]?.[originalWeekday]?.length);
+        if (!hasOverride && !trainsOnThisWeekday) continue;
+        if (!hasOverride && trainsOnThisWeekday) weekdayMsk = 6 as Weekday;
       } else if (isWeekend && isWorkingWeekend) {
         // working weekend → map to studio-specific weekday
         const mapped = workingWeekendWeekdayByStudio[studioKey];
         weekdayMsk = mapped;
       }
 
-      const times = studioRules[studioKey]?.[weekdayMsk] ?? [];
+      const times = resolveHolidayTimes(studioKey, dateKey, weekdayMsk, isWeekdayHoliday);
       if (!times.length) continue;
 
       let producedForThisDate = false;
@@ -203,12 +212,12 @@ export async function GET(req: NextRequest) {
         const localIso = `${y}-${toTwo(m)}-${toTwo(day)}T${toTwo(hh)}:${toTwo(mm)}:00+03:00`;
         // derive ISO UTC for reference
         const iso = new Date(localIso).toISOString();
-        // Filter out same-day slots starting in < 3 hours from now (MSK)
+        // Filter out same-day slots starting in < 1 hour from now (MSK)
         if (di === 0) {
           const slotUtc = new Date(localIso); // Date parses +03:00 and stores UTC internally
           const diffMs = slotUtc.getTime() - nowUtc.getTime();
-          const threeHoursMs = 3 * 60 * 60 * 1000;
-          if (diffMs < threeHoursMs) continue;
+          const oneHourMs = 1 * 60 * 60 * 1000;
+          if (diffMs < oneHourMs) continue;
         }
         resultSlots.push({
           id,
@@ -246,21 +255,26 @@ export async function GET(req: NextRequest) {
           // Apply holiday/working-weekend logic
           let weekdayMsk: Weekday = candUtc.getUTCDay() as Weekday;
           const dateNoonUtc = new Date(Date.UTC(y, m - 1, day, 12, 0, 0));
-          const isHoliday = !!hd.isHoliday(dateNoonUtc);
+          const override = getProductionCalendarOverride(dateKey);
+          const isHoliday = override === "non_working" || !!hd.isHoliday(dateNoonUtc);
           const isWeekend = weekdayMsk === 0 || weekdayMsk === 6;
-          let isWorkingWeekend = false;
+          let isWorkingWeekend = override === "working";
           // @ts-ignore
-          if (typeof (hd as any).isBusinessDay === "function" && isWeekend) {
+          if (!isWorkingWeekend && typeof (hd as any).isBusinessDay === "function" && isWeekend) {
             // @ts-ignore
             isWorkingWeekend = (hd as any).isBusinessDay(dateNoonUtc) === true;
           }
-          if (!isWeekend && isHoliday) {
-            weekdayMsk = 6 as Weekday;
+          const isWeekdayHoliday = !isWeekend && isHoliday;
+          if (isWeekdayHoliday) {
+            const hasOverride = !!getStudioDateTimesOverride(studioKey, dateKey);
+            const trainsOnThisWeekday = !!(studioRules[studioKey]?.[w]?.length);
+            if (!hasOverride && !trainsOnThisWeekday) continue;
+            if (!hasOverride && trainsOnThisWeekday) weekdayMsk = 6 as Weekday;
           } else if (isWeekend && isWorkingWeekend) {
             const mapped = workingWeekendWeekdayByStudio[studioKey];
             weekdayMsk = mapped;
           }
-          const times = studioRules[studioKey]?.[weekdayMsk] ?? [];
+          const times = resolveHolidayTimes(studioKey, dateKey, weekdayMsk, isWeekdayHoliday);
           if (!times.length) continue;
           // Push all times for this candidate date (no 3h filter since it's not "today")
           for (const t of times) {
@@ -313,4 +327,23 @@ function addDays(date: Date, days: number) {
   const d = new Date(date);
   d.setDate(d.getDate() + days);
   return d;
+}
+
+function resolveHolidayTimes(
+  studioKey: StudioId,
+  dateKey: string,
+  weekdayMsk: Weekday,
+  isWeekdayHoliday: boolean
+): string[] {
+  const dateOverride = getStudioDateTimesOverride(studioKey, dateKey);
+  if (dateOverride) return dateOverride;
+
+  const byWeekday = studioRules[studioKey]?.[weekdayMsk] ?? [];
+  if (byWeekday.length) return byWeekday;
+
+  // Base rule: if a weekday turned into a non-working day and there is no weekend
+  // template for the studio, provide a default daytime slot.
+  if (isWeekdayHoliday) return ["12:00"];
+
+  return [];
 }

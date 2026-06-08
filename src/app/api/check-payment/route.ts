@@ -56,6 +56,7 @@ export async function POST(req: Request) {
       purchasePayload: {
         transaction_id: paymentId,
         tariff_label: String(fields?.tariff_label ?? "").trim() || undefined,
+        tag: String(fields?.Tag ?? "").trim() || undefined,
         currency: String(fields?.Currency ?? "").trim() || undefined,
         value: Number(fields?.Sum ?? 0) || 0,
         course_name: String(fields?.course_name ?? "").trim() || undefined,

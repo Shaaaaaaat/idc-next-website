@@ -19,6 +19,7 @@ import { FAQ } from "@/components/FAQ";
 import { Testimonials } from "@/components/Testimonials";
 import { courseNames } from "@/data/courses";
 import { Footer } from "@/components/Footer";
+import { trackGoal, detectDeviceType } from "@/lib/metrika";
 
 function HowStepCard({
   children,
@@ -70,6 +71,17 @@ function HowStepCard({
 export default function HomePage() {
   /* ---------- Мобильное меню ---------- */
   const [isMobileNavOpen, setIsMobileNavOpen] = useState(false);
+  const productsViewSentRef = useRef<Record<string, boolean>>({});
+  function trackProductsView(productType: "online" | "gym", source: "menu" | "CTA" | "scroll") {
+    const key = `${productType}:${source}`;
+    if (productsViewSentRef.current[key]) return;
+    productsViewSentRef.current[key] = true;
+    trackGoal("products_view", {
+      product_type: productType,
+      source,
+      device: detectDeviceType(),
+    });
+  }
 
   /* ---------- Модалка теста силы ---------- */
   const [isTestModalOpen, setIsTestModalOpen] = useState(false);
@@ -78,6 +90,9 @@ export default function HomePage() {
   const [testFullName, setTestFullName] = useState("");
   const [testEmail, setTestEmail] = useState("");
   const [testAgreed, setTestAgreed] = useState(false);
+  const [testFullNameError, setTestFullNameError] = useState<string | null>(null);
+  const [testEmailError, setTestEmailError] = useState<string | null>(null);
+  const [testAgreedError, setTestAgreedError] = useState<string | null>(null);
   const [isTestSubmitting, setIsTestSubmitting] = useState(false);
 
   function openTestModal(context?: string) {
@@ -90,9 +105,34 @@ export default function HomePage() {
     setIsTestModalOpen(false);
   }
 
+  function isValidEmail(v: string) {
+    return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v.trim());
+  }
+
   async function handleTestSubmit(e: FormEvent) {
     e.preventDefault();
-    if (!testAgreed || isTestSubmitting) return;
+    if (isTestSubmitting) return;
+
+    let hasError = false;
+    if (!testFullName.trim()) {
+      setTestFullNameError("Введите имя и фамилию");
+      hasError = true;
+    } else {
+      setTestFullNameError(null);
+    }
+    if (!isValidEmail(testEmail)) {
+      setTestEmailError("Проверьте email: формат name@example.com");
+      hasError = true;
+    } else {
+      setTestEmailError(null);
+    }
+    if (!testAgreed) {
+      setTestAgreedError("Подтвердите согласие с политикой");
+      hasError = true;
+    } else {
+      setTestAgreedError(null);
+    }
+    if (hasError) return;
 
     setIsTestSubmitting(true);
 
@@ -113,6 +153,9 @@ export default function HomePage() {
         setTestFullName("");
         setTestEmail("");
         setTestAgreed(false);
+        setTestFullNameError(null);
+        setTestEmailError(null);
+        setTestAgreedError(null);
         setIsTestModalOpen(false);
       }
     } catch (err) {
@@ -147,7 +190,11 @@ export default function HomePage() {
   const [buyEmail, setBuyEmail] = useState("");
   const [buyPhone, setBuyPhone] = useState("");
   const [buyPhoneError, setBuyPhoneError] = useState<string | null>(null);
+  const [buyFullNameError, setBuyFullNameError] = useState<string | null>(null);
+  const [buyEmailError, setBuyEmailError] = useState<string | null>(null);
+  const [buyAgreedError, setBuyAgreedError] = useState<string | null>(null);
   const [buyCourse, setBuyCourse] = useState<string>("");
+  const [buyCourseError, setBuyCourseError] = useState<string | null>(null);
   const [buyAgreed, setBuyAgreed] = useState(false);
   const [isBuySubmitting, setIsBuySubmitting] = useState(false);
   const [isPricesPopoverOpen, setIsPricesPopoverOpen] = useState(false);
@@ -208,14 +255,54 @@ export default function HomePage() {
 
   async function handlePurchaseSubmit(e: FormEvent) {
     e.preventDefault();
-    if (!purchaseOptions || !buyAgreed || isBuySubmitting) return;
+    if (!purchaseOptions || isBuySubmitting) return;
+
+    let hasError = false;
+    if (!buyFullName.trim()) {
+      setBuyFullNameError("Введите имя и фамилию");
+      hasError = true;
+    } else {
+      setBuyFullNameError(null);
+    }
     if (!isValidIntlPhone(buyPhone)) {
       setBuyPhoneError("Проверьте номер телефона: нужно 11 цифр, формат +7 (XXX) XXX-XX-XX");
-      return;
+      hasError = true;
+    } else {
+      setBuyPhoneError(null);
     }
-    setBuyPhoneError(null);
+    if (!isValidEmail(buyEmail)) {
+      setBuyEmailError("Проверьте email: формат name@example.com");
+      hasError = true;
+    } else {
+      setBuyEmailError(null);
+    }
+    const showCourseSelect = !purchaseOptions.studioName && !cameFromCourseInfo;
+    if (showCourseSelect && !buyCourse.trim()) {
+      setBuyCourseError("Выберите курс");
+      hasError = true;
+    } else {
+      setBuyCourseError(null);
+    }
+    if (!buyAgreed) {
+      setBuyAgreedError("Подтвердите согласие с офертой и политикой");
+      hasError = true;
+    } else {
+      setBuyAgreedError(null);
+    }
+    if (hasError) return;
 
     setIsBuySubmitting(true);
+    const submitProductType: "online" | "gym" = purchaseOptions.studioName ? "gym" : "online";
+    const submitProductName = purchaseOptions.studioName
+      ? purchaseOptions.studioName
+      : (cameFromCourseInfo && selectedCourseName
+          ? selectedCourseName
+          : buyCourse || purchaseOptions.tariffLabel);
+    trackGoal("signup_submit", {
+      product_type: submitProductType,
+      product_name: submitProductName,
+      source: "scroll",
+    });
 
     try {
       const res = await fetch("/api/create-payment", {
@@ -231,6 +318,7 @@ export default function HomePage() {
           amount: purchaseOptions.amount,
           currency: purchaseOptions.currency,
           studioName: purchaseOptions.studioName ?? null,
+          studioId: purchaseOptions.studioId ?? null,
         }),
       });
 
@@ -377,7 +465,11 @@ export default function HomePage() {
               <a href="#how" className="hover:text-white transition-colors">
                 Как это работает
               </a>
-              <a href="#courses" className="hover:text-white transition-colors">
+              <a
+                href="#courses"
+                className="hover:text-white transition-colors"
+                onClick={() => trackProductsView("online", "menu")}
+              >
                 Курсы
               </a>
               <div className="relative">
@@ -419,6 +511,7 @@ export default function HomePage() {
               <a
                 href="#locations"
                 className="hover:text-white transition-colors"
+                onClick={() => trackProductsView("gym", "menu")}
               >
                 Залы
               </a>
@@ -494,7 +587,10 @@ export default function HomePage() {
                 <a
                   href="#courses"
                   className="rounded-2xl px-3 py-2 hover:bg-white/5"
-                  onClick={() => setIsMobileNavOpen(false)}
+                  onClick={() => {
+                    trackProductsView("online", "menu");
+                    setIsMobileNavOpen(false);
+                  }}
                 >
                   Курсы
                 </a>
@@ -533,7 +629,10 @@ export default function HomePage() {
                 <a
                   href="#locations"
                   className="rounded-2xl px-3 py-2 hover:bg-white/5"
-                  onClick={() => setIsMobileNavOpen(false)}
+                  onClick={() => {
+                    trackProductsView("gym", "menu");
+                    setIsMobileNavOpen(false);
+                  }}
                 >
                   Залы
                 </a>
@@ -561,16 +660,16 @@ export default function HomePage() {
               </div>
 
               <div className="space-y-2">
-                <button
-                  type="button"
+                <a
+                  href="#courses"
                   onClick={() => {
+                    trackProductsView("online", "CTA");
                     setIsMobileNavOpen(false);
-                    openTestModal("Моб. меню: Пройти тест силы");
                   }}
-                  className="w-full rounded-full bg-brand-primary px-4 py-3 text-sm font-semibold text-white hover:bg-brand-primary/90 transition-colors"
+                  className="block w-full text-center rounded-full bg-brand-primary px-4 py-3 text-sm font-semibold text-white hover:bg-brand-primary/90 transition-colors"
                 >
-                  Пройти тест силы
-                </button>
+                  Посмотреть курсы
+                </a>
               </div>
             </nav>
           </div>
@@ -604,6 +703,7 @@ export default function HomePage() {
               <a
                 href="#courses"
                 className="inline-flex items-center justify-center rounded-full bg-brand-primary px-6 py-3 text-sm sm:text-base font-semibold text-white shadow-soft hover:bg-brand-primary/90 transition-colors"
+                onClick={() => trackProductsView("online", "CTA")}
               >
                 Посмотреть курсы
               </a>
@@ -611,6 +711,7 @@ export default function HomePage() {
               <a
                 href="#locations"
                 className="inline-flex items-center justify-center rounded-full border border-white/20 px-6 py-3 text-sm sm:text-base font-semibold hover:bg-white/5 transition-colors"
+                onClick={() => trackProductsView("gym", "CTA")}
               >
                 Записаться в зал
               </a>
@@ -637,14 +738,14 @@ export default function HomePage() {
             <div className="relative rounded-4xl bg-gradient-to-br from-brand-blue to-[#111827] p-1 shadow-soft">
               <div className="rounded-4xl bg-brand-dark/90 border border-white/10 p-4 sm:p-5 lg:p-6">
                 <div className="relative overflow-hidden rounded-3xl bg-black/60 h-56 sm:h-64 lg:h-72 mb-4 sm:mb-5">
-                  <video
-                    className="absolute inset-0 h-full w-full object-cover"
-                    src="/hero-preview2.mp4"
-                    playsInline
-                    muted
-                    autoPlay
-                    loop
-                  />
+                <video
+  className="absolute inset-0 h-full w-full object-cover"
+  src="https://storage.yandexcloud.net/idc-website-app/hero-preview2.mp4"
+  playsInline
+  muted
+  autoPlay
+  loop
+/>
                 </div>
 
                 <div className="grid grid-cols-2 gap-3 text-xs sm:text-sm">
@@ -731,8 +832,7 @@ export default function HomePage() {
               <div className="space-y-1">
                 <p className="text-[11px] sm:text-xs text-brand-muted">Шаг 1 из 2</p>
                 <h2 className="text-lg sm:text-xl font-semibold leading-snug">
-                  Отличный выбор!
-                  <span className="block">Онлайн курс «{selectedCourseName}»</span>
+                  Первый шаг — пройти тест силы
                 </h2>
               </div>
               <button
@@ -746,10 +846,7 @@ export default function HomePage() {
             </div>
 
             <div className="space-y-3 text-[13px] sm:text-sm text-brand-muted">
-              <p>
-                <span className="mr-1">✅</span>
-                Первый шаг — пройти тест силы. Вот что тебя ждёт:
-              </p>
+              <p>Вот что тебя ждёт:</p>
               <ul className="ml-1 space-y-1.5">
                 <li>• Определим твой текущий уровень</li>
                 <li>• Разберём технику упражнений по видео</li>
@@ -767,6 +864,11 @@ export default function HomePage() {
               type="button"
               className="mt-5 inline-flex w-full items-center justify-center rounded-full bg-brand-primary px-4 py-2.5 text-sm font-semibold hover:bg-brand-primary/90 transition-colors"
               onClick={() => {
+                trackGoal("signup_click", {
+                  product_type: "online",
+                  product_name: selectedCourseName,
+                  source: "scroll",
+                });
                 // перейти к шагу 2 — оплате
                 setCameFromCourseInfo(true);
                 setBuyCourse(selectedCourseName);
@@ -819,16 +921,22 @@ export default function HomePage() {
             <form className="space-y-4" onSubmit={handleTestSubmit}>
               <div className="space-y-1">
                 <label className="text-xs sm:text-sm text-brand-muted">
-                  Имя и фамилия
+                  Фамилия и имя
                 </label>
                 <input
                   type="text"
                   value={testFullName}
-                  onChange={(e) => setTestFullName(e.target.value)}
+                  onChange={(e) => {
+                    setTestFullName(e.target.value);
+                    setTestFullNameError(null);
+                  }}
                   required
-                  className="w-full rounded-2xl border border-white/10 bg-white/5 px-3 py-2 text-sm outline-none focus:border-brand-primary"
-                  placeholder="Например: Анна Иванова"
+                  className={`w-full rounded-2xl border bg-white/5 px-3 py-2 text-sm outline-none focus:border-brand-primary ${testFullNameError ? "border-red-400 ring-1 ring-red-400" : "border-white/10"}`}
+                  placeholder="Например: Иванова Анна"
                 />
+                {testFullNameError && (
+                  <p className="mt-1 text-[12px] text-red-400">{testFullNameError}</p>
+                )}
               </div>
 
               <div className="space-y-1">
@@ -838,11 +946,17 @@ export default function HomePage() {
                 <input
                   type="email"
                   value={testEmail}
-                  onChange={(e) => setTestEmail(e.target.value)}
+                  onChange={(e) => {
+                    setTestEmail(e.target.value);
+                    setTestEmailError(null);
+                  }}
                   required
-                  className="w-full rounded-2xl border border-white/10 bg-white/5 px-3 py-2 text-sm outline-none focus:border-brand-primary"
-                  placeholder="you@example.com"
+                  className={`w-full rounded-2xl border bg-white/5 px-3 py-2 text-sm outline-none focus:border-brand-primary ${testEmailError ? "border-red-400 ring-1 ring-red-400" : "border-white/10"}`}
+                  placeholder="name@example.com"
                 />
+                {testEmailError && (
+                  <p className="mt-1 text-[12px] text-red-400">{testEmailError}</p>
+                )}
               </div>
 
               <input type="hidden" name="context" value={testContext ?? ""} />
@@ -851,7 +965,10 @@ export default function HomePage() {
                 <input
                   type="checkbox"
                   checked={testAgreed}
-                  onChange={(e) => setTestAgreed(e.target.checked)}
+                  onChange={(e) => {
+                    setTestAgreed(e.target.checked);
+                    setTestAgreedError(null);
+                  }}
                   className="mt-0.5 h-3.5 w-3.5 rounded border-white/20 bg-transparent text-brand-primary focus:ring-0"
                   required
                 />
@@ -867,10 +984,13 @@ export default function HomePage() {
                   .
                 </span>
               </label>
+              {testAgreedError && (
+                <p className="text-[12px] text-red-400">{testAgreedError}</p>
+              )}
 
               <button
                 type="submit"
-                disabled={isTestSubmitting || !testAgreed}
+                disabled={isTestSubmitting}
                 className="mt-2 inline-flex w-full items-center justify-center rounded-full bg-brand-primary px-4 py-2.5 text-sm font-semibold disabled:opacity-60 disabled:pointer-events-none hover:bg-brand-primary/90 transition-colors"
               >
                 {isTestSubmitting ? "Отправляем..." : "Отправить заявку"}
@@ -942,31 +1062,21 @@ export default function HomePage() {
 
             <form className="space-y-4" onSubmit={handlePurchaseSubmit}>
               <div className="space-y-1">
-                <label className="text-xs sm:text-sm text-brand-muted">
-                  Имя и фамилия
-                </label>
+                <label className="text-xs sm:text-sm text-brand-muted">Фамилия и имя</label>
                 <input
                   type="text"
                   value={buyFullName}
-                  onChange={(e) => setBuyFullName(e.target.value)}
+                  onChange={(e) => {
+                    setBuyFullName(e.target.value);
+                    setBuyFullNameError(null);
+                  }}
                   required
-                  className="w-full rounded-2xl border border-white/10 bg-white/5 px-3 py-2 text-sm outline-none focus:border-brand-primary"
-                  placeholder="Например: Анна Иванова"
+                  className={`w-full rounded-2xl border bg-white/5 px-3 py-2 text-sm outline-none focus:border-brand-primary ${buyFullNameError ? "border-red-400 ring-1 ring-red-400" : "border-white/10"}`}
+                  placeholder="Иванова Анна"
                 />
-              </div>
-
-              <div className="space-y-1">
-                <label className="text-xs sm:text-sm text-brand-muted">
-                  Email
-                </label>
-                <input
-                  type="email"
-                  value={buyEmail}
-                  onChange={(e) => setBuyEmail(e.target.value)}
-                  required
-                  className="w-full rounded-2xl border border-white/10 bg-white/5 px-3 py-2 text-sm outline-none focus:border-brand-primary"
-                  placeholder="you@example.com"
-                />
+                {buyFullNameError && (
+                  <p className="mt-1 text-[12px] text-red-400">{buyFullNameError}</p>
+                )}
               </div>
 
               <div className="space-y-1">
@@ -978,6 +1088,7 @@ export default function HomePage() {
                   value={buyPhone}
                   onChange={(e) => {
                     setBuyPhone(formatPhoneInput(e.target.value));
+                    setBuyPhoneError(null);
                   }}
                   onFocus={() => {
                     try {
@@ -986,28 +1097,53 @@ export default function HomePage() {
                       }
                     } catch {}
                   }}
-                  onBlur={() => {
+                  onBlur={(e) => {
                     try {
-                      const v = (buyPhone || "").trim();
+                      const v = (e.currentTarget.value || "").trim();
                       if (!v) return;
+
+                      let next = v;
                       if (v === "+7" || v === "+7)") {
                         setBuyPhone("");
                         return;
                       }
+
                       if (/^\+?7/.test(v) || /^8/.test(v)) {
-                        setBuyPhone(formatPhoneInput(v));
+                        next = formatPhoneInput(v);
                       } else {
                         const cleaned = v.replace(/[^\d+]/g, "").replace(/(?!^)\+/g, "");
-                        setBuyPhone(cleaned.startsWith("+") ? cleaned : "+" + cleaned);
+                        next = cleaned.startsWith("+") ? cleaned : "+" + cleaned;
                       }
+                      setBuyPhone(next);
+                      if (buyPhoneError && isValidIntlPhone(next)) setBuyPhoneError(null);
                     } catch {}
                   }}
                   required
-                  className="w-full rounded-2xl border border-white/10 bg-white/5 px-3 py-2 text-sm outline-none focus:border-brand-primary"
+                  className={`w-full rounded-2xl border bg-white/5 px-3 py-2 text-sm outline-none focus:border-brand-primary ${buyPhoneError ? "border-red-400 ring-1 ring-red-400" : "border-white/10"}`}
                   placeholder="(___) ___-__-__"
                 />
                 {buyPhoneError && (
                   <p className="mt-1 text-[12px] text-red-400">{buyPhoneError}</p>
+                )}
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-xs sm:text-sm text-brand-muted">
+                  Email
+                </label>
+                <input
+                  type="email"
+                  value={buyEmail}
+                  onChange={(e) => {
+                    setBuyEmail(e.target.value);
+                    setBuyEmailError(null);
+                  }}
+                  required
+                  className={`w-full rounded-2xl border bg-white/5 px-3 py-2 text-sm outline-none focus:border-brand-primary ${buyEmailError ? "border-red-400 ring-1 ring-red-400" : "border-white/10"}`}
+                  placeholder="name@example.com"
+                />
+                {buyEmailError && (
+                  <p className="mt-1 text-[12px] text-red-400">{buyEmailError}</p>
                 )}
               </div>
 
@@ -1021,9 +1157,12 @@ export default function HomePage() {
                   <div className="relative">
                     <select
                       value={buyCourse}
-                      onChange={(e) => setBuyCourse(e.target.value)}
+                      onChange={(e) => {
+                        setBuyCourse(e.target.value);
+                        setBuyCourseError(null);
+                      }}
                       required
-                      className="w-full rounded-2xl border border-brand-primary/60 bg-brand-dark px-3 py-2 pr-8 text-sm text-white outline-none focus:border-brand-primary focus:ring-1 focus:ring-brand-primary appearance-none"
+                      className={`w-full rounded-2xl border bg-brand-dark px-3 py-2 pr-8 text-sm text-white outline-none focus:border-brand-primary focus:ring-1 focus:ring-brand-primary appearance-none ${buyCourseError ? "border-red-400 ring-1 ring-red-400" : "border-brand-primary/60"}`}
                     >
                       <option value="" disabled>
                         Выбери курс
@@ -1040,6 +1179,9 @@ export default function HomePage() {
                       ▾
                     </span>
                   </div>
+                  {buyCourseError && (
+                    <p className="mt-1 text-[12px] text-red-400">{buyCourseError}</p>
+                  )}
                 </div>
               )}
 
@@ -1047,7 +1189,10 @@ export default function HomePage() {
                 <input
                   type="checkbox"
                   checked={buyAgreed}
-                  onChange={(e) => setBuyAgreed(e.target.checked)}
+                  onChange={(e) => {
+                    setBuyAgreed(e.target.checked);
+                    setBuyAgreedError(null);
+                  }}
                   className="mt-0.5 h-3.5 w-3.5 rounded border-white/20 bg-transparent text-brand-primary focus:ring-0"
                   required
                 />
@@ -1071,10 +1216,13 @@ export default function HomePage() {
                   .
                 </span>
               </label>
+              {buyAgreedError && (
+                <p className="text-[12px] text-red-400">{buyAgreedError}</p>
+              )}
 
               <button
                 type="submit"
-                disabled={isBuySubmitting || !buyAgreed || !isValidIntlPhone(buyPhone)}
+                disabled={isBuySubmitting}
                 className="mt-2 inline-flex w-full items-center justify-center rounded-full bg-brand-primary px-4 py-2.5 text-sm font-semibold disabled:opacity-60 disabled:pointer-events-none hover:bg-brand-primary/90 transition-colors"
               >
                 {isBuySubmitting
@@ -1132,7 +1280,7 @@ export default function HomePage() {
                   onChange={(e) => setLoginEmail(e.target.value)}
                   required
                   className="w-full rounded-2xl border border-white/10 bg-white/5 px-3 py-2 text-sm outline-none focus:border-brand-primary"
-                  placeholder="you@example.com"
+                  placeholder="name@example.com"
                 />
               </div>
 

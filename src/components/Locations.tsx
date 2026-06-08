@@ -1,8 +1,9 @@
 // src/components/Locations.tsx
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { PurchaseOptions } from "@/components/Pricing";
+import { detectDeviceType, trackGoal } from "@/lib/metrika";
 
 type Studio = {
   id: string;
@@ -10,6 +11,8 @@ type Studio = {
   address: string;
   schedule: string;
   price: string;
+  note?: string;
+  managerUrl?: string;
 };
 
 type City = {
@@ -35,11 +38,14 @@ const cities: City[] = [
       },
       {
         id: "msk-2",
-        name: "м. 1905 года · 5 мин. пешком",
-        address: "Адрес: ул. Большая Декабрьская, д.3 с25",
+        name: "Парк Лужники · летний формат",
+        address: "Открытая площадка в Лужниках",
         schedule:
           "Групповые: вт, чт · 18:40 и 20:00, сб · 12:00. Персональные — по записи.",
             price: "Стоимость пробного занятия: 1 100 ₽",
+        note:
+          "Пока хорошая погода, тренировки проходят на открытом воздухе. При плохом прогнозе занятие переносится в зал You Can у м. 1905 года.",
+        managerUrl: "https://t.me/idc_manager",
       },
     ],
   },
@@ -73,6 +79,7 @@ type LocationsProps = {
 };
 
 export function Locations({ onOpenPurchaseModal }: LocationsProps) {
+  const sectionRef = useRef<HTMLElement | null>(null);
   const [activeCityId, setActiveCityId] = useState<string>(cities[0].id);
   const [isTariffsOpen, setIsTariffsOpen] = useState(false);
   const [tariffsContext, setTariffsContext] = useState<{
@@ -100,6 +107,7 @@ export function Locations({ onOpenPurchaseModal }: LocationsProps) {
   const [leadLoading, setLeadLoading] = useState(false);
   const [slotsLoading, setSlotsLoading] = useState(false);
   const [slotsError, setSlotsError] = useState<string | null>(null);
+  const [slotSelectionError, setSlotSelectionError] = useState<string | null>(null);
   const [slots, setSlots] = useState<
     { id: string; studioId: string; startAtLocal: string; startAtISO: string }[]
   >([]);
@@ -114,10 +122,31 @@ export function Locations({ onOpenPurchaseModal }: LocationsProps) {
     return city === "Питер" ? "Санкт-Петербург" : city;
   }, [activeCity?.name]);
 
+  useEffect(() => {
+    const node = sectionRef.current;
+    if (!node) return;
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (!entry.isIntersecting) return;
+        trackGoal("products_view", {
+          product_type: "gym",
+          source: "scroll",
+          device: detectDeviceType(),
+        });
+        observer.disconnect();
+      },
+      { threshold: 0.35 }
+    );
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, []);
+
   // Map cleaned studio name to studioId (for schedule API and storage)
   function mapStudioToId(cleanName: string): string {
     const map: Record<string, string> = {
       "м. 1905 года": "msk_youcan",
+      "Парк Лужники · летний формат": "msk_youcan",
+      "Парк Лужники": "msk_youcan",
       "м. Октябрьская": "msk_elfit",
       "м. Московские Ворота": "spb_spirit",
       "м. Выборгская": "spb_hkc",
@@ -156,6 +185,17 @@ export function Locations({ onOpenPurchaseModal }: LocationsProps) {
   }
 
   function openTariffs(cityName: string, studioName: string) {
+    const clean = cleanStudioName(studioName);
+    trackGoal("product_select", {
+      product_type: "gym",
+      product_name: clean,
+      source: "scroll",
+    });
+    trackGoal("pricing_view", {
+      product_type: "gym",
+      source: "scroll",
+      device: detectDeviceType(),
+    });
     setTariffsContext({ cityName, studioName });
     setActiveTariffTab("group");
     setIsTariffsOpen(true);
@@ -176,6 +216,16 @@ export function Locations({ onOpenPurchaseModal }: LocationsProps) {
 
   function openTrial(cityName: string, studioName: string) {
     const clean = cleanStudioName(studioName);
+    trackGoal("product_select", {
+      product_type: "gym",
+      product_name: clean,
+      source: "scroll",
+    });
+    trackGoal("signup_click", {
+      product_type: "gym",
+      product_name: clean,
+      source: "scroll",
+    });
     const studioId = mapStudioToId(clean);
     setTrialContext({ cityName, studioName: clean, studioId });
     setLeadFullName("");
@@ -185,6 +235,11 @@ export function Locations({ onOpenPurchaseModal }: LocationsProps) {
     setNotices([]);
     setSlots([]);
     setSlotsError(null);
+    setSlotSelectionError(null);
+    setLeadPhoneError(null);
+    setLeadEmailError(null);
+    setLeadNameError(null);
+    setLeadAgreeError(null);
     setTrialStep(1);
     setIsTrialOpen(true);
     // Prefetch schedule to minimize loading on step 2
@@ -294,15 +349,25 @@ export function Locations({ onOpenPurchaseModal }: LocationsProps) {
   }
 
   async function payForTrial() {
-    if (!trialContext || !selectedSlotId) return;
+    if (!trialContext) return;
+    if (!selectedSlotId) {
+      setSlotSelectionError("Выберите время");
+      return;
+    }
+    setSlotSelectionError(null);
     const slot = slots.find((s) => s.id === selectedSlotId);
     if (!slot) return;
+    trackGoal("signup_submit", {
+      product_type: "gym",
+      product_name: trialContext.studioName,
+      source: "scroll",
+    });
     try {
       const resp = await fetch("/api/create-payment", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          amount: 2,
+          amount: 1100,
           currency: "RUB",
           email: leadEmail,
           fullName: leadFullName,
@@ -329,20 +394,28 @@ export function Locations({ onOpenPurchaseModal }: LocationsProps) {
     studioName: string,
     label: string,
     amount: number,
-    id: "review" | "month" | "slow12" | "long36" = "review"
+    id: "review" | "month" | "fast12" | "long36" = "review"
   ) {
     const clean = cleanStudioName(studioName);
+    trackGoal("signup_click", {
+      product_type: "gym",
+      product_name: `${label} · ${clean}`,
+      source: "scroll",
+    });
+    const studioId = mapStudioToId(clean);
     onOpenPurchaseModal?.({
       tariffId: id,
       tariffLabel: `${label} · ${clean}`,
       amount,
       currency: "RUB",
       studioName: clean,
+      studioId,
     });
   }
 
   return (
     <section
+      ref={sectionRef}
       id="locations"
       className="py-16 sm:py-20 lg:py-24 border-t border-white/5 scroll-mt-[calc(var(--header-h)+var(--anchor-extra))]"
     >
@@ -412,6 +485,21 @@ export function Locations({ onOpenPurchaseModal }: LocationsProps) {
               <p className="text-[12px] sm:text-xs text-brand-muted mb-4">
                 {studio.price}
               </p>
+              {studio.note ? (
+                <p className="mb-4 rounded-2xl border border-white/10 bg-white/5 px-3 py-2 text-[12px] leading-relaxed text-brand-muted">
+                  {studio.note}{" "}
+                  {studio.managerUrl ? (
+                    <a
+                      href={studio.managerUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="font-semibold text-white underline decoration-white/30 underline-offset-4 hover:decoration-white"
+                    >
+                      Уточнить у менеджера
+                    </a>
+                  ) : null}
+                </p>
+              ) : null}
 
               <div className="mt-auto pt-2 flex flex-wrap gap-3">
                 <button
@@ -591,6 +679,23 @@ export function Locations({ onOpenPurchaseModal }: LocationsProps) {
                     </div>
                     <p className="mt-0.5 text-[12px] sm:text-xs text-brand-muted/70">действует 4 недели</p>
                     <div className="flex items-center justify-between gap-3">
+                      <p>👉🏻 12 тренировок — 11 400 ₽</p>
+                      <button
+                        className="shrink-0 rounded-full border border-white/20 px-3 py-1.5 text-[12px] hover:bg-white/10 whitespace-nowrap"
+                        onClick={() =>
+                          handleTariffPurchase(
+                            tariffsContext.studioName,
+                            "Групповой абонемент 12 тренировок",
+                            11400,
+                            "fast12"
+                          )
+                        }
+                      >
+                        Оплатить
+                      </button>
+                    </div>
+                    <p className="mt-0.5 text-[12px] sm:text-xs text-brand-muted/70">действует 4 недели</p>
+                    <div className="flex items-center justify-between gap-3">
                       <p>👉🏻 12 тренировок — 13 200 ₽</p>
                       <button
                         className="shrink-0 rounded-full border border-white/20 px-3 py-1.5 text-[12px] hover:bg-white/10 whitespace-nowrap"
@@ -619,7 +724,7 @@ export function Locations({ onOpenPurchaseModal }: LocationsProps) {
                   Персональные тарифы
                 </div>
                 <div className="flex items-center justify-between gap-3">
-                  <p>👉🏻 1 тренировка (1 чел.) — 4 900₽</p>
+                  <p>👉🏻 1 тренировка (1 чел.) — 4 900 ₽</p>
                   <button
                     className="shrink-0 rounded-full border border-white/20 px-3 py-1.5 text-[12px] hover:bg-white/10 whitespace-nowrap"
                     onClick={() =>
@@ -636,31 +741,14 @@ export function Locations({ onOpenPurchaseModal }: LocationsProps) {
                 </div>
                 <p className="mt-0.5 text-[12px] sm:text-xs text-brand-muted/70">действует 4 недели</p>
                 <div className="flex items-center justify-between gap-3">
-                  <p>👉🏻 1 тренировка (2 чел.) — 6 800₽</p>
+                  <p>👉🏻 1 тренировка (2-3 чел.) — 6 600 ₽</p>
                   <button
                     className="shrink-0 rounded-full border border-white/20 px-3 py-1.5 text-[12px] hover:bg-white/10 whitespace-nowrap"
                     onClick={() =>
                       handleTariffPurchase(
                         tariffsContext.studioName,
-                        "Персональная 1 тренировка (2 чел.)",
-                        6800,
-                        "review"
-                      )
-                    }
-                  >
-                    Оплатить
-                  </button>
-                </div>
-                <p className="mt-0.5 text-[12px] sm:text-xs text-brand-muted/70">действует 4 недели</p>
-                <div className="flex items-center justify-between gap-3">
-                  <p>👉🏻 1 тренировка (3 чел.) — 8 100₽</p>
-                  <button
-                    className="shrink-0 rounded-full border border-white/20 px-3 py-1.5 text-[12px] hover:bg-white/10 whitespace-nowrap"
-                    onClick={() =>
-                      handleTariffPurchase(
-                        tariffsContext.studioName,
-                        "Персональная 1 тренировка (3 чел.)",
-                        8100,
+                        "Персональная 1 тренировка (2-3 чел.)",
+                        6600,
                         "review"
                       )
                     }
@@ -709,15 +797,21 @@ export function Locations({ onOpenPurchaseModal }: LocationsProps) {
               <div className="space-y-3">
                 <div>
                   <label className="block text-[12px] sm:text-xs text-brand-muted mb-1">
-                    Имя и фамилия
+                    Фамилия и имя
                   </label>
                   <input
                     type="text"
                     value={leadFullName}
-                    onChange={(e) => setLeadFullName(e.target.value)}
-                    className="w-full rounded-2xl border border-white/10 bg-white/5 px-3 py-2 text-sm outline-none focus:border-brand-primary"
-                    placeholder="Иван Иванов"
+                    onChange={(e) => {
+                      setLeadFullName(e.target.value);
+                      setLeadNameError(null);
+                    }}
+                    className={`w-full rounded-2xl border bg-white/5 px-3 py-2 text-sm outline-none focus:border-brand-primary ${leadNameError ? "border-red-400 ring-1 ring-red-400" : "border-white/10"}`}
+                    placeholder="Иванова Анна"
                   />
+                  {leadNameError && (
+                    <p className="mt-1 text-[12px] text-red-400">{leadNameError}</p>
+                  )}
                 </div>
                 <div>
                   <label className="block text-[12px] sm:text-xs text-brand-muted mb-1">
@@ -726,28 +820,35 @@ export function Locations({ onOpenPurchaseModal }: LocationsProps) {
                   <input
                     type="tel"
                     value={leadPhone}
-                    onChange={(e) => setLeadPhone(formatPhoneInput(e.target.value))}
+                    onChange={(e) => {
+                      setLeadPhone(formatPhoneInput(e.target.value));
+                      setLeadPhoneError(null);
+                    }}
                     onFocus={() => {
                       if (!leadPhone) {
                         setLeadPhone("+7 ");
                       }
                     }}
-                    onBlur={() => {
-                      const v = (leadPhone || "").trim();
+                    onBlur={(e) => {
+                      const v = (e.currentTarget.value || "").trim();
                       if (!v) return;
+
+                      let next = v;
                       if (v === "+7" || v === "+7)") {
                         setLeadPhone("");
                         return;
                       }
                       // If starts with +7 reformat, else keep sanitized international
                       if (/^\+?7/.test(v) || /^8/.test(v)) {
-                        setLeadPhone(formatPhoneInput(v));
+                        next = formatPhoneInput(v);
                       } else {
                         const cleaned = v.replace(/[^\d+]/g, "").replace(/(?!^)\+/g, "");
-                        setLeadPhone(cleaned.startsWith("+") ? cleaned : "+" + cleaned);
+                        next = cleaned.startsWith("+") ? cleaned : "+" + cleaned;
                       }
+                      setLeadPhone(next);
+                      if (leadPhoneError && isValidIntlPhone(next)) setLeadPhoneError(null);
                     }}
-                    className="w-full rounded-2xl border border-white/10 bg-white/5 px-3 py-2 text-sm outline-none focus:border-brand-primary"
+                    className={`w-full rounded-2xl border bg-white/5 px-3 py-2 text-sm outline-none focus:border-brand-primary ${leadPhoneError ? "border-red-400 ring-1 ring-red-400" : "border-white/10"}`}
                     placeholder="(___) ___-__-__"
                   />
                   {leadPhoneError && (
@@ -756,13 +857,16 @@ export function Locations({ onOpenPurchaseModal }: LocationsProps) {
                 </div>
                 <div>
                   <label className="block text-[12px] sm:text-xs text-brand-muted mb-1">
-                    Почта
+                    Email
                   </label>
                   <input
                     type="email"
                     value={leadEmail}
-                    onChange={(e) => setLeadEmail(e.target.value)}
-                    className="w-full rounded-2xl border border-white/10 bg-white/5 px-3 py-2 text-sm outline-none focus:border-brand-primary"
+                    onChange={(e) => {
+                      setLeadEmail(e.target.value);
+                      setLeadEmailError(null);
+                    }}
+                    className={`w-full rounded-2xl border bg-white/5 px-3 py-2 text-sm outline-none focus:border-brand-primary ${leadEmailError ? "border-red-400 ring-1 ring-red-400" : "border-white/10"}`}
                     placeholder="name@example.com"
                     required
                   />
@@ -770,15 +874,15 @@ export function Locations({ onOpenPurchaseModal }: LocationsProps) {
                     <p className="mt-1 text-[12px] text-red-400">{leadEmailError}</p>
                   )}
                 </div>
-                {leadNameError && (
-                  <p className="text-[12px] text-red-400">{leadNameError}</p>
-                )}
                 {/* Согласие */}
                 <label className="flex items-start gap-2 text-[11px] sm:text-xs text-brand-muted">
                   <input
                     type="checkbox"
                     checked={leadAgreed}
-                    onChange={(e) => setLeadAgreed(e.target.checked)}
+                    onChange={(e) => {
+                      setLeadAgreed(e.target.checked);
+                      setLeadAgreeError(null);
+                    }}
                     className="mt-0.5 h-3.5 w-3.5 rounded border-white/20 bg-transparent text-brand-primary focus:ring-0"
                   />
                   <span>
@@ -856,7 +960,10 @@ export function Locations({ onOpenPurchaseModal }: LocationsProps) {
                           <button
                             key={s.id}
                             type="button"
-                            onClick={() => setSelectedSlotId(s.id)}
+                            onClick={() => {
+                              setSelectedSlotId(s.id);
+                              setSlotSelectionError(null);
+                            }}
                             className={[
                               "w-full text-left rounded-xl border px-3 py-2 text-sm transition-colors",
                               selected
@@ -870,17 +977,22 @@ export function Locations({ onOpenPurchaseModal }: LocationsProps) {
                         );
                       })}
                     </div>
+                    {slotSelectionError && (
+                      <p className="text-[12px] text-red-400">{slotSelectionError}</p>
+                    )}
                     <button
                       type="button"
-                      disabled={!selectedSlotId}
                       onClick={payForTrial}
-                      className="mt-2 inline-flex w-full items-center justify-center rounded-full bg-brand-primary px-4 py-2.5 text-sm font-semibold hover:bg-brand-primary/90 transition-colors disabled:opacity-60"
+                      className="mt-2 inline-flex w-full items-center justify-center rounded-full bg-brand-primary px-4 py-2.5 text-sm font-semibold hover:bg-brand-primary/90 transition-colors"
                     >
                       Оплатить 1 100 ₽
                     </button>
                     <button
                       type="button"
-                      onClick={() => setTrialStep(1)}
+                      onClick={() => {
+                      setTrialStep(1);
+                      setSlotSelectionError(null);
+                    }}
                       className="mt-2 inline-flex w-full items-center justify-center rounded-full border border-white/20 px-4 py-2 text-sm font-semibold text-white hover:bg-white/10 transition-colors"
                     >
                       Назад

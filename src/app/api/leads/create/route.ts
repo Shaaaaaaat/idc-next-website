@@ -1,5 +1,6 @@
 // src/app/api/leads/create/route.ts
 import { NextResponse } from "next/server";
+import { createLeadInSupabase } from "@/lib/supabase/leads";
 
 type LeadBody = {
   fullName: string;
@@ -30,6 +31,9 @@ async function postToYdbCF(payload: {
   phone: string;
   email?: string;
   notes?: string;
+  studio?: string;
+  course_name?: string;
+  lessons?: number;
 }) {
   const url = process.env.YDB_CF_URL;
   if (!url) {
@@ -74,7 +78,7 @@ export async function POST(req: Request) {
     const body = (await req.json()) as LeadBody;
     const fullName = (body.fullName || "").trim();
     const phone = (body.phone || "").trim();
-    const email = (body.email || "").trim();
+    const email = (body.email || "").trim().toLowerCase();
     const city = (body.city || "").trim();
     const studio = (body.studio || "").trim();
 
@@ -85,12 +89,26 @@ export async function POST(req: Request) {
       );
     }
 
+    // Helper: map studio to YDB short names
+    function mapStudioForYdb(input?: string) {
+      const s = String(input || "").toLowerCase();
+      if (/1905/.test(s)) return "you can";
+      if (/октябр/.test(s)) return "elfit";
+      if (/московские\s*ворота/.test(s)) return "spirit";
+      if (/выборгск/.test(s)) return "hells kitchen";
+      if (s === "you can" || s === "elfit" || s === "spirit" || s === "hells kitchen") return s;
+      return undefined;
+    }
+
     // 1) RU-first: отправка ПДн в Cloud Function (YDB)
     const cfRes = await postToYdbCF({
       name: fullName,
       phone,
       email: email || undefined,
       notes: "лид",
+      studio: mapStudioForYdb(studio),
+      course_name: "Пробная тренировка",
+      lessons: 1,
     });
 
     const env = airtableEnv();
@@ -109,13 +127,9 @@ export async function POST(req: Request) {
       Studio: studio,
       // Multi-select must be an array of option names
       Source: ["website"],
+      Product: "trial",
       // RU-first flags
       ru_first_ok: cfRes.ok === true,
-      ydb_id: (cfRes as any)?.ydb_id ?? "",
-      ydb_error:
-        cfRes.ok === true
-          ? ""
-          : `${(cfRes as any)?.reason ?? "unknown"}${(cfRes as any)?.status ? `:${(cfRes as any).status}` : ""}`,
     };
     if (email) fields.email = email;
 
@@ -141,6 +155,18 @@ export async function POST(req: Request) {
     } catch {
       record = text;
     }
+
+    await createLeadInSupabase({
+      fio: fullName,
+      phone,
+      email: email || undefined,
+      city,
+      studio,
+      product: "trial",
+      source: "site",
+      raw_payload: body,
+    });
+
     return NextResponse.json({ ok: true, leadId: record?.id ?? null });
   } catch (e) {
     console.error("[/api/leads/create] error", e);

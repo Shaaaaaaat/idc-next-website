@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 
 const COOKIE_KEY = "idc_cookie_consent";
-const COUNTER_ID = 105882814;
+const COUNTER_ID = Number(process.env.NEXT_PUBLIC_YANDEX_METRIKA_ID);
 const CONSENT_EVENT = "idc:cookie-consent";
 
 type ConsentState = {
@@ -34,6 +34,7 @@ function writeConsent(analytics: boolean) {
 }
 
 function applyYmConsent(analyticsAllowed: boolean) {
+  if (!Number.isFinite(COUNTER_ID)) return;
   // если ym уже загружен — переключаем consent прямо сейчас
   if (typeof window !== "undefined" && (window as any).ym) {
     (window as any).ym(

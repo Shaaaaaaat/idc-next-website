@@ -1,5 +1,6 @@
 // src/app/api/test-signup/route.ts
 import { NextRequest } from "next/server";
+import { createLeadInSupabase } from "@/lib/supabase/leads";
 
 // const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 // const TELEGRAM_CHAT_ID = process.env.TELEGRAM_CHAT_ID;
@@ -12,7 +13,10 @@ export async function POST(req: NextRequest) {
     return new Response("Telegram config is missing", { status: 500 });
   }
 
-  const { fullName, email, context } = await req.json();
+  const body = await req.json();
+  const fullName = body.fullName ?? "";
+  const email = String(body.email || "").trim().toLowerCase();
+  const context = body.context ?? "";
 
   const text =
     `📝 Новая заявка на тест силы\n\n` +
@@ -38,6 +42,15 @@ export async function POST(req: NextRequest) {
     console.error("Telegram error", msg);
     return new Response("Telegram error", { status: 500 });
   }
+
+  await createLeadInSupabase({
+    fio: String(fullName || "").trim(),
+    phone: "",
+    email: email || undefined,
+    product: "power_test",
+    source: String(context || "site").trim() || "site",
+    raw_payload: body,
+  });
 
   return new Response("ok");
 }

@@ -21,6 +21,7 @@ export const metadata: Metadata = {
   title: "I Do Calisthenics",
   description:
     "Тренировки с собственным весом в комфортном темпе и с фокусом на технике.",
+  metadataBase: new URL("https://calisthenics.ru"),
 };
 
 export default function RootLayout({

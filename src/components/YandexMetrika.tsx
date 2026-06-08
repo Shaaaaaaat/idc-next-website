@@ -3,7 +3,7 @@
 import Script from "next/script";
 import { useEffect, useMemo, useState } from "react";
 
-const METRIKA_ID = 105882814;
+const METRIKA_ID = Number(process.env.NEXT_PUBLIC_YANDEX_METRIKA_ID);
 
 // должен совпадать с CookieBanner / CookieConsent
 const CONSENT_KEY = "idc_cookie_consent";
@@ -68,7 +68,7 @@ export function YandexMetrika() {
     return `
 (function(m,e,t,r,i,k,a){
   m[i]=m[i]||function(){(m[i].a=m[i].a||[]).push(arguments)};
-  m[i].l=Date.now();
+  m[i].l=1*new Date();
   for (var j = 0; j < document.scripts.length; j++) { if (document.scripts[j].src === r) { return; } }
   k=e.createElement(t),a=e.getElementsByTagName(t)[0],k.async=1,k.src=r,a.parentNode.insertBefore(k,a)
 })(window, document,'script','https://mc.yandex.ru/metrika/tag.js?id=${METRIKA_ID}', 'ym');
@@ -78,16 +78,27 @@ ym(${METRIKA_ID}, 'init', {
   webvisor: true,
   clickmap: true,
   ecommerce: "dataLayer",
+  referrer: document.referrer,
+  url: location.href,
   accurateTrackBounce: true,
   trackLinks: true
 });
 
+
 // сразу фиксируем согласие как GRANT (мы сюда попадаем только если enabled=true)
 ym(${METRIKA_ID}, 'consent', 'grant');
 `;
-  }, []);
+  }, [METRIKA_ID]);
 
-  if (!enabled) return null;
+  if (!Number.isFinite(METRIKA_ID) || !enabled) {
+    if (typeof window !== "undefined" && process.env.NODE_ENV === "development") {
+      const reason = !Number.isFinite(METRIKA_ID)
+        ? `env: NEXT_PUBLIC_YANDEX_METRIKA_ID=${process.env.NEXT_PUBLIC_YANDEX_METRIKA_ID}`
+        : `consent: ${localStorage.getItem(CONSENT_KEY) ?? "нет"}`;
+      console.warn("[YandexMetrika] Скрипт не грузится:", reason);
+    }
+    return null;
+  }
 
   return (
     <>
