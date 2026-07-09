@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { getValidatedSessionEmail } from "@/lib/auth/lkSession";
 import { resolveLkAccessByEmail } from "@/lib/auth/lkAccess";
-import { createBunnyTusUploadAuth, createBunnyVideo, getBunnyMaxUploadBytes } from "@/lib/bunny/stream";
+import { createCloudflareDirectTusUpload, getCloudflareMaxUploadBytes } from "@/lib/cloudflare/stream";
 
 export const runtime = "nodejs";
 
@@ -43,33 +43,29 @@ export async function POST(req: Request) {
   if (!Number.isFinite(fileSize) || fileSize <= 0) {
     return NextResponse.json({ ok: false, error: "video_required" }, { status: 400 });
   }
-  if (fileSize > getBunnyMaxUploadBytes()) {
+  if (fileSize > getCloudflareMaxUploadBytes()) {
     return NextResponse.json({ ok: false, error: "video_too_large" }, { status: 413 });
   }
 
-  const created = await createBunnyVideo(title);
-  if (!created.ok) {
+  const upload = await createCloudflareDirectTusUpload({
+    title,
+    fileName: typeof body.fileName === "string" ? body.fileName : undefined,
+    fileType,
+    fileSize,
+  });
+  if (!upload.ok) {
     return NextResponse.json(
-      { ok: false, error: "bunny_create_failed", message: created.message },
+      { ok: false, error: "cloudflare_upload_init_failed", message: upload.message },
       { status: 502 }
-    );
-  }
-
-  const auth = createBunnyTusUploadAuth(created.videoId);
-  if (!auth.ok) {
-    return NextResponse.json(
-      { ok: false, error: "bunny_signature_failed", message: auth.message },
-      { status: 500 }
     );
   }
 
   return NextResponse.json({
     ok: true,
-    endpoint: auth.endpoint,
-    libraryId: auth.libraryId,
-    videoId: auth.videoId,
-    authorizationExpire: auth.authorizationExpire,
-    authorizationSignature: auth.authorizationSignature,
-    videoUrl: auth.videoUrl,
+    provider: "cloudflare",
+    endpoint: upload.data.uploadUrl,
+    videoId: upload.data.uid,
+    videoUrl: upload.data.videoUrl,
+    thumbnailUrl: upload.data.thumbnailUrl,
   });
 }

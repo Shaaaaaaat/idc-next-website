@@ -3,7 +3,8 @@
 import Script from "next/script";
 import { useEffect, useMemo, useState } from "react";
 
-const METRIKA_ID = Number(process.env.NEXT_PUBLIC_YANDEX_METRIKA_ID);
+const rawMetrikaId = process.env.NEXT_PUBLIC_YANDEX_METRIKA_ID?.trim();
+const METRIKA_ID = rawMetrikaId ? Number(rawMetrikaId) : NaN;
 
 // должен совпадать с CookieBanner / CookieConsent
 const CONSENT_KEY = "idc_cookie_consent";
@@ -90,9 +91,9 @@ ym(${METRIKA_ID}, 'consent', 'grant');
 `;
   }, [METRIKA_ID]);
 
-  if (!Number.isFinite(METRIKA_ID) || !enabled) {
+  if (!Number.isFinite(METRIKA_ID) || METRIKA_ID <= 0 || !enabled) {
     if (typeof window !== "undefined" && process.env.NODE_ENV === "development") {
-      const reason = !Number.isFinite(METRIKA_ID)
+      const reason = !Number.isFinite(METRIKA_ID) || METRIKA_ID <= 0
         ? `env: NEXT_PUBLIC_YANDEX_METRIKA_ID=${process.env.NEXT_PUBLIC_YANDEX_METRIKA_ID}`
         : `consent: ${localStorage.getItem(CONSENT_KEY) ?? "нет"}`;
       console.warn("[YandexMetrika] Скрипт не грузится:", reason);

@@ -1,27 +1,29 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
+import { createPortal } from "react-dom";
 import * as tus from "tus-js-client";
 import type { ExerciseLibraryItem } from "@/lib/supabase/exerciseLibrary";
 
-type UploadState = "idle" | "initializing" | "uploading" | "saving";
+type UploadState = "idle" | "initializing" | "uploading" | "saving" | "deleting";
 
 type InitUploadResponse = {
   ok: true;
+  provider: "cloudflare";
   endpoint: string;
-  libraryId: string;
   videoId: string;
-  authorizationExpire: number;
-  authorizationSignature: string;
   videoUrl: string;
+  thumbnailUrl: string;
 };
 
 type Props = {
   open: boolean;
   mode: "create" | "edit";
   exercise?: ExerciseLibraryItem;
+  initialTitle?: string;
   onClose: () => void;
-  onSaved: () => void;
+  onSaved: (exercise?: ExerciseLibraryItem) => void;
+  onDeleted?: (result: { warning?: string }) => void;
 };
 
 function normalizeTag(raw: string) {
@@ -66,7 +68,7 @@ export function ExerciseTagPills({ tags }: { tags: string[] }) {
   );
 }
 
-export function LkExerciseEditorModal({ open, mode, exercise, onClose, onSaved }: Props) {
+export function LkExerciseEditorModal({ open, mode, exercise, initialTitle, onClose, onSaved, onDeleted }: Props) {
   const fileRef = useRef<HTMLInputElement>(null);
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
@@ -75,30 +77,39 @@ export function LkExerciseEditorModal({ open, mode, exercise, onClose, onSaved }
   const [uploadState, setUploadState] = useState<UploadState>("idle");
   const [uploadProgress, setUploadProgress] = useState(0);
   const [error, setError] = useState("");
+  const [selectedVideoName, setSelectedVideoName] = useState("");
+  const [uploadedVideoId, setUploadedVideoId] = useState("");
 
   const isUploading = uploadState !== "idle";
   const isEdit = mode === "edit";
+  const hasExistingVideo = Boolean(exercise?.videoAssetId || exercise?.videoUrl);
+  const hasSelectedVideo = Boolean(selectedVideoName);
+  const hasUploadedVideo = Boolean(uploadedVideoId);
+  const videoButtonText = hasExistingVideo || hasSelectedVideo || hasUploadedVideo ? "Заменить видео" : "Загрузить видео";
   const titleText = isEdit ? "Редактировать упражнение" : "Добавить упражнение";
   const submitText = useMemo(() => {
     if (uploadState === "initializing") return "Готовим загрузку...";
     if (uploadState === "uploading") return `Загружаем ${uploadProgress}%`;
     if (uploadState === "saving") return "Сохраняем...";
+    if (uploadState === "deleting") return "Архивируем...";
     return isEdit ? "Сохранить изменения" : "Добавить упражнение";
   }, [isEdit, uploadProgress, uploadState]);
 
   useEffect(() => {
     if (!open) return;
-    setTitle(exercise?.title || "");
+    setTitle(exercise?.title || initialTitle || "");
     setDescription(exercise?.description || "");
     setTags(exercise?.tags || []);
     setTagInput("");
     setError("");
     setUploadProgress(0);
     setUploadState("idle");
+    setSelectedVideoName("");
+    setUploadedVideoId("");
     if (fileRef.current) fileRef.current.value = "";
-  }, [exercise, open]);
+  }, [exercise, initialTitle, open]);
 
-  if (!open) return null;
+  if (!open || typeof document === "undefined") return null;
 
   function closeModal() {
     if (isUploading) return;
@@ -121,22 +132,15 @@ export function LkExerciseEditorModal({ open, mode, exercise, onClose, onSaved }
     init: InitUploadResponse;
     title: string;
   }) {
-    const authHeaders = {
-      AuthorizationSignature: params.init.authorizationSignature,
-      AuthorizationExpire: String(params.init.authorizationExpire),
-      VideoId: params.init.videoId,
-      LibraryId: params.init.libraryId,
-    };
-
     await new Promise<void>((resolve, reject) => {
       const upload = new tus.Upload(params.file, {
-        endpoint: params.init.endpoint,
+        uploadUrl: params.init.endpoint,
+        uploadSize: params.file.size,
+        chunkSize: 50 * 1024 * 1024,
         retryDelays: [0, 3000, 5000, 10000, 20000],
-        headers: authHeaders,
         metadata: {
-          filename: params.file.name || params.title,
+          name: params.file.name || params.title,
           filetype: params.file.type || "application/octet-stream",
-          title: params.title,
         },
         onProgress(bytesUploaded, bytesTotal) {
           if (!bytesTotal) return;
@@ -151,15 +155,7 @@ export function LkExerciseEditorModal({ open, mode, exercise, onClose, onSaved }
         },
       });
 
-      upload
-        .findPreviousUploads()
-        .then((previousUploads) => {
-          if (previousUploads.length > 0) upload.resumeFromPreviousUpload(previousUploads[0]);
-          upload.start();
-        })
-        .catch(() => {
-          upload.start();
-        });
+      upload.start();
     });
   }
 
@@ -187,6 +183,7 @@ export function LkExerciseEditorModal({ open, mode, exercise, onClose, onSaved }
 
     setUploadState("uploading");
     await startTusUpload({ file, init: initJson, title: cleanTitle });
+    setUploadedVideoId(initJson.videoId);
     return initJson.videoId;
   }
 
@@ -234,12 +231,14 @@ export function LkExerciseEditorModal({ open, mode, exercise, onClose, onSaved }
             }),
           });
 
-      const json = (await res.json().catch(() => null)) as { message?: string; error?: string } | null;
+      const json = (await res.json().catch(() => null)) as
+        | { exercise?: ExerciseLibraryItem; message?: string; error?: string }
+        | null;
       if (!res.ok) {
         throw new Error(json?.message || json?.error || "Не удалось сохранить упражнение.");
       }
 
-      onSaved();
+      onSaved(json?.exercise);
       onClose();
     } catch (submitError) {
       setError(submitError instanceof Error ? submitError.message : "Не удалось сохранить упражнение.");
@@ -248,9 +247,43 @@ export function LkExerciseEditorModal({ open, mode, exercise, onClose, onSaved }
     }
   }
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-slate-950/45 px-4 py-6 backdrop-blur-sm sm:py-10">
-      <div className="w-full max-w-3xl rounded-3xl border border-slate-200 bg-white p-4 shadow-2xl sm:p-6">
+  async function handleDelete() {
+    if (!isEdit || !exercise?.id || !exercise.canArchive) return;
+    const confirmed = window.confirm(`Скрыть упражнение "${exercise.title}" из библиотеки? Видео в Cloudflare останется сохранено.`);
+    if (!confirmed) return;
+
+    setError("");
+    setUploadState("deleting");
+
+    try {
+      const res = await fetch(`/api/lk/coach/exercises/${exercise.id}`, {
+        method: "DELETE",
+      });
+      const json = (await res.json().catch(() => null)) as { message?: string; error?: string; warning?: string } | null;
+      if (!res.ok) {
+        throw new Error(json?.message || json?.error || "Не удалось скрыть упражнение.");
+      }
+
+      onDeleted?.({ warning: json?.warning });
+      onClose();
+    } catch (deleteError) {
+      setError(deleteError instanceof Error ? deleteError.message : "Не удалось скрыть упражнение.");
+    } finally {
+      setUploadState("idle");
+    }
+  }
+
+  return createPortal(
+    <div
+      className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-slate-950/45 px-4 py-6 backdrop-blur-sm sm:py-10"
+      onMouseDown={(e) => {
+        if (e.target === e.currentTarget) closeModal();
+      }}
+    >
+      <div
+        className="w-full max-w-3xl rounded-3xl border border-slate-200 bg-white p-4 shadow-2xl sm:p-6"
+        onMouseDown={(e) => e.stopPropagation()}
+      >
         <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           <div>
             <p className="text-xs uppercase tracking-[0.18em] text-slate-500">
@@ -260,7 +293,7 @@ export function LkExerciseEditorModal({ open, mode, exercise, onClose, onSaved }
             <p className="mt-1 text-sm text-slate-500">
               {isEdit
                 ? "Измени данные упражнения или загрузи новый файл, чтобы заменить видео."
-                : "Файл загружается напрямую в Bunny, а сервер выдает только временную подпись."}
+                : "Файл загружается напрямую в Cloudflare Stream, а сервер выдает только одноразовый upload URL."}
             </p>
           </div>
           <button
@@ -287,31 +320,67 @@ export function LkExerciseEditorModal({ open, mode, exercise, onClose, onSaved }
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
                 required
-                className="w-full rounded-2xl border border-slate-200 bg-white px-3 py-2 outline-none focus:border-brand-primary"
+                className="w-full rounded-2xl border border-slate-200 bg-white px-3 py-2 text-slate-900 outline-none placeholder:text-slate-400 focus:border-brand-primary"
                 placeholder="Например: Pull Up"
               />
             </label>
 
-            <label className="space-y-1 text-sm">
-              <span className="text-slate-600">{isEdit ? "Заменить видео" : "Видео *"}</span>
+            <div className="space-y-1 text-sm">
+              <span className="text-slate-600">Видео{!isEdit ? " *" : ""}</span>
               <input
                 ref={fileRef}
                 type="file"
-                required={!isEdit}
                 accept="video/mp4,video/quicktime,video/webm"
-                className="w-full rounded-2xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none file:mr-3 file:rounded-full file:border-0 file:bg-brand-primary file:px-3 file:py-1 file:text-sm file:font-semibold file:text-white focus:border-brand-primary"
+                className="sr-only"
+                onChange={(event) => {
+                  const file = event.target.files?.[0] || null;
+                  setSelectedVideoName(file?.name || "");
+                  setUploadedVideoId("");
+                }}
               />
-              {isEdit ? (
-                <span className="block text-xs text-slate-400">Оставь пустым, если видео менять не нужно.</span>
-              ) : null}
-            </label>
+              <div className="rounded-2xl border border-slate-200 bg-white p-3">
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="min-w-0">
+                    {hasSelectedVideo ? (
+                      <>
+                        <p className="text-sm font-semibold text-slate-700">Файл выбран</p>
+                        <p className="truncate text-xs text-slate-500">{selectedVideoName}</p>
+                      </>
+                    ) : hasUploadedVideo || hasExistingVideo ? (
+                      <>
+                        <p className="text-sm font-semibold text-emerald-700">Видео добавлено</p>
+                        <p className="text-xs text-slate-500">
+                          {hasUploadedVideo ? "Загрузка завершена, сохраняем упражнение." : "Текущее видео сохранено в упражнении."}
+                        </p>
+                      </>
+                    ) : (
+                      <>
+                        <p className="text-sm font-semibold text-slate-700">Видео не выбрано</p>
+                        <p className="text-xs text-slate-500">MP4, MOV или WebM.</p>
+                      </>
+                    )}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => fileRef.current?.click()}
+                    disabled={isUploading}
+                    className="shrink-0 rounded-full border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700 transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    {videoButtonText}
+                  </button>
+                </div>
+                {isEdit ? (
+                  <span className="mt-2 block text-xs text-slate-400">Оставь пустым, если видео менять не нужно.</span>
+                ) : null}
+              </div>
+            </div>
 
             <label className="space-y-1 text-sm lg:col-span-2">
               <span className="text-slate-600">Описание</span>
               <textarea
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
-                className="min-h-24 w-full rounded-2xl border border-slate-200 bg-white px-3 py-2 outline-none focus:border-brand-primary"
+                className="min-h-24 w-full rounded-2xl border border-slate-200 bg-white px-3 py-2 text-slate-700 outline-none placeholder:text-slate-400 focus:border-brand-primary"
                 placeholder="Ключевые подсказки по технике"
               />
             </label>
@@ -356,7 +425,7 @@ export function LkExerciseEditorModal({ open, mode, exercise, onClose, onSaved }
                       }
                     }}
                     onBlur={() => addPendingTags()}
-                    className="min-w-36 flex-1 border-0 bg-transparent px-1 py-1 outline-none"
+                    className="min-w-36 flex-1 border-0 bg-transparent px-1 py-1 text-slate-700 outline-none placeholder:text-slate-400"
                     placeholder={tags.length === 0 ? "Например: Gymnastic" : "Добавить тег"}
                   />
                 </div>
@@ -365,25 +434,42 @@ export function LkExerciseEditorModal({ open, mode, exercise, onClose, onSaved }
             </div>
           </div>
 
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-end">
-            {uploadState === "uploading" ? (
-              <div className="h-2 flex-1 overflow-hidden rounded-full bg-slate-100">
-                <div
-                  className="h-full rounded-full bg-brand-primary transition-all"
-                  style={{ width: `${uploadProgress}%` }}
-                />
-              </div>
+          <div
+            className={`flex flex-col gap-3 sm:flex-row sm:items-center ${
+              isEdit ? "sm:justify-between" : "sm:justify-end"
+            }`}
+          >
+            {isEdit && exercise?.canArchive ? (
+              <button
+                type="button"
+                onClick={handleDelete}
+                disabled={isUploading}
+                className="rounded-full border border-red-200 px-5 py-2 text-sm font-semibold text-red-600 transition-colors hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {uploadState === "deleting" ? "Архивируем..." : "Скрыть упражнение"}
+              </button>
             ) : null}
-            <button
-              type="submit"
-              disabled={isUploading}
-              className="rounded-full bg-brand-primary px-5 py-2 text-sm font-semibold text-white transition-colors hover:bg-brand-primary/90 disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              {submitText}
-            </button>
+            <div className="flex flex-1 flex-col gap-3 sm:flex-row sm:items-center sm:justify-end">
+              {uploadState === "uploading" ? (
+                <div className="h-2 flex-1 overflow-hidden rounded-full bg-slate-100">
+                  <div
+                    className="h-full rounded-full bg-brand-primary transition-all"
+                    style={{ width: `${uploadProgress}%` }}
+                  />
+                </div>
+              ) : null}
+              <button
+                type="submit"
+                disabled={isUploading}
+                className="rounded-full bg-brand-primary px-5 py-2 text-sm font-semibold text-white transition-colors hover:bg-brand-primary/90 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {submitText}
+              </button>
+            </div>
           </div>
         </form>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }

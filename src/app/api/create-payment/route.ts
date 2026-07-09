@@ -2,6 +2,7 @@
 import { NextResponse } from "next/server";
 import crypto from "crypto";
 import { upsertPurchaseCreated } from "@/lib/supabase/purchases";
+import { sendTelegramWithRetry } from "@/lib/telegram/sendTelegramWithRetry";
 
 type RobokassaTax = "none";
 type RobokassaPaymentMethod = "full_prepayment";
@@ -115,34 +116,17 @@ function escapeTgHtml(s: string) {
     .replace(/>/g, "&gt;");
 }
 
-async function sendTelegramMessage(text: string) {
-  if (!TELEGRAM_BOT_TOKEN || !Number.isFinite(TELEGRAM_CHAT_ID)) {
-    // нет конфигурации — тихо пропускаем
-    return { ok: false as const, reason: "env_missing" as const };
-  }
-
-  const r = await fetch(
-    `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`,
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        chat_id: TELEGRAM_CHAT_ID,
-        text,
-        parse_mode: "HTML",
-        disable_web_page_preview: true,
-      }),
-      cache: "no-store",
-    }
-  );
-
-  if (!r.ok) {
-    const msg = await r.text();
-    console.error("Telegram error", msg);
-    return { ok: false as const, reason: "send_failed" as const, msg };
-  }
-
-  return { ok: true as const };
+async function sendTelegramMessage(text: string, invId: string) {
+  return sendTelegramWithRetry({
+    botToken: TELEGRAM_BOT_TOKEN,
+    chatId: TELEGRAM_CHAT_ID,
+    text,
+    logContext: {
+      target: "admin",
+      invId,
+      source: "website",
+    },
+  });
 }
 
 /* ---------------- AIRTABLE HELPERS ---------------- */
@@ -567,7 +551,8 @@ export async function POST(req: Request) {
         `<b>InvId:</b> <code>${escapeTgHtml(String(paymentId))}</code>\n` +
         `<b>Плательщик:</b> ${escapeTgHtml(fullName)}\n` +
         `<b>Сумма:</b> ${escapeTgHtml(Number(amount).toFixed(2))} ${currency}\n` +
-        `<b>Тариф:</b> ${escapeTgHtml(tariffLabel)}`
+        `<b>Тариф:</b> ${escapeTgHtml(tariffLabel)}`,
+      String(paymentId)
     ).catch(() => {});
 
     const pricePerLesson =

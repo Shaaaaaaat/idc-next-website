@@ -1,5 +1,5 @@
-import Link from "next/link";
 import type { ReactNode } from "react";
+import { LkShellLogoutLink, LkShellSidebar, LkShellTopNav } from "@/components/lk/LkShellNav";
 
 type LkRole = "admin" | "coach" | "client" | "guest";
 
@@ -67,98 +67,9 @@ function HeaderBlock({
 
       <div className="flex items-center gap-2">
         {topRight}
-        {authed ? (
-          <a
-            href="/lk/logout"
-            className="inline-flex items-center justify-center rounded-full border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-600 transition-colors hover:bg-slate-100"
-          >
-            Выйти
-          </a>
-        ) : null}
+        {authed ? <LkShellLogoutLink /> : null}
       </div>
     </div>
-  );
-}
-
-function TopNav({ items, activeHref }: { items: LkNavItem[]; activeHref?: string }) {
-  return (
-    <nav className="mb-4 flex gap-2 overflow-x-auto pb-1">
-      {items.map((item) => {
-        const isActive = activeHref === item.href;
-        if (item.disabled) {
-          return (
-            <span
-              key={item.label}
-              className="inline-flex shrink-0 cursor-not-allowed items-center justify-center rounded-full border border-slate-200 bg-white px-4 py-2 text-sm text-slate-400"
-            >
-              {item.label}
-            </span>
-          );
-        }
-        return (
-          <Link
-            key={item.href}
-            href={item.href}
-            className={`inline-flex shrink-0 items-center justify-center rounded-full px-4 py-2 text-sm transition-colors ${
-              isActive
-                ? "bg-brand-primary text-white"
-                : "border border-slate-200 bg-white text-slate-600 hover:bg-slate-100"
-            }`}
-          >
-            {item.label}
-          </Link>
-        );
-      })}
-    </nav>
-  );
-}
-
-function LkSidebar({ role, items, activeHref }: { role: LkRole; items: LkNavItem[]; activeHref?: string }) {
-  const badge = role === "admin" ? "A" : role === "coach" ? "C" : "P";
-  const profileLabel = role === "coach" ? "Профиль тренера" : "Профиль";
-
-  return (
-    <aside className="hidden min-h-[calc(100vh-2rem)] flex-col justify-between rounded-3xl bg-[#1f1d2b] p-4 text-white shadow-xl md:flex">
-      <div>
-        <div className="mb-8 flex h-10 w-10 items-center justify-center rounded-2xl bg-brand-primary text-lg font-semibold shadow-lg shadow-brand-primary/20">
-          {badge}
-        </div>
-        <nav className="space-y-1">
-          {items.map((item) => {
-            const isActive = activeHref === item.href;
-            if (item.disabled) {
-              return (
-                <span
-                  key={item.label}
-                  className="block cursor-not-allowed rounded-xl px-3 py-2 text-sm text-white/35"
-                >
-                  {item.label}
-                </span>
-              );
-            }
-            return (
-              <Link
-                key={item.href}
-                href={item.href}
-                className={`block rounded-xl px-3 py-2 text-sm transition-colors ${
-                  isActive ? "bg-white/10 text-white ring-1 ring-white/10" : "text-white/70 hover:bg-white/10 hover:text-white"
-                }`}
-              >
-                {item.label}
-              </Link>
-            );
-          })}
-        </nav>
-      </div>
-      <div className="space-y-1 border-t border-white/10 pt-4">
-        <span className="block cursor-not-allowed rounded-xl px-3 py-2 text-sm text-white/35">
-          Уведомления
-        </span>
-        <span className="block cursor-not-allowed rounded-xl px-3 py-2 text-sm text-white/35">
-          {profileLabel}
-        </span>
-      </div>
-    </aside>
   );
 }
 
@@ -170,13 +81,13 @@ export function LkShell({ role, title, subtitle, children, topRight, nav, active
     return (
       <main className="min-h-screen bg-[#f5f6fb] text-slate-950">
         <section className="grid w-full gap-4 px-4 py-4 md:min-h-screen md:grid-cols-[220px_minmax(0,1fr)]">
-          <LkSidebar role={role} items={items} activeHref={activeHref} />
+          <LkShellSidebar role={role} items={items} activeHref={activeHref} />
           <div className="min-w-0">
             {hideHeader ? null : (
               <HeaderBlock role={role} title={title} subtitle={subtitle} topRight={topRight} authed={authed} />
             )}
             <div className="md:hidden">
-              <TopNav items={items} activeHref={activeHref} />
+              <LkShellTopNav items={items} activeHref={activeHref} />
             </div>
             <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:rounded-3xl sm:p-6">
               {children}
@@ -191,7 +102,7 @@ export function LkShell({ role, title, subtitle, children, topRight, nav, active
     <main className="min-h-screen bg-brand-dark text-white">
       <section className="mx-auto w-full max-w-6xl px-4 py-6 sm:px-6 sm:py-10">
         <HeaderBlock role={role} title={title} subtitle={subtitle} topRight={topRight} authed={authed} />
-        <TopNav items={items} activeHref={activeHref} />
+        <LkShellTopNav items={items} activeHref={activeHref} />
 
         <div className="rounded-2xl border border-white/10 bg-white/5 p-4 sm:rounded-3xl sm:p-6">{children}</div>
       </section>

@@ -4,7 +4,6 @@ import { resolveLkAccessByEmail } from "@/lib/auth/lkAccess";
 import { LkAccessDenied } from "@/components/lk/LkAccessDenied";
 import { LkShell } from "@/components/lk/LkShell";
 import { LkProgramLibrary } from "@/components/lk/LkProgramLibrary";
-import { getCoachStudentsForCoachLkByEmail } from "@/lib/supabase/coachStudents";
 import { listProgramTemplates, verifyProgramTemplateSchema } from "@/lib/supabase/programTemplates";
 
 export default async function LkCoachProgramsPage() {
@@ -20,10 +19,7 @@ export default async function LkCoachProgramsPage() {
     console.warn("[lk/coach/programs] schema check failed", schema.message || schema.reason);
   }
 
-  const [programs, studentsResult] = await Promise.all([
-    listProgramTemplates(access.email),
-    getCoachStudentsForCoachLkByEmail(access.email),
-  ]);
+  const programs = await listProgramTemplates(access.email);
 
   return (
     <LkShell
@@ -32,7 +28,7 @@ export default async function LkCoachProgramsPage() {
       subtitle="Библиотека reusable training systems"
       activeHref="/lk/coach/programs"
     >
-      <LkProgramLibrary programs={programs} students={studentsResult.ok ? studentsResult.students : []} />
+      <LkProgramLibrary programs={programs} />
     </LkShell>
   );
 }

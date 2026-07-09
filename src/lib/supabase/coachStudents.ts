@@ -6,6 +6,7 @@ import { getSupabaseAdmin, isSupabaseEnabled } from "@/lib/supabase/server";
 export type CoachProfileRow = {
   id: string;
   email: string;
+  access_level?: "coach" | "head_coach" | null;
   is_active?: boolean | null;
 };
 
@@ -23,7 +24,7 @@ export async function getCoachByEmail(email: string): Promise<CoachProfileRow | 
   try {
     const { data, error } = await sb
       .from("coach_profiles")
-      .select("id, email, is_active")
+      .select("id, email, access_level, is_active")
       .eq("email", normalized)
       .eq("is_active", true)
       .maybeSingle();
@@ -33,8 +34,13 @@ export async function getCoachByEmail(email: string): Promise<CoachProfileRow | 
       return null;
     }
     if (!data || typeof data !== "object") return null;
-    const row = data as { id: string; email: string; is_active?: boolean | null };
-    return { id: row.id, email: row.email, is_active: row.is_active };
+    const row = data as {
+      id: string;
+      email: string;
+      access_level?: "coach" | "head_coach" | null;
+      is_active?: boolean | null;
+    };
+    return { id: row.id, email: row.email, access_level: row.access_level || "coach", is_active: row.is_active };
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     console.warn("[supabase/coachStudents] getCoachByEmail crashed", msg);
@@ -49,6 +55,14 @@ type ClientRow = {
   is_active?: boolean | null;
   final_day?: string | null;
   balance?: string | number | null;
+  currency?: string | null;
+  gr_price?: string | number | null;
+  ds_price?: string | number | null;
+  pr_price?: string | number | null;
+  sp_price?: string | number | null;
+  future_plan?: string | null;
+  tag?: string | null;
+  coach?: string | null;
 };
 
 type ProgramWorkoutRow = {
@@ -128,6 +142,52 @@ function mapClientToCoachStudent(row: ClientRow, nextWorkoutAt?: string): CoachS
     balance,
     nextWorkoutAt,
   };
+}
+
+function currencySymbolFromCode(raw: string) {
+  const code = raw.trim().toUpperCase();
+  if (code === "RUB") return "₽";
+  if (code === "USD") return "$";
+  if (code === "EUR") return "€";
+  return "";
+}
+
+function formatBalanceWithCurrency(balanceRaw: string | number | null | undefined, currencyRaw: string | null | undefined) {
+  const balance = String(balanceRaw ?? "").trim();
+  if (!balance) return "—";
+  if (/[₽$€]/.test(balance)) return balance;
+  const symbol = currencySymbolFromCode(String(currencyRaw || ""));
+  return symbol ? `${balance} ${symbol}` : balance;
+}
+
+function displayValue(value: unknown) {
+  const raw = String(value ?? "").trim();
+  return raw || "—";
+}
+
+function mapClientToAdminStudent(row: ClientRow): CoachStudent {
+  const name =
+    String(row.fio || "").trim() ||
+    String(row.email || "").trim() ||
+    "—";
+
+  return {
+    id: row.id,
+    name,
+    email: row.email?.trim() || undefined,
+    finalDay: displayValue(row.final_day),
+    balance: formatBalanceWithCurrency(row.balance, row.currency),
+    grPrice: displayValue(row.gr_price),
+    dsPrice: displayValue(row.ds_price),
+    prPrice: displayValue(row.pr_price),
+    spPrice: displayValue(row.sp_price),
+    futurePlan: displayValue(row.future_plan),
+    tag: displayValue(row.tag),
+  };
+}
+
+function isAdminActiveClient(row: ClientRow) {
+  return row.is_active === true && !String(row.coach || "").includes("wr_off");
 }
 
 /**
@@ -238,6 +298,41 @@ export async function getCoachStudentsForCoachLkByEmail(
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     console.warn("[supabase/coachStudents] getCoachStudentsForCoachLkByEmail failed", msg);
+    return { ok: false };
+  }
+}
+
+export async function getAdminStudentsForAdminLk(): Promise<
+  { ok: true; activeStudents: CoachStudent[]; allStudents: CoachStudent[] } | { ok: false }
+> {
+  if (!isSupabaseEnabled("read_coach_lk")) return { ok: false };
+  const sb = getSupabaseAdmin();
+  if (!sb) return { ok: false };
+
+  try {
+    const { data, error } = await sb
+      .from("clients")
+      .select("id, email, fio, is_active, final_day, balance, currency, gr_price, ds_price, pr_price, sp_price, future_plan, tag, coach")
+      .order("fio", { ascending: true });
+
+    if (error) {
+      console.warn("[supabase/coachStudents] admin clients query failed", error.message);
+      return { ok: false };
+    }
+
+    const rows = (Array.isArray(data) ? data : []) as ClientRow[];
+    const allStudents = rows
+      .map(mapClientToAdminStudent)
+      .sort((a, b) => a.name.localeCompare(b.name, "ru"));
+    const activeStudents = rows
+      .filter(isAdminActiveClient)
+      .map(mapClientToAdminStudent)
+      .sort((a, b) => a.name.localeCompare(b.name, "ru"));
+
+    return { ok: true, activeStudents, allStudents };
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    console.warn("[supabase/coachStudents] getAdminStudentsForAdminLk crashed", msg);
     return { ok: false };
   }
 }

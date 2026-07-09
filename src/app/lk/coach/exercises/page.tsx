@@ -18,7 +18,7 @@ export default async function LkCoachExercisesPage() {
     return <LkAccessDenied />;
   }
 
-  const exercises = await listActiveExercises();
+  const exercises = await listActiveExercises(access.email);
 
   return (
     <LkShell

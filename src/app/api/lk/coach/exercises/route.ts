@@ -23,7 +23,7 @@ export async function GET() {
     return NextResponse.json({ ok: false, error: coach.error }, { status: coach.status });
   }
 
-  const exercises = await listActiveExercises();
+  const exercises = await listActiveExercises(coach.email);
   return NextResponse.json({ ok: true, exercises });
 }
 
@@ -32,7 +32,7 @@ export async function POST() {
     {
       ok: false,
       error: "direct_upload_required",
-      message: "Use /api/lk/coach/exercises/init-upload and Bunny TUS direct upload.",
+      message: "Use /api/lk/coach/exercises/init-upload and Cloudflare Stream TUS direct upload.",
     },
     { status: 410 }
   );

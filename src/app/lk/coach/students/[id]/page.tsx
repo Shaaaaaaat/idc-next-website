@@ -51,7 +51,7 @@ export default async function LkCoachStudentPage({ params }: PageProps) {
     fromDate,
     toDate,
   });
-  const exerciseLibrary = await listActiveExercises();
+  const exerciseLibrary = await listActiveExercises(access.email);
 
   return (
     <LkShell role="coach" title={student.name} subtitle="Карточка ученика" activeHref="/lk/coach" hideHeader>

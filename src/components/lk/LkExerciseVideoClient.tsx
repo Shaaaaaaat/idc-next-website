@@ -80,6 +80,10 @@ export function LkExerciseVideoClient({ exercise, role, backHref, canEdit }: Pro
         exercise={exercise}
         onClose={() => setIsEditorOpen(false)}
         onSaved={() => router.refresh()}
+        onDeleted={() => {
+          router.push(backHref);
+          router.refresh();
+        }}
       />
     </LkShell>
   );

@@ -19,7 +19,6 @@ export function LkExerciseLibraryManager({ exercises }: Props) {
   const router = useRouter();
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
-  const [deactivatingId, setDeactivatingId] = useState("");
   const [query, setQuery] = useState("");
   const [isAddOpen, setIsAddOpen] = useState(false);
 
@@ -28,34 +27,6 @@ export function LkExerciseLibraryManager({ exercises }: Props) {
     if (!normalizedQuery) return exercises;
     return exercises.filter((exercise) => exercise.title.toLowerCase().includes(normalizedQuery));
   }, [exercises, normalizedQuery]);
-
-  async function deactivateExercise(exercise: ExerciseLibraryItem) {
-    const confirmed = window.confirm(`Скрыть упражнение "${exercise.title}" из активной библиотеки?`);
-    if (!confirmed) return;
-
-    setDeactivatingId(exercise.id);
-    setError("");
-    setSuccess("");
-
-    try {
-      const res = await fetch(`/api/lk/coach/exercises/${exercise.id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ isActive: false }),
-      });
-      const json = (await res.json().catch(() => null)) as { message?: string; error?: string } | null;
-      if (!res.ok) {
-        throw new Error(json?.message || json?.error || "Не удалось скрыть упражнение.");
-      }
-
-      setSuccess("Упражнение скрыто из активной библиотеки.");
-      router.refresh();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Не удалось скрыть упражнение.");
-    } finally {
-      setDeactivatingId("");
-    }
-  }
 
   return (
     <div className="space-y-6">
@@ -119,7 +90,6 @@ export function LkExerciseLibraryManager({ exercises }: Props) {
                     <th className="px-4 py-3 font-semibold">Название</th>
                     <th className="px-4 py-3 font-semibold">Теги</th>
                     <th className="px-4 py-3 font-semibold">Описание</th>
-                    <th className="px-4 py-3 text-right font-semibold">Действия</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
@@ -140,25 +110,11 @@ export function LkExerciseLibraryManager({ exercises }: Props) {
                     >
                       <td className="px-4 py-4">
                         <p className="font-semibold text-slate-950">{exercise.title}</p>
-                        <p className="mt-1 text-xs text-slate-400">Открыть видео</p>
                       </td>
                       <td className="px-4 py-4 text-slate-600">
                         <ExerciseTagPills tags={exercise.tags} />
                       </td>
                       <td className="max-w-md px-4 py-4 text-slate-500">{descriptionPreview(exercise.description)}</td>
-                      <td className="px-4 py-4 text-right">
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            deactivateExercise(exercise);
-                          }}
-                          disabled={deactivatingId === exercise.id}
-                          className="rounded-full border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-500 transition-colors hover:border-red-200 hover:bg-red-50 hover:text-red-600 disabled:cursor-not-allowed disabled:opacity-60"
-                        >
-                          {deactivatingId === exercise.id ? "Скрываем..." : "Скрыть"}
-                        </button>
-                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -178,15 +134,6 @@ export function LkExerciseLibraryManager({ exercises }: Props) {
                       <ExerciseTagPills tags={exercise.tags} />
                     </div>
                     <p className="mt-2 text-sm text-slate-500">{descriptionPreview(exercise.description)}</p>
-                    <p className="mt-2 text-xs font-semibold text-brand-primary">Открыть видео</p>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => deactivateExercise(exercise)}
-                    disabled={deactivatingId === exercise.id}
-                    className="mt-3 rounded-full border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-500 transition-colors hover:border-red-200 hover:bg-red-50 hover:text-red-600 disabled:cursor-not-allowed disabled:opacity-60"
-                  >
-                    {deactivatingId === exercise.id ? "Скрываем..." : "Скрыть"}
                   </button>
                 </div>
               ))}

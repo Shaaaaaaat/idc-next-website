@@ -2,7 +2,7 @@ import { redirect } from "next/navigation";
 import { getValidatedSessionEmail } from "@/lib/auth/lkSession";
 import { resolveLkAccessByEmail } from "@/lib/auth/lkAccess";
 import { LkAccessDenied } from "@/components/lk/LkAccessDenied";
-import { getAdminActiveStudents } from "@/lib/airtable/coachStudents";
+import { getAdminStudentsForAdminLk } from "@/lib/supabase/coachStudents";
 import { LkAdminStudentsTable } from "@/components/lk/LkAdminStudentsTable";
 import { LkInfoCard, LkShell } from "@/components/lk/LkShell";
 
@@ -18,7 +18,12 @@ export default async function LkAdminPage() {
     return <LkAccessDenied />;
   }
 
-  const students = await getAdminActiveStudents();
+  const sb = await getAdminStudentsForAdminLk();
+  const activeStudents = sb.ok ? sb.activeStudents : [];
+  const allStudents = sb.ok ? sb.allStudents : [];
+  if (!sb.ok) {
+    console.warn("[lk/admin] Supabase admin students failed");
+  }
 
   return (
     <LkShell
@@ -28,15 +33,16 @@ export default async function LkAdminPage() {
       activeHref="/lk/admin"
     >
       <div className="space-y-5">
-        <div className="grid gap-3 sm:grid-cols-2">
+        <div className="grid gap-3 sm:grid-cols-3">
           <LkInfoCard label="Email" value={access.email} />
-          <LkInfoCard label="Активных учеников" value={students.length} />
+          <LkInfoCard label="Активных учеников" value={activeStudents.length} />
+          <LkInfoCard label="Всего клиентов" value={allStudents.length} />
         </div>
         <div>
           <p className="mb-3 text-sm text-slate-500">
             Сводная таблица активных клиентов и быстрые фильтры.
           </p>
-          <LkAdminStudentsTable students={students} />
+          <LkAdminStudentsTable activeStudents={activeStudents} allStudents={allStudents} />
         </div>
       </div>
     </LkShell>

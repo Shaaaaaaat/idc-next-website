@@ -11,8 +11,15 @@ function statusForReason(reason: string): number {
   if (reason === "invalid") return 400;
   if (reason === "forbidden") return 403;
   if (reason === "not_found") return 404;
+  if (reason === "stale") return 409;
   if (reason === "disabled") return 503;
   return 500;
+}
+
+function messageForReason(reason: string, message?: string): string | undefined {
+  if (message) return message;
+  if (reason === "stale") return "Тренировка была изменена в другом окне. Обновите страницу.";
+  return undefined;
 }
 
 export async function POST(req: Request, context: RouteContext) {
@@ -44,7 +51,7 @@ export async function POST(req: Request, context: RouteContext) {
 
   if (!result.ok) {
     return NextResponse.json(
-      { ok: false, error: result.reason, message: result.message },
+      { ok: false, error: result.reason, message: messageForReason(result.reason, result.message) },
       { status: statusForReason(result.reason) }
     );
   }

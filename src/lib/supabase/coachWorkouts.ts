@@ -4,6 +4,7 @@ import { getSupabaseAdmin, isSupabaseEnabled } from "@/lib/supabase/server";
 import { getCoachByEmail } from "@/lib/supabase/coachStudents";
 
 export type CoachWorkoutExercise = {
+  id?: string;
   exerciseId?: string;
   groupId?: string;
   title: string;
@@ -34,6 +35,7 @@ export type CoachWorkout = {
   exercises: CoachWorkoutExercise[];
   groups?: CoachWorkoutExerciseGroup[];
   coachComment?: string;
+  updatedAt?: string;
 };
 
 export type CoachWorkoutExerciseGroupInput = {
@@ -47,6 +49,7 @@ export type CoachWorkoutExerciseGroupInput = {
 };
 
 export type CoachWorkoutExerciseInput = {
+  id?: string;
   exerciseId?: string;
   groupId?: string;
   groupDraftId?: string;
@@ -66,6 +69,7 @@ export type SaveCoachWorkoutInput = {
   workoutDate: string;
   title: string;
   coachComment?: string;
+  expectedUpdatedAt?: string | null;
   groups?: CoachWorkoutExerciseGroupInput[];
   exercises: CoachWorkoutExerciseInput[];
 };
@@ -74,7 +78,7 @@ export type SaveCoachWorkoutResult =
   | { ok: true; workoutId: string }
   | {
       ok: false;
-      reason: "disabled" | "invalid" | "forbidden" | "not_found" | "db_error";
+      reason: "disabled" | "invalid" | "forbidden" | "not_found" | "stale" | "db_error";
       message?: string;
     };
 
@@ -93,9 +97,11 @@ type ProgramWorkoutRow = {
   title?: string | null;
   coach_comment?: string | null;
   status?: string | null;
+  updated_at?: string | null;
 };
 
 type ProgramExerciseRow = {
+  id?: string | null;
   client_program_workout_id?: string | null;
   exercise_group_id?: string | null;
   exercise_id?: string | null;
@@ -143,36 +149,6 @@ function cleanOptional(raw: unknown): string | null {
   return value || null;
 }
 
-function normalizeExerciseInputs(rows: CoachWorkoutExerciseInput[]) {
-  return rows
-    .map((row, index) => ({
-      group_ref: cleanOptional(row.groupDraftId || row.groupId),
-      exercise_id: cleanOptional(row.exerciseId),
-      exercise_title: String(row.exerciseTitle || "").trim(),
-      sets: cleanOptional(row.sets),
-      reps: cleanOptional(row.reps),
-      rest: cleanOptional(row.rest),
-      tempo: cleanOptional(row.tempo),
-      notes: cleanOptional(row.notes),
-      sort_order: Number.isFinite(Number(row.sortOrder)) ? Number(row.sortOrder) : index,
-    }))
-    .filter((row) => row.exercise_id && row.exercise_title);
-}
-
-function normalizeGroupInputs(rows: CoachWorkoutExerciseGroupInput[]) {
-  return rows.map((row, index) => {
-    const ref = cleanOptional(row.draftId || row.id) || `group-${index}`;
-    return {
-      ref,
-      title: cleanOptional(row.title) || `Комбо ${index + 1}`,
-      sets: cleanOptional(row.sets),
-      rest: cleanOptional(row.rest),
-      notes: cleanOptional(row.notes),
-      sort_order: Number.isFinite(Number(row.sortOrder)) ? Number(row.sortOrder) : index,
-    };
-  });
-}
-
 function exerciseDetails(row: ProgramExerciseRow): string {
   return [
     row.sets ? `${row.sets} sets` : "",
@@ -194,6 +170,7 @@ function groupExercisesByWorkout(rows: ProgramExerciseRow[]): Map<string, CoachW
 
     const list = map.get(workoutId) || [];
     list.push({
+      id: cleanOptional(row.id) || undefined,
       groupId: row.exercise_group_id || undefined,
       exerciseId: row.exercise_id || undefined,
       title,
@@ -279,6 +256,7 @@ function normalizeWorkout(
     exercises: orderedExercises,
     groups,
     coachComment: firstString(row.coach_comment) || undefined,
+    updatedAt: cleanOptional(row.updated_at) || undefined,
   };
 }
 
@@ -301,48 +279,6 @@ async function assertCoachOwnsStudent(coachEmail: string, studentId: string) {
   return coach;
 }
 
-async function ensureActiveClientProgram(params: {
-  clientId: string;
-  coachId: string;
-  startDate: string;
-}): Promise<{ ok: true; programId: string } | { ok: false; message: string }> {
-  const sb = getSupabaseAdmin();
-  if (!sb) return { ok: false, message: "Supabase client is not configured" };
-
-  const { data: existing, error: existingErr } = await sb
-    .from("client_programs")
-    .select("id")
-    .eq("client_id", params.clientId)
-    .eq("coach_id", params.coachId)
-    .eq("status", "active")
-    .order("created_at", { ascending: false })
-    .limit(1)
-    .maybeSingle();
-
-  if (existingErr) return { ok: false, message: existingErr.message };
-  if (existing && typeof existing.id === "string") {
-    return { ok: true, programId: existing.id };
-  }
-
-  const { data: created, error: createErr } = await sb
-    .from("client_programs")
-    .insert({
-      client_id: params.clientId,
-      coach_id: params.coachId,
-      title: "Индивидуальная программа",
-      status: "active",
-      start_date: params.startDate,
-    })
-    .select("id")
-    .single();
-
-  if (createErr || !created || typeof created.id !== "string") {
-    return { ok: false, message: createErr?.message || "Program was not created" };
-  }
-
-  return { ok: true, programId: created.id };
-}
-
 export async function saveCoachWorkout(
   input: SaveCoachWorkoutInput
 ): Promise<SaveCoachWorkoutResult> {
@@ -355,134 +291,70 @@ export async function saveCoachWorkout(
   const workoutId = String(input.workoutId || "").trim();
   const workoutDate = toDateKey(String(input.workoutDate || "").trim());
   const title = String(input.title || "").trim();
-  const coachComment = cleanOptional(input.coachComment);
-  const groups = normalizeGroupInputs(input.groups || []);
-  const exercises = normalizeExerciseInputs(input.exercises || []);
 
   if (!coachEmail || !studentId || !isDateKey(workoutDate) || !title) {
     return { ok: false, reason: "invalid", message: "Missing required workout fields" };
   }
 
   try {
-    const coach = await assertCoachOwnsStudent(coachEmail, studentId);
-    if (!coach) return { ok: false, reason: "forbidden" };
+    const payload = {
+      workoutDate,
+      title,
+      coachComment: cleanOptional(input.coachComment),
+      groups: (input.groups || []).map((group, index) => ({
+        id: cleanOptional(group.id),
+        draftId: cleanOptional(group.draftId || group.id) || `group-${index}`,
+        title: cleanOptional(group.title) || `Комбо ${index + 1}`,
+        sets: cleanOptional(group.sets),
+        rest: cleanOptional(group.rest),
+        notes: cleanOptional(group.notes),
+        sortOrder: Number.isFinite(Number(group.sortOrder)) ? Number(group.sortOrder) : index,
+      })),
+      exercises: (input.exercises || []).map((exercise, index) => ({
+        id: cleanOptional(exercise.id),
+        exerciseId: cleanOptional(exercise.exerciseId),
+        groupId: cleanOptional(exercise.groupId),
+        groupDraftId: cleanOptional(exercise.groupDraftId || exercise.groupId),
+        exerciseTitle: String(exercise.exerciseTitle || "").trim(),
+        sets: cleanOptional(exercise.sets),
+        reps: cleanOptional(exercise.reps),
+        rest: cleanOptional(exercise.rest),
+        tempo: cleanOptional(exercise.tempo),
+        notes: cleanOptional(exercise.notes),
+        sortOrder: Number.isFinite(Number(exercise.sortOrder)) ? Number(exercise.sortOrder) : index,
+      })),
+    };
 
-    const program = await ensureActiveClientProgram({
-      clientId: studentId,
-      coachId: coach.id,
-      startDate: workoutDate,
-    });
-    if (!program.ok) return { ok: false, reason: "db_error", message: program.message };
-
-    let savedWorkoutId = workoutId;
-    if (savedWorkoutId) {
-      const { data, error } = await sb
-        .from("client_program_workouts")
-        .update({
-          client_program_id: program.programId,
-          coach_id: coach.id,
-          workout_date: workoutDate,
-          title,
-          coach_comment: coachComment,
-          updated_at: new Date().toISOString(),
+    const { data: rpcData, error: rpcError } = workoutId
+      ? await sb.rpc("save_client_workout_diff", {
+          p_workout_id: workoutId,
+          p_coach_email: coachEmail,
+          p_client_id: studentId,
+          p_expected_updated_at: cleanOptional(input.expectedUpdatedAt),
+          p_payload: payload,
         })
-        .eq("id", savedWorkoutId)
-        .eq("client_id", studentId)
-        .select("id")
-        .maybeSingle();
+      : await sb.rpc("create_client_workout_diff", {
+          p_coach_email: coachEmail,
+          p_client_id: studentId,
+          p_payload: payload,
+        });
 
-      if (error) return { ok: false, reason: "db_error", message: error.message };
-      if (!data) return { ok: false, reason: "not_found" };
-    } else {
-      const { data, error } = await sb
-        .from("client_program_workouts")
-        .insert({
-          client_program_id: program.programId,
-          client_id: studentId,
-          coach_id: coach.id,
-          workout_date: workoutDate,
-          title,
-          coach_comment: coachComment,
-          status: "planned",
-        })
-        .select("id")
-        .single();
+    if (rpcError) return { ok: false, reason: "db_error", message: rpcError.message };
 
-      if (error || !data || typeof data.id !== "string") {
-        return { ok: false, reason: "db_error", message: error?.message || "Workout was not created" };
+    const rpcResult = (rpcData || {}) as { ok?: boolean; error?: string; message?: string; workoutId?: string };
+    if (rpcResult.ok === false) {
+      const reason = rpcResult.error;
+      if (reason === "invalid" || reason === "forbidden" || reason === "not_found" || reason === "stale") {
+        return { ok: false, reason, message: rpcResult.message };
       }
-      savedWorkoutId = data.id;
+      return { ok: false, reason: "db_error", message: rpcResult.message || reason || "Workout was not saved" };
     }
 
-    const groupRefs = new Set(groups.map((group) => group.ref));
-    const missingGroupRef = exercises.find((exercise) => exercise.group_ref && !groupRefs.has(exercise.group_ref));
-    if (missingGroupRef) {
-      return { ok: false, reason: "invalid", message: "Exercise group does not belong to this workout payload" };
+    if (typeof rpcResult.workoutId !== "string" || !rpcResult.workoutId) {
+      return { ok: false, reason: "db_error", message: "Workout was not saved" };
     }
 
-    const { error: deleteErr } = await sb
-      .from("client_program_exercises")
-      .delete()
-      .eq("client_program_workout_id", savedWorkoutId);
-
-    if (deleteErr) return { ok: false, reason: "db_error", message: deleteErr.message };
-
-    const { error: deleteGroupsErr } = await sb
-      .from("client_program_exercise_groups")
-      .delete()
-      .eq("client_program_workout_id", savedWorkoutId);
-
-    if (deleteGroupsErr) return { ok: false, reason: "db_error", message: deleteGroupsErr.message };
-
-    const groupIdByRef = new Map<string, string>();
-    if (groups.length > 0) {
-      const { data: createdGroups, error: groupInsertErr } = await sb
-        .from("client_program_exercise_groups")
-        .insert(
-          groups.map((group) => ({
-            client_program_workout_id: savedWorkoutId,
-            title: group.title,
-            sets: group.sets,
-            rest: group.rest,
-            notes: group.notes,
-            sort_order: group.sort_order,
-          }))
-        )
-        .select("id, sort_order");
-
-      if (groupInsertErr) return { ok: false, reason: "db_error", message: groupInsertErr.message };
-
-      const created = (Array.isArray(createdGroups) ? createdGroups : []) as { id?: string; sort_order?: number | null }[];
-      const sortedCreated = [...created].sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0));
-      groups.forEach((group, index) => {
-        const id = sortedCreated[index]?.id;
-        if (id) groupIdByRef.set(group.ref, id);
-      });
-      if (groupIdByRef.size !== groups.length) {
-        return { ok: false, reason: "db_error", message: "Exercise groups were not created" };
-      }
-    }
-
-    if (exercises.length > 0) {
-      const { error: insertErr } = await sb.from("client_program_exercises").insert(
-        exercises.map((exercise) => ({
-          exercise_id: exercise.exercise_id,
-          exercise_title: exercise.exercise_title,
-          sets: exercise.group_ref ? null : exercise.sets,
-          reps: exercise.reps,
-          rest: exercise.group_ref ? null : exercise.rest,
-          tempo: exercise.tempo,
-          notes: exercise.notes,
-          sort_order: exercise.sort_order,
-          client_program_workout_id: savedWorkoutId,
-          exercise_group_id: exercise.group_ref ? groupIdByRef.get(exercise.group_ref) || null : null,
-        }))
-      );
-
-      if (insertErr) return { ok: false, reason: "db_error", message: insertErr.message };
-    }
-
-    return { ok: true, workoutId: savedWorkoutId };
+    return { ok: true, workoutId: rpcResult.workoutId };
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     console.warn("[supabase/coachWorkouts] saveCoachWorkout crashed", msg);
@@ -563,7 +435,7 @@ export async function getCoachWorkoutsForStudent(params: {
   try {
     const { data: workouts, error: workoutsErr } = await sb
       .from("client_program_workouts")
-      .select("id, client_id, workout_date, title, coach_comment, status")
+      .select("id, client_id, workout_date, title, coach_comment, status, updated_at")
       .eq("client_id", studentId)
       .gte("workout_date", params.fromDate)
       .lte("workout_date", params.toDate)
@@ -580,7 +452,7 @@ export async function getCoachWorkoutsForStudent(params: {
 
     const { data: exercises, error: exercisesErr } = await sb
       .from("client_program_exercises")
-      .select("client_program_workout_id, exercise_group_id, exercise_id, exercise_title, sets, reps, rest, tempo, notes, sort_order")
+      .select("id, client_program_workout_id, exercise_group_id, exercise_id, exercise_title, sets, reps, rest, tempo, notes, sort_order")
       .in("client_program_workout_id", workoutIds)
       .order("sort_order", { ascending: true });
 

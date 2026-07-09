@@ -19,7 +19,10 @@ export default async function LkExerciseVideoPage({ params }: PageProps) {
   }
 
   const { exerciseId } = await params;
-  const exercise = await getActiveExerciseById(exerciseId);
+  const exercise = await getActiveExerciseById(exerciseId, {
+    coachEmail: access.type === "coach" ? access.email : undefined,
+    isAdmin: access.type === "admin",
+  });
   if (!exercise) notFound();
 
   const role = access.type === "admin" ? "admin" : "coach";
@@ -30,7 +33,7 @@ export default async function LkExerciseVideoPage({ params }: PageProps) {
       role={role}
       exercise={exercise}
       backHref={backHref}
-      canEdit={access.type === "coach"}
+      canEdit={access.type === "coach" && exercise.canEdit}
     />
   );
 }

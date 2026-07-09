@@ -1,8 +1,8 @@
 import { NextResponse } from "next/server";
 import { getValidatedSessionEmail } from "@/lib/auth/lkSession";
 import { resolveLkAccessByEmail } from "@/lib/auth/lkAccess";
-import { buildBunnyEmbedUrlForVideo } from "@/lib/bunny/stream";
-import { createBunnyExercise } from "@/lib/supabase/exerciseLibrary";
+import { normalizeCloudflareVideo, verifyCloudflareVideoExists } from "@/lib/cloudflare/stream";
+import { createExercise } from "@/lib/supabase/exerciseLibrary";
 
 export const runtime = "nodejs";
 
@@ -38,20 +38,28 @@ export async function POST(req: Request) {
     return NextResponse.json({ ok: false, error: "invalid_upload_metadata" }, { status: 400 });
   }
 
-  const embed = buildBunnyEmbedUrlForVideo(videoId);
-  if (!embed.ok) {
+  const video = normalizeCloudflareVideo(videoId);
+  if (!video.ok) {
     return NextResponse.json(
-      { ok: false, error: "bunny_embed_url_failed", message: embed.message },
-      { status: 500 }
+      { ok: false, error: "invalid_cloudflare_video", message: video.message },
+      { status: 400 }
     );
   }
 
-  const created = await createBunnyExercise({
+  const verified = await verifyCloudflareVideoExists(video.data.uid);
+  if (!verified.ok) {
+    return NextResponse.json(
+      { ok: false, error: "cloudflare_video_verify_failed", message: verified.message },
+      { status: 502 }
+    );
+  }
+
+  const created = await createExercise({
     coachEmail: coach.email,
     title,
-    videoAssetId: videoId,
-    videoUrl: embed.videoUrl,
-    thumbnailUrl: null,
+    videoAssetId: video.data.uid,
+    videoUrl: video.data.videoUrl,
+    thumbnailUrl: video.data.thumbnailUrl,
     description,
     tags,
   });

@@ -4,7 +4,10 @@
 
 ```bash
 # 1. Собрать образ
-docker build -t ido-calisthenics .
+docker build \
+  --platform linux/amd64 \
+  --build-arg NEXT_PUBLIC_YANDEX_METRIKA_ID=107091121 \
+  -t ido-calisthenics .
 
 # 2. Запустить контейнер (порт 8080)
 docker run -p 8080:8080 ido-calisthenics
@@ -16,7 +19,10 @@ docker run -p 8080:8080 ido-calisthenics
 ## Свой ID счётчика при сборке
 
 ```bash
-docker build --build-arg NEXT_PUBLIC_YANDEX_METRIKA_ID=107091121 -t ido-calisthenics .
+docker build \
+  --platform linux/amd64 \
+  --build-arg NEXT_PUBLIC_YANDEX_METRIKA_ID=107091121 \
+  -t ido-calisthenics .
 ```
 
 ## Проверка
@@ -37,7 +43,12 @@ docker stop <container_id>
 
 1. В CI/CD или при ручной сборке передать build-arg:
    ```bash
-   docker build --build-arg NEXT_PUBLIC_YANDEX_METRIKA_ID=107091121 -t <registry>/ido-calisthenics .
+   docker build \
+     --platform linux/amd64 \
+     --build-arg NEXT_PUBLIC_YANDEX_METRIKA_ID=107091121 \
+     -t <registry>/ido-calisthenics .
    ```
 
-2. Либо в Dockerfile уже задано значение по умолчанию (107091121), поэтому отдельно передавать не обязательно.
+2. `NEXT_PUBLIC_YANDEX_METRIKA_ID` нужен именно на этапе `docker build`: Next.js встраивает `NEXT_PUBLIC_*` в статический bundle при `npm run build`. Передача этой переменной только в `docker run -e` не включит Метрику в уже собранный образ.
+
+3. Передача `NEXT_PUBLIC_YANDEX_METRIKA_ID` через `yc serverless container revision deploy --environment` не исправляет уже собранный client bundle. Для Метрики нужен именно `--build-arg` при сборке образа.

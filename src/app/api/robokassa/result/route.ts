@@ -1,6 +1,8 @@
 // src/app/api/robokassa/result/route.ts
+import crypto from "crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { markPurchasePaidAndProcess } from "@/lib/supabase/purchases";
+import { sendTelegramWithRetry } from "@/lib/telegram/sendTelegramWithRetry";
 
 /* ---------------- ENV ---------------- */
 const ROBO_SECRET2 = process.env.ROBO_SECRET2;
@@ -171,46 +173,157 @@ function telegramPhoneLineOptional(input?: string | null) {
   return `Тел: <a href="tel:${safePhone}">${safePhone}</a>`;
 }
 
-async function sendTelegramMessage(text: string) {
-  if (!TELEGRAM_BOT_TOKEN || !Number.isFinite(TELEGRAM_CHAT_ID)) return;
-  await fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
+type TelegramSendTarget = "admin" | "user" | "coach" | "user_buttons";
+
+type TelegramSendMeta = {
+  target: TelegramSendTarget;
+  invId?: string;
+  source?: "website" | "purchases" | "none";
+  email?: string;
+  studioId?: string;
+};
+
+type TelegramSendOutcome = {
+  ok: boolean;
+  target: TelegramSendTarget;
+  skipped?: boolean;
+  reason?: string;
+  status?: number;
+  telegramOk?: boolean;
+  errorCode?: string;
+  description?: string;
+  attempts?: number;
+};
+
+function hashLogValue(value: unknown): string {
+  return crypto.createHash("sha256").update(String(value ?? "")).digest("hex").slice(0, 12);
+}
+
+function logTelegramSendResult(payload: Record<string, unknown>) {
+  try {
+    console.log(JSON.stringify({ tag: "IDC_TELEGRAM_SEND", event: "telegram_send_result", ...payload }));
+  } catch {
+    console.log("[IDC_TELEGRAM_SEND] telegram_send_result");
+  }
+}
+
+function logRobokassaResult(event: string, payload: Record<string, unknown>) {
+  try {
+    console.log(JSON.stringify({ tag: "IDC_ROBOKASSA_RESULT", event, ...payload }));
+  } catch {
+    console.log(`[IDC_ROBOKASSA_RESULT] ${event}`);
+  }
+}
+
+function telegramLogContext(meta: TelegramSendMeta, chatId?: number) {
+  const email = String(meta.email || "").trim().toLowerCase();
+  return {
+    target: meta.target,
+    invId: meta.invId,
+    source: meta.source,
+    studioId: meta.studioId,
+    emailHash: email ? hashLogValue(email) : undefined,
+    chatIdHash: Number.isFinite(chatId) ? hashLogValue(chatId) : undefined,
+  };
+}
+
+function logTelegramSkip(meta: TelegramSendMeta, reason: string, chatId?: number): TelegramSendOutcome {
+  const outcome = { ok: false, target: meta.target, skipped: true, reason };
+  logTelegramSendResult({
+    ...telegramLogContext(meta, chatId),
+    ok: outcome.ok,
+    target: outcome.target,
+    reason: outcome.reason,
+  });
+  return outcome;
+}
+
+async function settleTelegramNotifications(
+  tasks: Array<Promise<TelegramSendOutcome>>,
+  context: Record<string, unknown>
+) {
+  const settled = await Promise.allSettled(tasks);
+  settled.forEach((result) => {
+    if (result.status === "rejected") {
+      logTelegramSendResult({
+        ...context,
+        target: "unknown",
+        ok: false,
+        reason: "promise_rejected",
+      });
+    }
+  });
+  return settled;
+}
+
+async function executeTelegramSend(
+  botToken: string | undefined,
+  chatId: number | undefined,
+  body: Record<string, unknown>,
+  meta: TelegramSendMeta
+): Promise<TelegramSendOutcome> {
+  const result = await sendTelegramWithRetry({
+    botToken,
+    chatId,
+    text: String(body.text ?? ""),
+    parseMode: typeof body.parse_mode === "string" ? body.parse_mode : "HTML",
+    disableWebPagePreview: body.disable_web_page_preview !== false,
+    replyMarkup: typeof body.reply_markup === "object" && body.reply_markup !== null
+      ? (body.reply_markup as Record<string, unknown>)
+      : undefined,
+    logContext: telegramLogContext(meta, chatId),
+  });
+
+  return { target: meta.target, ...result };
+}
+
+async function sendTelegramMessage(text: string, meta: TelegramSendMeta = { target: "admin" }) {
+  return executeTelegramSend(
+    TELEGRAM_BOT_TOKEN,
+    TELEGRAM_CHAT_ID,
+    {
       chat_id: TELEGRAM_CHAT_ID,
       text,
       parse_mode: "HTML",
       disable_web_page_preview: true,
-    }),
-    cache: "no-store",
-  }).catch(() => {});
+    },
+    meta
+  );
 }
-async function sendTelegramMessageCustom(botToken: string | undefined, chatId: number | undefined, text: string) {
-  if (!botToken || !Number.isFinite(chatId)) return;
-  await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
+
+async function sendTelegramMessageCustom(
+  botToken: string | undefined,
+  chatId: number | undefined,
+  text: string,
+  meta: TelegramSendMeta
+) {
+  return executeTelegramSend(
+    botToken,
+    chatId,
+    {
       chat_id: chatId,
       text,
       parse_mode: "HTML",
       disable_web_page_preview: true,
-    }),
-    cache: "no-store",
-  }).catch(() => {});
+    },
+    meta
+  );
 }
+
 async function sendTelegramMessageCustomWithInlineButtons(
   botToken: string | undefined,
   chatId: number | undefined,
   text: string,
-  buttons: Array<{ text: string; url: string }>
+  buttons: Array<{ text: string; url: string }>,
+  meta: TelegramSendMeta
 ) {
-  if (!botToken || !Number.isFinite(chatId)) return;
-  if (!Array.isArray(buttons) || buttons.length === 0) return;
-  await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
+  if (!Array.isArray(buttons) || buttons.length === 0) {
+    return logTelegramSkip(meta, "no_buttons", chatId);
+  }
+  return executeTelegramSend(
+    botToken,
+    chatId,
+    {
       chat_id: chatId,
       text,
       parse_mode: "HTML",
@@ -218,9 +331,9 @@ async function sendTelegramMessageCustomWithInlineButtons(
       reply_markup: {
         inline_keyboard: [buttons.map((btn) => ({ text: btn.text, url: btn.url }))],
       },
-    }),
-    cache: "no-store",
-  }).catch(() => {});
+    },
+    meta
+  );
 }
 
 function okText(invId: string) {
@@ -292,10 +405,6 @@ function normalizeTrialDateLabel(input: string) {
   const withSlash = raw.match(/^(\d{1,2}\/\d{1,2})\s+(\d{1,2}:\d{2})$/);
   if (withSlash) return `${withSlash[1]} в ${withSlash[2]}`;
   return raw;
-}
-
-function delayMs(ms: number) {
-  return new Promise<void>((resolve) => setTimeout(resolve, ms));
 }
 
 function verifySignature(outSum: string, invId: string, signature: string | null | undefined) {
@@ -427,10 +536,60 @@ async function handle(params: URLSearchParams) {
   const isGym = format === "gym";
   const isGymTrial = isGym && (/^trial$/i.test(tariffLabel) || Boolean(slotStartAt));
   const phoneLine = telegramPhoneLine(phone);
+  const purchasesFields: Record<string, any> = (foundPurchases as any)?.record?.fields || {};
+  const purchaseFormat = pickFirstStringField(purchasesFields, ["format", "Format"]).toLowerCase();
+  const purchaseTariffLabel = pickFirstStringField(purchasesFields, ["tariff_label", "Tariff", "tariff"]).toLowerCase();
+  const purchaseTgIdRaw = pickFirstStringField(purchasesFields, ["tgId", "tg_id", "telegram_id", "telegramId", "tgid"]);
+  const purchaseDateRaw = pickFirstStringField(purchasesFields, ["Date", "date", "slot_start_at", "slot"]);
+  const purchaseStudioId = pickFirstStringField(purchasesFields, ["studio_id", "studioId", "studio"]);
+  const purchaseFio = pickFirstStringField(purchasesFields, ["FIO", "fio", "name", "Name", "full_name"]) || fio;
+  const purchasePhone = pickFirstStringField(purchasesFields, ["Phone", "phone", "mobile"]) || phone;
+  const purchaseEmail = pickFirstStringField(purchasesFields, ["email", "Email"]).toLowerCase() || email;
+  const purchaseSumRaw = pickFirstStringField(purchasesFields, ["Sum", "sum"]);
+  const purchaseTgId = parseTelegramChatId(purchaseTgIdRaw);
+  const isPurchaseGymTrial = purchaseFormat === "gym" && purchaseTariffLabel === "trial";
+  const isPurchaseGymNonTrial = purchaseFormat === "gym" && purchaseTariffLabel !== "trial";
+  const isPurchaseDsOnlineTest = purchaseFormat === "ds" && purchaseTariffLabel === "online_test";
+  const isPurchaseDsNonOnlineTest = purchaseFormat === "ds" && purchaseTariffLabel !== "online_test";
+  const purchaseSum = Number(purchaseSumRaw || outSum || 0);
+  const trialMeta = TRIAL_STUDIO_META[purchaseStudioId];
+  const websiteCoachChat = coachChatForStudio(studioId);
+  const purchaseCoachChat = coachChatForStudio(purchaseStudioId);
+  const willNotifyAdmin = true;
+  const willNotifyCoach =
+    foundSource === "purchases"
+      ? isPurchaseGymTrial && Number.isFinite(purchaseTgId) && Boolean(trialMeta)
+      : isGymTrial;
+  const willNotifyUser = foundSource === "purchases" && Number.isFinite(purchaseTgId);
+
+  logRobokassaResult("notification_branch_selected", {
+    invId: String(invId),
+    source: foundSource,
+    format: foundSource === "purchases" ? purchaseFormat : format,
+    studioId: foundSource === "purchases" ? purchaseStudioId : studioId,
+    hasAdminChat: Boolean(TELEGRAM_BOT_TOKEN && Number.isFinite(TELEGRAM_CHAT_ID)),
+    hasCoachChat: Boolean(
+      TELEGRAM_COACH_BOT_TOKEN &&
+        Number.isFinite(foundSource === "purchases" ? purchaseCoachChat : websiteCoachChat)
+    ),
+    hasUserChat: Number.isFinite(purchaseTgId),
+    willNotifyAdmin,
+    willNotifyCoach,
+    willNotifyUser,
+  });
+
+  if (!willNotifyAdmin && !willNotifyCoach && !willNotifyUser) {
+    logRobokassaResult("notification_skipped", {
+      invId: String(invId),
+      source: foundSource,
+      format: foundSource === "purchases" ? purchaseFormat : format,
+      studioId: foundSource === "purchases" ? purchaseStudioId : studioId,
+      reason: "unsupported_source_or_format",
+    });
+  }
 
   let text = "";
   if (foundSource === "purchases") {
-    const purchasesFields: Record<string, any> = (foundPurchases as any)?.record?.fields || {};
     const purchaseTagForAdmin = pickFirstStringField(purchasesFields, ["Tag", "tag"]) || "—";
 
     text =
@@ -443,25 +602,7 @@ async function handle(params: URLSearchParams) {
       `Сумма: ${escapeTgHtml(String(sumNum || Number(outSum) || 0))} ₽\n` +
       `Курс: ${escapeTgHtml(purchaseTagForAdmin)}\n` +
       `Тариф: ${escapeTgHtml(tariffLabel || "—")}`;
-    await sendTelegramMessage(text);
-    const purchaseFormat = pickFirstStringField(purchasesFields, ["format", "Format"]).toLowerCase();
-    const purchaseTariffLabel = pickFirstStringField(purchasesFields, ["tariff_label", "Tariff", "tariff"]).toLowerCase();
-    const purchaseTgIdRaw = pickFirstStringField(purchasesFields, ["tgId", "tg_id", "telegram_id", "telegramId", "tgid"]);
-    const purchaseDateRaw = pickFirstStringField(purchasesFields, ["Date", "date", "slot_start_at", "slot"]);
-    const purchaseStudioId = pickFirstStringField(purchasesFields, ["studio_id", "studioId", "studio"]);
-    const purchaseFio = pickFirstStringField(purchasesFields, ["FIO", "fio", "name", "Name", "full_name"]) || fio;
-    const purchasePhone = pickFirstStringField(purchasesFields, ["Phone", "phone", "mobile"]) || phone;
-    const purchaseEmail = pickFirstStringField(purchasesFields, ["email", "Email"]).toLowerCase() || email;
-    const purchaseSumRaw = pickFirstStringField(purchasesFields, ["Sum", "sum"]);
-
-    const purchaseTgId = parseTelegramChatId(purchaseTgIdRaw);
-    const isPurchaseGymTrial = purchaseFormat === "gym" && purchaseTariffLabel === "trial";
-    const isPurchaseGymNonTrial = purchaseFormat === "gym" && purchaseTariffLabel !== "trial";
-    const isPurchaseDsOnlineTest = purchaseFormat === "ds" && purchaseTariffLabel === "online_test";
-    const isPurchaseDsNonOnlineTest = purchaseFormat === "ds" && purchaseTariffLabel !== "online_test";
-    const purchaseSum = Number(purchaseSumRaw || outSum || 0);
-    const trialMeta = TRIAL_STUDIO_META[purchaseStudioId];
-
+    await sendTelegramMessage(text, { target: "admin", invId: String(invId), source: "purchases", email });
     if (isPurchaseGymTrial && Number.isFinite(purchaseTgId) && trialMeta) {
       const trialDateLabel = normalizeTrialDateLabel(purchaseDateRaw);
       const msg1 =
@@ -483,16 +624,27 @@ async function handle(params: URLSearchParams) {
         inlineButtons.push({ text: "💬 Присоединиться к чату", url: trialMeta.chatUrl });
       }
 
-      await sendTelegramMessageCustom(TELEGRAM_COACH_BOT_TOKEN, purchaseTgId, msg1);
-      await delayMs(10_000);
-      await sendTelegramMessageCustom(TELEGRAM_COACH_BOT_TOKEN, purchaseTgId, msg2);
+      await sendTelegramMessageCustom(TELEGRAM_COACH_BOT_TOKEN, purchaseTgId, msg1, {
+        target: "user",
+        invId: String(invId),
+        source: "purchases",
+        email: purchaseEmail,
+        studioId: purchaseStudioId,
+      });
+      await sendTelegramMessageCustom(TELEGRAM_COACH_BOT_TOKEN, purchaseTgId, msg2, {
+        target: "user",
+        invId: String(invId),
+        source: "purchases",
+        email: purchaseEmail,
+        studioId: purchaseStudioId,
+      });
       if (inlineButtons.length > 0) {
-        await delayMs(10_000);
         await sendTelegramMessageCustomWithInlineButtons(
           TELEGRAM_COACH_BOT_TOKEN,
           purchaseTgId,
           "Полезные ссылки:",
-          inlineButtons
+          inlineButtons,
+          { target: "user_buttons", invId: String(invId), source: "purchases", email: purchaseEmail, studioId: purchaseStudioId }
         );
       }
 
@@ -505,22 +657,39 @@ async function handle(params: URLSearchParams) {
         `Имя: ${escapeTgHtml(purchaseFio || "—")}\n` +
         `${telegramPhoneLineOptional(purchasePhone) ? telegramPhoneLineOptional(purchasePhone) + "\n" : ""}` +
         `Почта: ${escapeTgHtml(purchaseEmail || "—")}`;
-      const coachChat = coachChatForStudio(purchaseStudioId);
-      if (TELEGRAM_COACH_BOT_TOKEN && Number.isFinite(coachChat)) {
-        await sendTelegramMessageCustom(TELEGRAM_COACH_BOT_TOKEN, coachChat as number, textCoach);
+      if (trialMeta) {
+        await sendTelegramMessageCustom(TELEGRAM_COACH_BOT_TOKEN, purchaseCoachChat as number | undefined, textCoach, {
+          target: "coach",
+          invId: String(invId),
+          source: "purchases",
+          email: purchaseEmail,
+          studioId: purchaseStudioId,
+        });
+      } else {
+        logTelegramSkip({ target: "coach", invId: String(invId), source: "purchases", email: purchaseEmail, studioId: purchaseStudioId }, "studio_meta_missing");
       }
     } else if (isPurchaseGymNonTrial && Number.isFinite(purchaseTgId)) {
       const userMsg =
         `Ура! Оплата прошла успешно ✅\n` +
         `Ваш баланс пополнен на: ${escapeTgHtml(String(purchaseSum))} ₽.\n\n` +
         `Дата окончания вашего тарифа обновлена. Посмотреть её можно, нажав кнопку «Дата окончания».`;
-      await sendTelegramMessageCustom(TELEGRAM_COACH_BOT_TOKEN, purchaseTgId, userMsg);
+      await sendTelegramMessageCustom(TELEGRAM_COACH_BOT_TOKEN, purchaseTgId, userMsg, {
+        target: "user",
+        invId: String(invId),
+        source: "purchases",
+        email: purchaseEmail,
+      });
     } else if (isPurchaseDsOnlineTest && Number.isFinite(purchaseTgId)) {
       const onlineTestMsg1 =
         `Ура, оплата прошла успешно!\n` +
         `Вскоре на вашу почту придет письмо с темой [TrueCoach] Invitation, содержащее приглашение для доступа к нашему приложению, где будет стоять первая тренировка.\n` +
         `После прохождения первой тренировки наш тренер свяжется с вами и предоставит подробную обратную связь. Для удобства рекомендуем скачать мобильную версию приложения 👇🏻`;
-      await sendTelegramMessageCustom(TELEGRAM_COACH_BOT_TOKEN, purchaseTgId, onlineTestMsg1);
+      await sendTelegramMessageCustom(TELEGRAM_COACH_BOT_TOKEN, purchaseTgId, onlineTestMsg1, {
+        target: "user",
+        invId: String(invId),
+        source: "purchases",
+        email: purchaseEmail,
+      });
       await sendTelegramMessageCustomWithInlineButtons(
         TELEGRAM_COACH_BOT_TOKEN,
         purchaseTgId,
@@ -528,28 +697,44 @@ async function handle(params: URLSearchParams) {
         [
           { text: "🍎 Скачать для iOS", url: "https://apps.apple.com/am/app/truecoach-for-clients/id1439127794" },
           { text: "🤖 Скачать для Android", url: "https://play.google.com/store/apps/details?id=co.truecoach.client" },
-        ]
+        ],
+        { target: "user_buttons", invId: String(invId), source: "purchases", email: purchaseEmail }
       );
-
-      await delayMs(10_000);
 
       const onlineTestMsg2 =
         `<b>Краткая инструкция как выполнять тест силы от I Do Calisthenics:</b>\n` +
         `Всего 5-7 упражнений (в зависимости от выбранного курса). Для каждого упражнения в приложении указано возможное количество вариаций (от 1 до 3): вам надо выбрать и выполнить только одну вариацию и один подход в каждом упражнении — ту, которая для вас не самая простая, но с которой вы уверенно справитесь.\n` +
         `Важно: все упражнения необходимо снять на видео и загрузить в приложение — это поможет нам определить ваш текущий уровень и составить последующие тренировки эффективно.`;
-      await sendTelegramMessageCustom(TELEGRAM_COACH_BOT_TOKEN, purchaseTgId, onlineTestMsg2);
+      await sendTelegramMessageCustom(TELEGRAM_COACH_BOT_TOKEN, purchaseTgId, onlineTestMsg2, {
+        target: "user",
+        invId: String(invId),
+        source: "purchases",
+        email: purchaseEmail,
+      });
     } else if (isPurchaseDsNonOnlineTest && Number.isFinite(purchaseTgId)) {
       const userMsg =
         `Ура! Оплата прошла успешно ✅\n` +
         `Ваш баланс пополнен на: ${escapeTgHtml(String(purchaseSum))} ₽.\n\n` +
         `Дата окончания вашего тарифа обновлена. Посмотреть её можно, нажав кнопку «Дата окончания».`;
-      await sendTelegramMessageCustom(TELEGRAM_COACH_BOT_TOKEN, purchaseTgId, userMsg);
+      await sendTelegramMessageCustom(TELEGRAM_COACH_BOT_TOKEN, purchaseTgId, userMsg, {
+        target: "user",
+        invId: String(invId),
+        source: "purchases",
+        email: purchaseEmail,
+      });
     } else if (Number.isFinite(purchaseTgId)) {
       const userMsg =
         `Ура! Оплата прошла успешно ✅\n` +
         `Ваш баланс пополнен на: ${escapeTgHtml(String(purchaseSum))} ₽.\n\n` +
         `Дата окончания вашего тарифа обновлена. Посмотреть её можно, нажав кнопку «Дата окончания».`;
-      await sendTelegramMessageCustom(TELEGRAM_COACH_BOT_TOKEN, purchaseTgId, userMsg);
+      await sendTelegramMessageCustom(TELEGRAM_COACH_BOT_TOKEN, purchaseTgId, userMsg, {
+        target: "user",
+        invId: String(invId),
+        source: "purchases",
+        email: purchaseEmail,
+      });
+    } else {
+      logTelegramSkip({ target: "user", invId: String(invId), source: "purchases", email: purchaseEmail }, "user_chat_id_missing");
     }
   } else if (isOnline) {
     text =
@@ -563,7 +748,7 @@ async function handle(params: URLSearchParams) {
       `Кол-во тренировок: ${escapeTgHtml(String(lessons))}\n` +
       `Стоимость за тренировку: ${escapeTgHtml(String(pricePerLesson))} ₽`;
     // admin chat
-    await sendTelegramMessage(text);
+    await sendTelegramMessage(text, { target: "admin", invId: String(invId), source: "website", email });
   } else if (isGymTrial) {
     const city = cityFromStudioId(studioId);
     const header =
@@ -584,13 +769,19 @@ async function handle(params: URLSearchParams) {
       `Имя: ${escapeTgHtml(fio)}\n` +
       `${phoneLine}\n` +
       `Почта: ${escapeTgHtml(email)}`;
-    const coachChat = coachChatForStudio(studioId);
-    if (TELEGRAM_COACH_BOT_TOKEN && Number.isFinite(coachChat)) {
-      await sendTelegramMessage(textAdmin);
-      await sendTelegramMessageCustom(TELEGRAM_COACH_BOT_TOKEN, coachChat as number, textCoach);
-    } else {
-      await sendTelegramMessage(textAdmin);
-    }
+    await settleTelegramNotifications(
+      [
+        sendTelegramMessage(textAdmin, { target: "admin", invId: String(invId), source: "website", email, studioId }),
+        sendTelegramMessageCustom(TELEGRAM_COACH_BOT_TOKEN, websiteCoachChat as number | undefined, textCoach, {
+          target: "coach",
+          invId: String(invId),
+          source: "website",
+          email,
+          studioId,
+        }),
+      ],
+      { invId: String(invId), source: "website", emailHash: email ? hashLogValue(email) : undefined, studioId }
+    );
   } else if (isGym && (courseName.includes("_personal_") || courseName.includes("_split_"))) {
     const city = cityFromStudioId(studioId);
     const header =
@@ -606,7 +797,7 @@ async function handle(params: URLSearchParams) {
       `Оплата: ${escapeTgHtml(formatMoscow(now))}\n` +
       `Тэг: ${escapeTgHtml(courseName)}`;
     // admin chat only
-    await sendTelegramMessage(textAdmin);
+    await sendTelegramMessage(textAdmin, { target: "admin", invId: String(invId), source: "website", email, studioId });
   } else if (isGym) {
     text =
       `<b>✅ Новая покупка ${escapeTgHtml(courseName)}</b>\n` +
@@ -615,13 +806,14 @@ async function handle(params: URLSearchParams) {
       `${phoneLine}\n` +
       `Почта: ${escapeTgHtml(email)}\n` +
       `Сумма: ${escapeTgHtml(String(sumNum))} ₽`;
-    await sendTelegramMessage(text);
+    await sendTelegramMessage(text, { target: "admin", invId: String(invId), source: "website", email, studioId });
   } else {
     // Fallback minimal
     await sendTelegramMessage(
       `<b>✅ Оплата успешна</b>\n` +
         `<b>InvId:</b> <code>${escapeTgHtml(String(invId))}</code>\n` +
-        `<b>OutSum:</b> ${escapeTgHtml(outSum)}`
+        `<b>OutSum:</b> ${escapeTgHtml(outSum)}`,
+      { target: "admin", invId: String(invId), source: foundSource, email }
     );
   }
 

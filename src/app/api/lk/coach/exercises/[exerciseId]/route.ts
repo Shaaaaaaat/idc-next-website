@@ -1,8 +1,8 @@
 import { NextResponse } from "next/server";
 import { getValidatedSessionEmail } from "@/lib/auth/lkSession";
 import { resolveLkAccessByEmail } from "@/lib/auth/lkAccess";
-import { buildBunnyEmbedUrlForVideo } from "@/lib/bunny/stream";
-import { updateExerciseMetadata } from "@/lib/supabase/exerciseLibrary";
+import { normalizeCloudflareVideo, verifyCloudflareVideoExists } from "@/lib/cloudflare/stream";
+import { deleteExercise, updateExerciseMetadata } from "@/lib/supabase/exerciseLibrary";
 
 export const runtime = "nodejs";
 
@@ -43,12 +43,21 @@ export async function PATCH(req: Request, context: RouteContext) {
   }
 
   const videoId = typeof body.videoId === "string" ? body.videoId.trim() : "";
-  const embed = videoId ? buildBunnyEmbedUrlForVideo(videoId) : null;
-  if (embed && !embed.ok) {
+  const video = videoId ? normalizeCloudflareVideo(videoId) : null;
+  if (video && !video.ok) {
     return NextResponse.json(
-      { ok: false, error: "bunny_embed_url_failed", message: embed.message },
-      { status: 500 }
+      { ok: false, error: "invalid_cloudflare_video", message: video.message },
+      { status: 400 }
     );
+  }
+  if (video?.ok) {
+    const verified = await verifyCloudflareVideoExists(video.data.uid);
+    if (!verified.ok) {
+      return NextResponse.json(
+        { ok: false, error: "cloudflare_video_verify_failed", message: verified.message },
+        { status: 502 }
+      );
+    }
   }
 
   const result = await updateExerciseMetadata({
@@ -57,8 +66,9 @@ export async function PATCH(req: Request, context: RouteContext) {
     title: typeof body.title === "string" ? body.title : undefined,
     description: typeof body.description === "string" || body.description === null ? body.description : undefined,
     tags: typeof body.tags === "string" || Array.isArray(body.tags) ? (body.tags as string | string[]) : undefined,
-    videoAssetId: videoId || undefined,
-    videoUrl: embed?.ok ? embed.videoUrl : undefined,
+    videoAssetId: video?.ok ? video.data.uid : undefined,
+    videoUrl: video?.ok ? video.data.videoUrl : undefined,
+    thumbnailUrl: video?.ok ? video.data.thumbnailUrl : undefined,
     isActive: typeof body.isActive === "boolean" ? body.isActive : undefined,
   });
 
@@ -70,4 +80,26 @@ export async function PATCH(req: Request, context: RouteContext) {
   }
 
   return NextResponse.json({ ok: true, exercise: result.data });
+}
+
+export async function DELETE(_req: Request, context: RouteContext) {
+  const coach = await requireCoach();
+  if (!coach.ok) {
+    return NextResponse.json({ ok: false, error: coach.error }, { status: coach.status });
+  }
+
+  const { exerciseId } = await context.params;
+  const result = await deleteExercise({
+    coachEmail: coach.email,
+    exerciseId,
+  });
+
+  if (!result.ok) {
+    return NextResponse.json(
+      { ok: false, error: result.reason, message: result.message },
+      { status: statusForReason(result.reason) }
+    );
+  }
+
+  return NextResponse.json({ ok: true, exercise: result.data, archived: true, cloudflareDeleted: false });
 }

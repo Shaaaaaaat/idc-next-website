@@ -1,6 +1,15 @@
 import "server-only";
 
 import { getCoachByEmail } from "@/lib/supabase/coachStudents";
+import {
+  canArchiveExercise,
+  canEditExercise,
+  canReadExercise,
+  getCoachResourceActor,
+  getOwnerType,
+  type LkResourceActor,
+  type LkOwnerType,
+} from "@/lib/supabase/lkAccessControl";
 import { getSupabaseAdmin, isSupabaseEnabled } from "@/lib/supabase/server";
 
 export type ExerciseLibraryItem = {
@@ -15,6 +24,9 @@ export type ExerciseLibraryItem = {
   tags: string[];
   isActive: boolean;
   createdByCoachId?: string;
+  ownerType: LkOwnerType;
+  canEdit: boolean;
+  canArchive: boolean;
   createdAt?: string;
   updatedAt?: string;
 };
@@ -34,7 +46,7 @@ type ExerciseLibraryRow = {
   updated_at?: string | null;
 };
 
-export type CreateBunnyExerciseInput = {
+export type CreateExerciseInput = {
   coachEmail: string;
   title: string;
   videoAssetId: string;
@@ -64,11 +76,20 @@ export function parseExerciseTags(raw: string | string[] | null | undefined): st
   );
 }
 
-function mapExercise(row: ExerciseLibraryRow): ExerciseLibraryItem {
+function withExercisePermissions(exercise: Omit<ExerciseLibraryItem, "ownerType" | "canEdit" | "canArchive">, actor?: LkResourceActor | null): ExerciseLibraryItem {
   return {
+    ...exercise,
+    ownerType: getOwnerType(actor || null, exercise),
+    canEdit: actor ? canEditExercise(actor, exercise) : false,
+    canArchive: actor ? canArchiveExercise(actor, exercise) : false,
+  };
+}
+
+function mapExercise(row: ExerciseLibraryRow, actor?: LkResourceActor | null): ExerciseLibraryItem {
+  return withExercisePermissions({
     id: row.id,
     title: String(row.title || "").trim(),
-    videoProvider: String(row.video_provider || "bunny").trim(),
+    videoProvider: String(row.video_provider || "").trim(),
     videoAssetId: cleanOptional(row.video_asset_id) || undefined,
     videoUrl: String(row.video_url || "").trim(),
     watchUrl: `/lk/exercises/${row.id}/video`,
@@ -79,13 +100,16 @@ function mapExercise(row: ExerciseLibraryRow): ExerciseLibraryItem {
     createdByCoachId: cleanOptional(row.created_by_coach_id) || undefined,
     createdAt: cleanOptional(row.created_at) || undefined,
     updatedAt: cleanOptional(row.updated_at) || undefined,
-  };
+  }, actor);
 }
 
-export async function listActiveExercises(): Promise<ExerciseLibraryItem[]> {
+export async function listActiveExercises(coachEmail?: string): Promise<ExerciseLibraryItem[]> {
   if (!isSupabaseEnabled("read_coach_lk")) return [];
   const sb = getSupabaseAdmin();
   if (!sb) return [];
+
+  const actor = coachEmail ? await getCoachResourceActor(coachEmail) : null;
+  if (coachEmail && !actor) return [];
 
   const { data, error } = await sb
     .from("exercise_library")
@@ -101,11 +125,15 @@ export async function listActiveExercises(): Promise<ExerciseLibraryItem[]> {
   }
 
   return ((Array.isArray(data) ? data : []) as ExerciseLibraryRow[])
-    .map(mapExercise)
-    .filter((exercise) => exercise.title && exercise.videoUrl);
+    .map((row) => mapExercise(row, actor))
+    .filter((exercise) => exercise.title && exercise.videoUrl)
+    .filter((exercise) => !actor || canReadExercise(actor, exercise));
 }
 
-export async function getActiveExerciseById(exerciseId: string): Promise<ExerciseLibraryItem | null> {
+export async function getActiveExerciseById(
+  exerciseId: string,
+  options: { coachEmail?: string; isAdmin?: boolean } = {}
+): Promise<ExerciseLibraryItem | null> {
   if (!isSupabaseEnabled("read_coach_lk")) return null;
   const sb = getSupabaseAdmin();
   if (!sb) return null;
@@ -128,13 +156,17 @@ export async function getActiveExerciseById(exerciseId: string): Promise<Exercis
   }
   if (!data) return null;
 
-  const exercise = mapExercise(data as ExerciseLibraryRow);
+  const actor = options.isAdmin !== true && options.coachEmail ? await getCoachResourceActor(options.coachEmail) : null;
+  const exercise = mapExercise(data as ExerciseLibraryRow, actor);
   if (!exercise.title || !exercise.videoUrl) return null;
+  if (options.isAdmin !== true) {
+    if (!actor || !canReadExercise(actor, exercise)) return null;
+  }
   return exercise;
 }
 
-export async function createBunnyExercise(
-  input: CreateBunnyExerciseInput
+export async function createExercise(
+  input: CreateExerciseInput
 ): Promise<ExerciseLibraryResult<ExerciseLibraryItem>> {
   if (!isSupabaseEnabled("read_coach_lk")) return { ok: false, reason: "disabled" };
   const sb = getSupabaseAdmin();
@@ -156,7 +188,7 @@ export async function createBunnyExercise(
     .from("exercise_library")
     .insert({
       title,
-      video_provider: "bunny",
+      video_provider: "cloudflare",
       video_asset_id: videoAssetId,
       video_url: videoUrl,
       thumbnail_url: cleanOptional(input.thumbnailUrl),
@@ -174,7 +206,8 @@ export async function createBunnyExercise(
     return { ok: false, reason: "db_error", message: error?.message || "Exercise was not created" };
   }
 
-  return { ok: true, data: mapExercise(data as ExerciseLibraryRow) };
+  const actor = await getCoachResourceActor(coachEmail);
+  return { ok: true, data: mapExercise(data as ExerciseLibraryRow, actor) };
 }
 
 export async function deactivateExercise(params: {
@@ -186,6 +219,13 @@ export async function deactivateExercise(params: {
     exerciseId: params.exerciseId,
     isActive: false,
   });
+}
+
+export async function deleteExercise(params: {
+  coachEmail: string;
+  exerciseId: string;
+}): Promise<ExerciseLibraryResult<ExerciseLibraryItem>> {
+  return deactivateExercise(params);
 }
 
 export async function updateExerciseMetadata(params: {
@@ -209,6 +249,25 @@ export async function updateExerciseMetadata(params: {
 
   const coach = await getCoachByEmail(coachEmail);
   if (!coach) return { ok: false, reason: "forbidden" };
+  const actor = await getCoachResourceActor(coachEmail);
+  if (!actor) return { ok: false, reason: "forbidden" };
+
+  const { data: existing, error: existingError } = await sb
+    .from("exercise_library")
+    .select(
+      "id, title, video_provider, video_asset_id, video_url, thumbnail_url, description, tags, is_active, created_by_coach_id, created_at, updated_at"
+    )
+    .eq("id", exerciseId)
+    .maybeSingle();
+
+  if (existingError) return { ok: false, reason: "db_error", message: existingError.message };
+  if (!existing) return { ok: false, reason: "not_found" };
+
+  const currentExercise = mapExercise(existing as ExerciseLibraryRow, actor);
+  const isArchive = params.isActive === false;
+  if (isArchive ? !canArchiveExercise(actor, currentExercise) : !canEditExercise(actor, currentExercise)) {
+    return { ok: false, reason: "forbidden" };
+  }
 
   const patch: Record<string, unknown> = {
     updated_at: new Date().toISOString(),
@@ -224,7 +283,7 @@ export async function updateExerciseMetadata(params: {
   if (params.videoAssetId !== undefined) {
     const videoAssetId = String(params.videoAssetId || "").trim();
     if (!videoAssetId) return { ok: false, reason: "invalid", message: "Video asset cannot be empty" };
-    patch.video_provider = "bunny";
+    patch.video_provider = "cloudflare";
     patch.video_asset_id = videoAssetId;
   }
   if (params.videoUrl !== undefined) {
@@ -247,5 +306,5 @@ export async function updateExerciseMetadata(params: {
   if (error) return { ok: false, reason: "db_error", message: error.message };
   if (!data) return { ok: false, reason: "not_found" };
 
-  return { ok: true, data: mapExercise(data as ExerciseLibraryRow) };
+  return { ok: true, data: mapExercise(data as ExerciseLibraryRow, actor) };
 }

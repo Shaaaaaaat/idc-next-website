@@ -15,6 +15,8 @@ function statusForReason(reason: string): number {
   return 500;
 }
 
+const IMPORT_TO_CALENDAR_ACTION = "import_template_workouts_to_calendar";
+
 export async function POST(req: Request, context: RouteContext) {
   const email = await getValidatedSessionEmail();
   if (!email) {
@@ -30,6 +32,18 @@ export async function POST(req: Request, context: RouteContext) {
   const body = (await req.json().catch(() => null)) as Record<string, unknown> | null;
   if (!body) {
     return NextResponse.json({ ok: false, error: "invalid_json" }, { status: 400 });
+  }
+
+  if (body.action !== IMPORT_TO_CALENDAR_ACTION) {
+    return NextResponse.json(
+      {
+        ok: false,
+        error: "legacy_assign_deprecated",
+        message: "Legacy full-program assignment is deprecated. Import template workouts to the client calendar instead.",
+        requiredAction: IMPORT_TO_CALENDAR_ACTION,
+      },
+      { status: 410 }
+    );
   }
 
   const result = await assignProgramTemplate({

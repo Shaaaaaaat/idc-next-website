@@ -16,6 +16,7 @@ function statusForReason(reason: string): number {
   if (reason === "invalid") return 400;
   if (reason === "forbidden") return 403;
   if (reason === "not_found") return 404;
+  if (reason === "stale") return 409;
   if (reason === "disabled") return 503;
   return 500;
 }
@@ -58,6 +59,7 @@ export async function PUT(req: Request, context: RouteContext) {
   const result = await updateProgramTemplate({
     coachEmail: coach.email,
     programId,
+    expectedUpdatedAt: typeof body.expectedUpdatedAt === "string" ? body.expectedUpdatedAt : body.expectedUpdatedAt === null ? null : undefined,
     title: typeof body.title === "string" ? body.title : undefined,
     description: typeof body.description === "string" ? body.description : body.description === null ? null : undefined,
     durationDays: typeof body.durationDays === "number" || typeof body.durationDays === "string" ? body.durationDays : undefined,

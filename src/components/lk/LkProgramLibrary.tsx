@@ -1,14 +1,12 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import type { CoachStudent } from "@/lib/airtable/coachStudents";
 import type { ProgramTemplate } from "@/lib/supabase/programTemplates";
 
 type Props = {
   programs: ProgramTemplate[];
-  students: CoachStudent[];
 };
 
 function formatUpdated(raw?: string) {
@@ -33,22 +31,41 @@ function programSearchText(program: ProgramTemplate) {
     .toLowerCase();
 }
 
-export function LkProgramLibrary({ programs, students }: Props) {
+export function LkProgramLibrary({ programs }: Props) {
   const router = useRouter();
   const [query, setQuery] = useState("");
   const [creating, setCreating] = useState(false);
   const [busyId, setBusyId] = useState("");
-  const [assigning, setAssigning] = useState<ProgramTemplate | null>(null);
-  const [clientId, setClientId] = useState(students[0]?.id || "");
-  const [startDate, setStartDate] = useState(new Date().toISOString().slice(0, 10));
+  const [openMenuId, setOpenMenuId] = useState("");
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
+  const menuRef = useRef<HTMLDivElement | null>(null);
 
   const normalizedQuery = query.trim().toLowerCase();
   const filteredPrograms = useMemo(() => {
     if (!normalizedQuery) return programs;
     return programs.filter((program) => programSearchText(program).includes(normalizedQuery));
   }, [normalizedQuery, programs]);
+
+  useEffect(() => {
+    if (!openMenuId) return;
+
+    function handlePointerDown(event: PointerEvent) {
+      if (menuRef.current?.contains(event.target as Node)) return;
+      setOpenMenuId("");
+    }
+
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") setOpenMenuId("");
+    }
+
+    document.addEventListener("pointerdown", handlePointerDown);
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("pointerdown", handlePointerDown);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [openMenuId]);
 
   async function createProgram() {
     const title = window.prompt("Название новой программы", "Новая программа");
@@ -74,6 +91,7 @@ export function LkProgramLibrary({ programs, students }: Props) {
   }
 
   async function duplicateProgram(program: ProgramTemplate) {
+    setOpenMenuId("");
     setBusyId(program.id);
     setError("");
     setSuccess("");
@@ -95,6 +113,8 @@ export function LkProgramLibrary({ programs, students }: Props) {
   }
 
   async function deleteProgram(program: ProgramTemplate) {
+    if (!program.canArchive) return;
+    setOpenMenuId("");
     if (!window.confirm(`Скрыть программу "${program.title}"?`)) return;
 
     setBusyId(program.id);
@@ -103,34 +123,11 @@ export function LkProgramLibrary({ programs, students }: Props) {
     try {
       const res = await fetch(`/api/lk/coach/programs/${program.id}`, { method: "DELETE" });
       const json = (await res.json().catch(() => null)) as { message?: string; error?: string } | null;
-      if (!res.ok) throw new Error(json?.message || json?.error || "Не удалось удалить программу.");
+      if (!res.ok) throw new Error(json?.message || json?.error || "Не удалось скрыть программу.");
       setSuccess("Программа скрыта из библиотеки.");
       router.refresh();
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Не удалось удалить программу.");
-    } finally {
-      setBusyId("");
-    }
-  }
-
-  async function assignProgram() {
-    if (!assigning) return;
-    setBusyId(assigning.id);
-    setError("");
-    setSuccess("");
-    try {
-      const res = await fetch(`/api/lk/coach/programs/${assigning.id}/assign`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ clientId, startDate }),
-      });
-      const json = (await res.json().catch(() => null)) as { createdWorkouts?: number; message?: string; error?: string } | null;
-      if (!res.ok) throw new Error(json?.message || json?.error || "Не удалось назначить программу.");
-      setAssigning(null);
-      setSuccess(`Программа назначена. Создано тренировок: ${json?.createdWorkouts ?? 0}.`);
-      router.refresh();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Не удалось назначить программу.");
+      setError(e instanceof Error ? e.message : "Не удалось скрыть программу.");
     } finally {
       setBusyId("");
     }
@@ -201,29 +198,28 @@ export function LkProgramLibrary({ programs, students }: Props) {
               <div className="flex items-start justify-between gap-3">
                 <Link href={`/lk/coach/programs/${program.id}`} className="min-w-0 flex-1">
                   <h3 className="truncate text-lg font-semibold text-slate-950">{program.title}</h3>
-                  <p className="mt-1 line-clamp-2 text-sm text-slate-500">
-                    {program.description || program.goal || "Training system template"}
-                  </p>
+                  {program.isGlobal ? (
+                    <span className="mt-2 inline-flex rounded-full bg-cyan-50 px-2.5 py-1 text-xs font-semibold text-cyan-700">
+                      Общий шаблон
+                    </span>
+                  ) : null}
                 </Link>
-                <div className="relative">
-                  <details className="group/menu">
-                    <summary className="list-none rounded-full px-2 py-1 text-xl leading-none text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700">
-                      ⋯
-                    </summary>
+                <div className="relative" ref={openMenuId === program.id ? menuRef : undefined}>
+                  <button
+                    type="button"
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      setOpenMenuId((current) => (current === program.id ? "" : program.id));
+                    }}
+                    className="cursor-pointer rounded-full px-2 py-1 text-xl leading-none text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700"
+                    aria-haspopup="menu"
+                    aria-expanded={openMenuId === program.id}
+                    aria-label={`Действия для ${program.title}`}
+                  >
+                    ⋯
+                  </button>
+                  {openMenuId === program.id ? (
                     <div className="absolute right-0 z-20 mt-1 w-44 rounded-2xl border border-slate-200 bg-white p-1 text-sm shadow-xl">
-                      <Link href={`/lk/coach/programs/${program.id}`} className="block rounded-xl px-3 py-2 text-slate-700 hover:bg-slate-100">
-                        Открыть
-                      </Link>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setAssigning(program);
-                          setClientId(students[0]?.id || "");
-                        }}
-                        className="block w-full rounded-xl px-3 py-2 text-left text-slate-700 hover:bg-slate-100"
-                      >
-                        Назначить
-                      </button>
                       <button
                         type="button"
                         onClick={() => duplicateProgram(program)}
@@ -232,16 +228,18 @@ export function LkProgramLibrary({ programs, students }: Props) {
                       >
                         Дублировать
                       </button>
-                      <button
-                        type="button"
-                        onClick={() => deleteProgram(program)}
-                        disabled={busyId === program.id}
-                        className="block w-full rounded-xl px-3 py-2 text-left text-red-600 hover:bg-red-50 disabled:opacity-50"
-                      >
-                        Удалить
-                      </button>
+                      {program.canArchive ? (
+                        <button
+                          type="button"
+                          onClick={() => deleteProgram(program)}
+                          disabled={busyId === program.id}
+                          className="block w-full rounded-xl px-3 py-2 text-left text-red-600 hover:bg-red-50 disabled:opacity-50"
+                        >
+                          Скрыть
+                        </button>
+                      ) : null}
                     </div>
-                  </details>
+                  ) : null}
                 </div>
               </div>
 
@@ -272,61 +270,6 @@ export function LkProgramLibrary({ programs, students }: Props) {
         </div>
       )}
 
-      {assigning ? (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/45 px-3 py-4"
-          onMouseDown={(e) => {
-            if (e.target === e.currentTarget) setAssigning(null);
-          }}
-        >
-          <div className="w-full max-w-lg rounded-3xl bg-white p-5 shadow-2xl">
-            <h3 className="text-lg font-semibold text-slate-950">Назначить программу</h3>
-            <p className="mt-1 text-sm text-slate-500">
-              {assigning.title} · {assigning.durationDays} дней · {assigning.workoutsCount} тренировок
-            </p>
-            <label className="mt-4 block space-y-1 text-sm">
-              <span className="text-slate-500">Ученик</span>
-              <select
-                value={clientId}
-                onChange={(e) => setClientId(e.target.value)}
-                className="w-full rounded-2xl border border-slate-200 px-3 py-2 outline-none focus:border-brand-primary"
-              >
-                {students.map((student) => (
-                  <option key={student.id} value={student.id}>
-                    {student.name}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className="mt-3 block space-y-1 text-sm">
-              <span className="text-slate-500">Дата старта</span>
-              <input
-                type="date"
-                value={startDate}
-                onChange={(e) => setStartDate(e.target.value)}
-                className="w-full rounded-2xl border border-slate-200 px-3 py-2 outline-none focus:border-brand-primary"
-              />
-            </label>
-            <div className="mt-5 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
-              <button
-                type="button"
-                onClick={() => setAssigning(null)}
-                className="rounded-full border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-100"
-              >
-                Отмена
-              </button>
-              <button
-                type="button"
-                onClick={assignProgram}
-                disabled={!clientId || busyId === assigning.id}
-                className="rounded-full bg-brand-primary px-5 py-2 text-sm font-semibold text-white hover:bg-brand-primary/90 disabled:cursor-not-allowed disabled:opacity-60"
-              >
-                {busyId === assigning.id ? "Назначаем..." : "Назначить"}
-              </button>
-            </div>
-          </div>
-        </div>
-      ) : null}
     </div>
   );
 }

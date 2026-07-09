@@ -2,9 +2,7 @@ import { notFound, redirect } from "next/navigation";
 import { getValidatedSessionEmail } from "@/lib/auth/lkSession";
 import { resolveLkAccessByEmail } from "@/lib/auth/lkAccess";
 import { LkAccessDenied } from "@/components/lk/LkAccessDenied";
-import { LkShell } from "@/components/lk/LkShell";
-import { LkProgramEditor } from "@/components/lk/LkProgramEditor";
-import { getCoachStudentsForCoachLkByEmail } from "@/lib/supabase/coachStudents";
+import { LkProgramEditorPage } from "@/components/lk/LkProgramEditorPage";
 import { listActiveExercises } from "@/lib/supabase/exerciseLibrary";
 import { getProgramTemplate } from "@/lib/supabase/programTemplates";
 
@@ -21,10 +19,9 @@ export default async function LkCoachProgramPage({ params }: PageProps) {
   if (access.type === "deny") return <LkAccessDenied />;
 
   const { programId } = await params;
-  const [programResult, exercises, studentsResult] = await Promise.all([
+  const [programResult, exercises] = await Promise.all([
     getProgramTemplate(access.email, programId),
-    listActiveExercises(),
-    getCoachStudentsForCoachLkByEmail(access.email),
+    listActiveExercises(access.email),
   ]);
 
   if (!programResult.ok) {
@@ -33,18 +30,9 @@ export default async function LkCoachProgramPage({ params }: PageProps) {
   }
 
   return (
-    <LkShell
-      role="coach"
-      title={programResult.data.title}
-      subtitle="Timeline тренировочной системы без реальных дат"
-      activeHref="/lk/coach/programs"
-      hideHeader
-    >
-      <LkProgramEditor
-        program={programResult.data}
-        exerciseLibrary={exercises}
-        students={studentsResult.ok ? studentsResult.students : []}
-      />
-    </LkShell>
+    <LkProgramEditorPage
+      program={programResult.data}
+      exerciseLibrary={exercises}
+    />
   );
 }

@@ -4,7 +4,8 @@ import { useMemo, useState } from "react";
 import type { CoachStudent } from "@/lib/airtable/coachStudents";
 
 type Props = {
-  students: CoachStudent[];
+  activeStudents: CoachStudent[];
+  allStudents: CoachStudent[];
 };
 
 function parseBalanceNumber(value: string): number | null {
@@ -47,10 +48,12 @@ function isNewcomerGroupStart(students: CoachStudent[], index: number): boolean 
   return String(students[index]?.tag || "").trim() !== String(students[index - 1]?.tag || "").trim();
 }
 
-export function LkAdminStudentsTable({ students }: Props) {
+export function LkAdminStudentsTable({ activeStudents, allStudents }: Props) {
+  const [tab, setTab] = useState<"active" | "all">("active");
   const [query, setQuery] = useState("");
   const [onlyNegativeBalance, setOnlyNegativeBalance] = useState(false);
   const [onlyNewcomers, setOnlyNewcomers] = useState(false);
+  const students = tab === "active" ? activeStudents : allStudents;
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -77,6 +80,27 @@ export function LkAdminStudentsTable({ students }: Props) {
 
   return (
     <div className="space-y-4">
+      <div className="inline-flex rounded-2xl border border-slate-200 bg-white p-1 shadow-sm">
+        <button
+          type="button"
+          onClick={() => setTab("active")}
+          className={`rounded-xl px-3 py-2 text-sm font-medium transition-colors ${
+            tab === "active" ? "bg-slate-950 text-white" : "text-slate-500 hover:bg-slate-100 hover:text-slate-800"
+          }`}
+        >
+          Активные ({activeStudents.length})
+        </button>
+        <button
+          type="button"
+          onClick={() => setTab("all")}
+          className={`rounded-xl px-3 py-2 text-sm font-medium transition-colors ${
+            tab === "all" ? "bg-slate-950 text-white" : "text-slate-500 hover:bg-slate-100 hover:text-slate-800"
+          }`}
+        >
+          Все клиенты ({allStudents.length})
+        </button>
+      </div>
+
       <div className="grid gap-3 sm:grid-cols-[1fr_auto_auto] sm:items-end">
         <div>
           <label htmlFor="admin-students-search" className="mb-2 block text-sm text-slate-600">
