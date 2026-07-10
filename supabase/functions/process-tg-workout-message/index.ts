@@ -452,11 +452,15 @@ async function sendErrorToTelegram(text: string) {
     }
   }
 
-  console.warn("IDC error alert delivery failed", lastError);
+  console.warn("IDC error alert delivery failed", errorMessage(lastError));
 }
 
 Deno.serve(async (req) => {
   let messageId: string | null = null;
+  let rawText = "";
+  let telegramMessageId: string | null = null;
+  let telegramChatId: string | null = null;
+  let telegramUsername: string | null = null;
 
   try {
     const expectedSecret = Deno.env.get("TG_WORKOUT_BOT_SECRET");
@@ -479,7 +483,10 @@ Deno.serve(async (req) => {
 
     const body = await req.json();
 
-    const rawText = String(body.raw_text || "").trim();
+    rawText = String(body.raw_text || "").trim();
+    telegramMessageId = body.telegram_message_id ? String(body.telegram_message_id) : null;
+    telegramChatId = body.telegram_chat_id ? String(body.telegram_chat_id) : null;
+    telegramUsername = body.telegram_username ? String(body.telegram_username) : null;
 
     if (!rawText) {
       return new Response(
@@ -500,10 +507,10 @@ Deno.serve(async (req) => {
       .from("tg_workout_messages")
       .insert({
         raw_text: rawText,
-        telegram_message_id: body.telegram_message_id ? String(body.telegram_message_id) : null,
-        telegram_chat_id: body.telegram_chat_id ? String(body.telegram_chat_id) : null,
+        telegram_message_id: telegramMessageId,
+        telegram_chat_id: telegramChatId,
         telegram_user_id: body.telegram_user_id ? String(body.telegram_user_id) : null,
-        telegram_username: body.telegram_username ? String(body.telegram_username) : null,
+        telegram_username: telegramUsername,
         status: "processing",
       })
       .select("id")
@@ -618,6 +625,19 @@ Deno.serve(async (req) => {
         })
         .eq("id", messageId);
     }
+
+    await sendErrorToTelegram(
+      [
+        "IDC tg workout processing error",
+        `message_id: ${messageId || "unknown"}`,
+        `telegram_message_id: ${telegramMessageId || "-"}`,
+        `telegram_chat_id: ${telegramChatId || "-"}`,
+        `telegram_username: ${telegramUsername || "-"}`,
+        `error_message: ${message.replace(/\s+/g, " ").trim().slice(0, 1000)}`,
+        "raw_text_preview:",
+        rawText.replace(/\s+/g, " ").trim().slice(0, 500) || "-",
+      ].join("\n"),
+    );
 
     return new Response(
       JSON.stringify({

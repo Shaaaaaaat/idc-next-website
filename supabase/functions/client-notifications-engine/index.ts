@@ -22,13 +22,14 @@ type ClientRow = {
   tgid: string | number | null;
   coach: string | null;
   balance: number | null;
-  balance_until: string | null;
 };
 
 type CoachProfile = {
   coach_name: string;
   display_name: string | null;
 };
+
+type ReplyMarkup = Record<string, unknown>;
 
 type SendResult = {
   ok: boolean;
@@ -46,11 +47,9 @@ type HandleResult =
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
 const INTERNAL_SECRET = Deno.env.get("NOTIFICATIONS_INTERNAL_SECRET") ?? "";
-const MAIN_BOT_TOKEN = Deno.env.get("TELEGRAM_BOT_TOKEN") ?? Deno.env.get("BOT_TOKEN") ?? "";
-const ADMIN_CHAT_ID = Deno.env.get("ADMIN_TELEGRAM_CHAT_ID") ??
-  Deno.env.get("TELEGRAM_ADMIN_CHAT_ID") ??
-  Deno.env.get("TELEGRAM_CHAT_ID") ??
-  "";
+const CLIENT_BOT_TOKEN = Deno.env.get("IDCMAIN_BOT_TOKEN") ?? "";
+const ADMIN_BOT_TOKEN = Deno.env.get("LOWMAOWS_BOT_TOKEN") ?? "";
+const ADMIN_CHAT_ID = Deno.env.get("LOWMAOWS_ADMIN_CHAT_ID") ?? "";
 const IDC_ERRORS_BOT_TOKEN = Deno.env.get("IDC_ERRORS_BOT_TOKEN") ?? "";
 const IDC_ERRORS_CHAT_ID = Deno.env.get("IDC_ERRORS_CHAT_ID") ?? "";
 
@@ -85,6 +84,71 @@ function asString(value: unknown) {
   if (typeof value === "string") return value;
   if (typeof value === "number" && Number.isFinite(value)) return String(value);
   return "";
+}
+
+function pickValue(row: Record<string, unknown> | null | undefined, keys: string[]) {
+  if (!row) return "";
+
+  for (const key of keys) {
+    const value = row[key];
+    const text = asString(value).trim();
+    if (text) return text;
+  }
+
+  return "";
+}
+
+function currencySymbol(currency: unknown) {
+  const value = asString(currency).toUpperCase() || "RUB";
+  if (value === "RUB") return "₽";
+  if (value === "EUR") return "€";
+  if (value === "USD") return "$";
+  return value;
+}
+
+function formatBalance(balance: unknown, currency: unknown) {
+  return `${asString(balance)}${currencySymbol(currency)}`;
+}
+
+function formatBalanceChange(
+  payload: Record<string, unknown>,
+  fallbackBalance: unknown,
+  currency: unknown,
+) {
+  const before = payload.balance_before;
+  const after = payload.balance_after ?? fallbackBalance ?? "";
+  const beforeText = asString(before).trim();
+
+  if (before !== null && before !== undefined && beforeText) {
+    return `${formatBalance(before, currency)} → ${formatBalance(after, currency)}`;
+  }
+
+  return formatBalance(after, currency);
+}
+
+function clientName(client: ClientRow | null, payload?: Record<string, unknown>) {
+  return pickValue(payload, ["client_name", "fio", "name", "full_name"]) || client?.fio || "Клиент";
+}
+
+function trainerName(
+  client: ClientRow | null,
+  payload?: Record<string, unknown>,
+  coach?: CoachProfile | null,
+) {
+  return pickValue(payload, ["trainer_name", "coach_name", "coach", "trainer"]) ||
+    client?.coach ||
+    coach?.coach_name ||
+    coach?.display_name ||
+    "не определён";
+}
+
+function trainerTelegramId(payload: Record<string, unknown>) {
+  return pickValue(payload, [
+    "trainer_telegram_id",
+    "trainer_chat_id",
+    "coach_telegram_id",
+    "coach_chat_id",
+  ]);
 }
 
 function safeErrorMessage(error: unknown) {
@@ -250,7 +314,7 @@ async function getClient(clientId: string | null): Promise<ClientRow | null> {
 
   const { data, error } = await supabase
     .from("clients")
-    .select("id, fio, tgid, coach, balance, balance_until")
+    .select("id, fio, tgid, coach, balance")
     .eq("id", clientId)
     .maybeSingle();
 
@@ -271,124 +335,231 @@ async function getCoachProfile(coachHandle: string | null): Promise<CoachProfile
   return data as CoachProfile | null;
 }
 
-function eventTitle(event: NotificationEvent) {
-  switch (event.event_type) {
-    case "subscription_wr_off_client":
-    case "subscription_wr_off_admin":
-      return "Списание абонемента";
-    case "attendance_balance_client":
-      return "Баланс после тренировки";
-    case "low_balance":
-    case "balance_zero_client":
-    case "balance_negative_client":
-    case "balance_threshold_admin":
-    case "balance_threshold_trainer":
-      return "Низкий баланс";
-    case "first_lesson_followup":
-      return "Первая тренировка";
-    case "workout_assigned":
-      return "Назначена тренировка";
-    default:
-      return "Уведомление IDC";
-  }
+function resultFromTelegram(telegram: SendResult): HandleResult {
+  if (telegram.ok) return { status: "sent", telegram };
+
+  return {
+    status: SKIPPED_CODES.has(telegram.errorCode ?? "") ? "skipped" : "failed",
+    errorCode: telegram.errorCode ?? "telegram_send_failed",
+    errorMessage: telegram.errorMessage ?? "Telegram send failed",
+    telegram,
+  };
 }
 
-function buildMessage(event: NotificationEvent, client: ClientRow | null, coach: CoachProfile | null) {
+function yesNoKeyboard(): ReplyMarkup {
+  return {
+    inline_keyboard: [
+      [{ text: "Да", callback_data: "a_da" }],
+      [{ text: "Нет", callback_data: "a_net" }],
+    ],
+  };
+}
+
+async function sendClientText(
+  client: ClientRow,
+  text: string,
+  target: string,
+  replyMarkup?: ReplyMarkup,
+) {
+  const chatId = asString(client.tgid);
+  if (!chatId) {
+    return {
+      ok: false,
+      status: 0,
+      attempts: 0,
+      errorCode: "client_telegram_missing",
+      errorMessage: "Client tgid is missing",
+    };
+  }
+
+  return await sendTelegramWithRetry({
+    botToken: CLIENT_BOT_TOKEN,
+    chatId,
+    text,
+    replyMarkup,
+    target,
+  });
+}
+
+async function sendAdminText(text: string, target: string) {
+  if (!ADMIN_CHAT_ID) {
+    return {
+      ok: false,
+      status: 0,
+      attempts: 0,
+      errorCode: "admin_chat_missing",
+      errorMessage: "Admin Telegram chat id is missing",
+    };
+  }
+
+  return await sendTelegramWithRetry({
+    botToken: ADMIN_BOT_TOKEN,
+    chatId: ADMIN_CHAT_ID,
+    text,
+    target,
+  });
+}
+
+async function handleFirstLesson(event: NotificationEvent, client: ClientRow) {
+  const chatId = asString(client.tgid);
+
+  if (!chatId) {
+    const result = await sendAdminText([
+      "Не удалось связаться с клиентом после первого пробного занятия.",
+      `Имя: ${clientName(client, event.payload ?? {})}`,
+      "Причина: нет Telegram / email",
+    ].join("\n"), "admin:first_lesson_followup_missing_client_contact");
+
+    return resultFromTelegram(result);
+  }
+
+  const first = await sendTelegramWithRetry({
+    botToken: CLIENT_BOT_TOKEN,
+    chatId,
+    text: [
+      "Ура! Начало пути в калистенике положено 🎉",
+      "Надеюсь, тебе все понравилось 😊",
+    ].join("\n"),
+    target: "client:first_lesson_followup:first",
+  });
+
+  if (!first.ok) return resultFromTelegram(first);
+
+  const second = await sendTelegramWithRetry({
+    botToken: CLIENT_BOT_TOKEN,
+    chatId,
+    text: "Подскажи, пожалуйста, ты планируешь продолжить занятия с нами?",
+    replyMarkup: yesNoKeyboard(),
+    target: "client:first_lesson_followup:question",
+  });
+
+  return resultFromTelegram(second);
+}
+
+async function handleAttendanceBalance(event: NotificationEvent, client: ClientRow) {
   const payload = event.payload ?? {};
-  const clientName = asString(payload.client_name) || client?.fio || "клиент";
-  const amount = asString(payload.amount) || asString(payload.delta) || "";
-  const balance = asString(payload.balance_after) || asString(client?.balance) || "";
-  const balanceBefore = asString(payload.balance_before);
-  const currency = asString(payload.currency) || "RUB";
-  const date = asString(payload.date) || asString(payload.training_date) || asString(payload.workout_date) || asString(payload.write_off_date) || "";
-  const format = asString(payload.format) || asString(payload.training_format) || "";
-  const coachName = asString(payload.coach_name) || asString(payload.trainer_name) || coach?.display_name || coach?.coach_name || "";
-  const writeOffAmount = asString(payload.amount_client_currency) || amount;
+  const trainingFormat = (asString(payload.training_format) || asString(payload.format)).toLowerCase();
+  const trainingDate = asString(payload.training_date) || asString(payload.workout_date) || asString(payload.date);
+  const balance = payload.balance_after ?? client.balance ?? "";
+  const currency = payload.currency ?? "RUB";
+  let text: string;
 
-  if (event.event_type === "attendance_balance_client") {
-    return [
-      "Тренировка учтена",
-      `Клиент: ${clientName}`,
-      date ? `Дата: ${date}` : null,
-      format ? `Формат: ${format}` : null,
-      balanceBefore ? `Баланс до: ${balanceBefore} ${currency}` : null,
-      balance ? `Баланс после: ${balance} ${currency}` : null,
-      coachName ? `Тренер: ${coachName}` : null,
-    ].filter(Boolean).join("\n");
+  if (trainingFormat === "ds") {
+    text = [
+      "Ваш тренер поставил вам новую тренировку.",
+      `Ваш текущий баланс: ${formatBalance(balance, currency)}.`,
+    ].join("\n");
+  } else if (trainingFormat === "group") {
+    text = [
+      `Вы были на групповой тренировке: ${trainingDate}.`,
+      `Ваш текущий баланс: ${formatBalance(balance, currency)}.`,
+    ].join("\n");
+  } else {
+    text = [
+      `Вы были на персональной тренировке: ${trainingDate}.`,
+      `Ваш текущий баланс: ${formatBalance(balance, currency)}.`,
+    ].join("\n");
   }
 
-  if (event.event_type === "balance_zero_client" || event.event_type === "balance_negative_client") {
-    return [
-      event.event_type === "balance_zero_client" ? "Баланс закончился" : "Баланс стал отрицательным",
-      `Клиент: ${clientName}`,
-      balance ? `Баланс: ${balance} ${currency}` : null,
-      date ? `Дата тренировки: ${date}` : null,
-    ].filter(Boolean).join("\n");
+  return resultFromTelegram(await sendClientText(client, text, "client:attendance_balance_client"));
+}
+
+async function handleBalanceZero(event: NotificationEvent, client: ClientRow) {
+  const text = [
+    "Поздравляем! Все тренировки успешно пройдены 🎉",
+    "Хочешь продолжить? Просто нажми «Купить тренировки» и пополни баланс — и ты снова в деле! 💪",
+  ].join("\n");
+
+  return resultFromTelegram(await sendClientText(client, text, `client:${event.event_type}`));
+}
+
+async function handleBalanceNegative(event: NotificationEvent, client: ClientRow) {
+  const text = [
+    "Небольшое напоминание 💬",
+    "У тебя отрицательный баланс, необходимо его пополнить ❤️",
+    "Просто нажми «Купить тренировки» и пополни баланс — и ты снова в деле! 💪",
+  ].join("\n");
+
+  return resultFromTelegram(await sendClientText(client, text, `client:${event.event_type}`));
+}
+
+async function handleWrOffClient(event: NotificationEvent, client: ClientRow) {
+  const first = await sendClientText(client, [
+    "Привет!",
+    "Твой абонемент закончился 💔",
+    "Как тебе наши тренировки? Мы будем рады видеть тебя снова!",
+  ].join("\n"), "client:subscription_wr_off_client:first");
+
+  if (!first.ok) return resultFromTelegram(first);
+
+  const second = await sendClientText(
+    client,
+    "Продолжаем? 😉",
+    "client:subscription_wr_off_client:question",
+    yesNoKeyboard(),
+  );
+
+  return resultFromTelegram(second);
+}
+
+async function handleBalanceThresholdAdmin(
+  event: NotificationEvent,
+  client: ClientRow,
+  coach: CoachProfile | null,
+) {
+  const payload = event.payload ?? {};
+  const currency = payload.currency ?? "RUB";
+  const text = [
+    `Имя: ${clientName(client, payload)}`,
+    `Баланс: ${formatBalanceChange(payload, client.balance, currency)}`,
+    `Тренер: ${trainerName(client, payload, coach)}`,
+  ].join("\n");
+
+  return resultFromTelegram(await sendAdminText(text, "admin:balance_threshold_admin"));
+}
+
+async function handleWrOffAdmin(
+  event: NotificationEvent,
+  client: ClientRow,
+  coach: CoachProfile | null,
+) {
+  const payload = event.payload ?? {};
+  const currency = payload.currency ?? "RUB";
+  const text = [
+    `Имя: ${clientName(client, payload)}`,
+    `Баланс: ${formatBalanceChange(payload, client.balance, currency)}`,
+    `Тренер: ${trainerName(client, payload, coach)}`,
+    "Событие: wr_off",
+  ].join("\n");
+
+  return resultFromTelegram(await sendAdminText(text, "admin:subscription_wr_off_admin"));
+}
+
+async function handleBalanceThresholdTrainer(event: NotificationEvent) {
+  const payload = event.payload ?? {};
+  const chatId = trainerTelegramId(payload);
+
+  if (!chatId) {
+    return {
+      status: "skipped",
+      errorCode: "trainer_telegram_missing",
+      errorMessage: "Trainer telegram_id is missing",
+    };
   }
 
-  if (event.event_type === "balance_threshold_admin" || event.event_type === "balance_threshold_trainer") {
-    return [
-      "Баланс клиента требует внимания",
-      `Клиент: ${clientName}`,
-      balance ? `Баланс: ${balance} ${currency}` : null,
-      date ? `Дата тренировки: ${date}` : null,
-      format ? `Формат: ${format}` : null,
-      coachName ? `Тренер: ${coachName}` : null,
-    ].filter(Boolean).join("\n");
-  }
+  const currency = payload.currency ?? "RUB";
+  const text = [
+    `Имя: ${clientName(null, payload)}`,
+    `Баланс: ${formatBalanceChange(payload, "", currency)}`,
+    `Тренер: ${trainerName(null, payload)}`,
+  ].join("\n");
 
-  if (event.event_type === "subscription_wr_off_client" || event.event_type === "subscription_wr_off_admin") {
-    return [
-      "Абонемент списан",
-      `Клиент: ${clientName}`,
-      writeOffAmount ? `Сумма списания: ${writeOffAmount} ${currency}` : null,
-      balance ? `Баланс после: ${balance} ${currency}` : null,
-      date ? `Дата списания: ${date}` : null,
-    ].filter(Boolean).join("\n");
-  }
-
-  if (event.event_type === "first_lesson_followup") {
-    return [
-      "Спасибо за первую тренировку!",
-      `Клиент: ${clientName}`,
-      coachName ? `Тренер: ${coachName}` : null,
-    ].filter(Boolean).join("\n");
-  }
-
-  if (event.event_type === "subscription_wr_off") {
-    return [
-      "Списание по абонементу",
-      `Клиент: ${clientName}`,
-      amount ? `Сумма: ${amount}` : null,
-      balance ? `Баланс после: ${balance}` : null,
-      date ? `Дата: ${date}` : null,
-    ].filter(Boolean).join("\n");
-  }
-
-  if (event.event_type === "low_balance") {
-    return [
-      "Низкий баланс клиента",
-      `Клиент: ${clientName}`,
-      balance ? `Баланс: ${balance}` : null,
-    ].filter(Boolean).join("\n");
-  }
-
-  if (event.event_type === "workout_assigned") {
-    return [
-      "Назначена тренировка",
-      `Клиент: ${clientName}`,
-      date ? `Дата: ${date}` : null,
-      format ? `Формат: ${format}` : null,
-      coachName ? `Тренер: ${coachName}` : null,
-    ].filter(Boolean).join("\n");
-  }
-
-  return [
-    eventTitle(event),
-    `Клиент: ${clientName}`,
-    amount ? `Сумма: ${amount}` : null,
-    balance ? `Баланс: ${balance}` : null,
-  ].filter(Boolean).join("\n");
+  return resultFromTelegram(await sendTelegramWithRetry({
+    botToken: CLIENT_BOT_TOKEN,
+    chatId,
+    text,
+    target: "trainer:balance_threshold_trainer",
+  }));
 }
 
 async function deliverEvent(event: NotificationEvent): Promise<HandleResult> {
@@ -410,38 +581,8 @@ async function deliverEvent(event: NotificationEvent): Promise<HandleResult> {
   }
 
   const coach = await getCoachProfile(client.coach);
-  const payload = event.payload ?? {};
-  const text = buildMessage(event, client, coach);
-  let chatId = "";
 
-  if (event.recipient_type === "client") {
-    chatId = asString(client.tgid);
-    if (!chatId) {
-      return {
-        status: "skipped",
-        errorCode: "client_telegram_missing",
-        errorMessage: "Client tgid is missing",
-      };
-    }
-  } else if (event.recipient_type === "trainer" || event.recipient_type === "coach") {
-    chatId = asString(payload.trainer_telegram_id);
-    if (!chatId) {
-      return {
-        status: "skipped",
-        errorCode: "trainer_telegram_missing",
-        errorMessage: "Trainer telegram_id is missing",
-      };
-    }
-  } else if (event.recipient_type === "admin") {
-    chatId = ADMIN_CHAT_ID;
-    if (!chatId) {
-      return {
-        status: "skipped",
-        errorCode: "admin_chat_missing",
-        errorMessage: "Admin Telegram chat id is missing",
-      };
-    }
-  } else {
+  if (event.recipient_type !== "client" && event.recipient_type !== "trainer" && event.recipient_type !== "coach" && event.recipient_type !== "admin") {
     return {
       status: "skipped",
       errorCode: "unsupported_recipient_type",
@@ -449,21 +590,30 @@ async function deliverEvent(event: NotificationEvent): Promise<HandleResult> {
     };
   }
 
-  const telegram = await sendTelegramWithRetry({
-    botToken: MAIN_BOT_TOKEN,
-    chatId,
-    text,
-    target: `${event.recipient_type}:${event.event_type}`,
-  });
-
-  if (telegram.ok) return { status: "sent", telegram };
-
-  return {
-    status: SKIPPED_CODES.has(telegram.errorCode ?? "") ? "skipped" : "failed",
-    errorCode: telegram.errorCode ?? "telegram_send_failed",
-    errorMessage: telegram.errorMessage ?? "Telegram send failed",
-    telegram,
-  };
+  switch (event.event_type) {
+    case "first_lesson_followup":
+      return await handleFirstLesson(event, client);
+    case "attendance_balance_client":
+      return await handleAttendanceBalance(event, client);
+    case "balance_zero_client":
+      return await handleBalanceZero(event, client);
+    case "balance_negative_client":
+      return await handleBalanceNegative(event, client);
+    case "subscription_wr_off_client":
+      return await handleWrOffClient(event, client);
+    case "subscription_wr_off_admin":
+      return await handleWrOffAdmin(event, client, coach);
+    case "balance_threshold_admin":
+      return await handleBalanceThresholdAdmin(event, client, coach);
+    case "balance_threshold_trainer":
+      return await handleBalanceThresholdTrainer(event);
+    default:
+      return {
+        status: "skipped",
+        errorCode: "unsupported_event_type",
+        errorMessage: `Unsupported event_type: ${event.event_type}`,
+      };
+  }
 }
 
 async function updateEventFinal(eventId: string, result: HandleResult) {

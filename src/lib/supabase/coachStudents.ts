@@ -190,6 +190,32 @@ function isAdminActiveClient(row: ClientRow) {
   return row.is_active === true && !String(row.coach || "").includes("wr_off");
 }
 
+async function loadAllAdminClientRows(sb: NonNullable<ReturnType<typeof getSupabaseAdmin>>): Promise<ClientRow[]> {
+  const pageSize = 1000;
+  const rows: ClientRow[] = [];
+  let from = 0;
+
+  while (true) {
+    const { data, error } = await sb
+      .from("clients")
+      .select("id, email, fio, is_active, final_day, balance, currency, gr_price, ds_price, pr_price, sp_price, future_plan, tag, coach")
+      .order("fio", { ascending: true })
+      .range(from, from + pageSize - 1);
+
+    if (error) {
+      throw new Error(error.message);
+    }
+
+    const page = (Array.isArray(data) ? data : []) as ClientRow[];
+    rows.push(...page);
+
+    if (page.length < pageSize) break;
+    from += pageSize;
+  }
+
+  return rows;
+}
+
 /**
  * Active students for coach linked to session email.
  */
@@ -310,17 +336,7 @@ export async function getAdminStudentsForAdminLk(): Promise<
   if (!sb) return { ok: false };
 
   try {
-    const { data, error } = await sb
-      .from("clients")
-      .select("id, email, fio, is_active, final_day, balance, currency, gr_price, ds_price, pr_price, sp_price, future_plan, tag, coach")
-      .order("fio", { ascending: true });
-
-    if (error) {
-      console.warn("[supabase/coachStudents] admin clients query failed", error.message);
-      return { ok: false };
-    }
-
-    const rows = (Array.isArray(data) ? data : []) as ClientRow[];
+    const rows = await loadAllAdminClientRows(sb);
     const allStudents = rows
       .map(mapClientToAdminStudent)
       .sort((a, b) => a.name.localeCompare(b.name, "ru"));

@@ -134,7 +134,7 @@ const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 const TELEGRAM_CHAT_ID_RAW = process.env.TELEGRAM_CHAT_ID;
 const TELEGRAM_CHAT_ID = TELEGRAM_CHAT_ID_RAW ? Number(TELEGRAM_CHAT_ID_RAW) : NaN;
 // Coach routing (only for offline trial bookings)
-const TELEGRAM_COACH_BOT_TOKEN = process.env.TELEGRAM_COACH_BOT_TOKEN;
+const IDCMAIN_BOT_TOKEN = process.env.IDCMAIN_BOT_TOKEN;
 const TELEGRAM_COACH_CHAT_ID_MSK_RAW = process.env.TELEGRAM_COACH_CHAT_ID_MSK;
 const TELEGRAM_COACH_CHAT_ID_SPB_SPIRIT_RAW = process.env.TELEGRAM_COACH_CHAT_ID_SPB_SPIRIT;
 const TELEGRAM_COACH_CHAT_ID_SPB_HKC_RAW = process.env.TELEGRAM_COACH_CHAT_ID_SPB_HKC;
@@ -569,7 +569,7 @@ async function handle(params: URLSearchParams) {
     studioId: foundSource === "purchases" ? purchaseStudioId : studioId,
     hasAdminChat: Boolean(TELEGRAM_BOT_TOKEN && Number.isFinite(TELEGRAM_CHAT_ID)),
     hasCoachChat: Boolean(
-      TELEGRAM_COACH_BOT_TOKEN &&
+      IDCMAIN_BOT_TOKEN &&
         Number.isFinite(foundSource === "purchases" ? purchaseCoachChat : websiteCoachChat)
     ),
     hasUserChat: Number.isFinite(purchaseTgId),
@@ -624,14 +624,14 @@ async function handle(params: URLSearchParams) {
         inlineButtons.push({ text: "💬 Присоединиться к чату", url: trialMeta.chatUrl });
       }
 
-      await sendTelegramMessageCustom(TELEGRAM_COACH_BOT_TOKEN, purchaseTgId, msg1, {
+      await sendTelegramMessageCustom(IDCMAIN_BOT_TOKEN, purchaseTgId, msg1, {
         target: "user",
         invId: String(invId),
         source: "purchases",
         email: purchaseEmail,
         studioId: purchaseStudioId,
       });
-      await sendTelegramMessageCustom(TELEGRAM_COACH_BOT_TOKEN, purchaseTgId, msg2, {
+      await sendTelegramMessageCustom(IDCMAIN_BOT_TOKEN, purchaseTgId, msg2, {
         target: "user",
         invId: String(invId),
         source: "purchases",
@@ -640,7 +640,7 @@ async function handle(params: URLSearchParams) {
       });
       if (inlineButtons.length > 0) {
         await sendTelegramMessageCustomWithInlineButtons(
-          TELEGRAM_COACH_BOT_TOKEN,
+          IDCMAIN_BOT_TOKEN,
           purchaseTgId,
           "Полезные ссылки:",
           inlineButtons,
@@ -658,7 +658,7 @@ async function handle(params: URLSearchParams) {
         `${telegramPhoneLineOptional(purchasePhone) ? telegramPhoneLineOptional(purchasePhone) + "\n" : ""}` +
         `Почта: ${escapeTgHtml(purchaseEmail || "—")}`;
       if (trialMeta) {
-        await sendTelegramMessageCustom(TELEGRAM_COACH_BOT_TOKEN, purchaseCoachChat as number | undefined, textCoach, {
+        await sendTelegramMessageCustom(IDCMAIN_BOT_TOKEN, purchaseCoachChat as number | undefined, textCoach, {
           target: "coach",
           invId: String(invId),
           source: "purchases",
@@ -673,7 +673,7 @@ async function handle(params: URLSearchParams) {
         `Ура! Оплата прошла успешно ✅\n` +
         `Ваш баланс пополнен на: ${escapeTgHtml(String(purchaseSum))} ₽.\n\n` +
         `Дата окончания вашего тарифа обновлена. Посмотреть её можно, нажав кнопку «Дата окончания».`;
-      await sendTelegramMessageCustom(TELEGRAM_COACH_BOT_TOKEN, purchaseTgId, userMsg, {
+      await sendTelegramMessageCustom(IDCMAIN_BOT_TOKEN, purchaseTgId, userMsg, {
         target: "user",
         invId: String(invId),
         source: "purchases",
@@ -684,14 +684,14 @@ async function handle(params: URLSearchParams) {
         `Ура, оплата прошла успешно!\n` +
         `Вскоре на вашу почту придет письмо с темой [TrueCoach] Invitation, содержащее приглашение для доступа к нашему приложению, где будет стоять первая тренировка.\n` +
         `После прохождения первой тренировки наш тренер свяжется с вами и предоставит подробную обратную связь. Для удобства рекомендуем скачать мобильную версию приложения 👇🏻`;
-      await sendTelegramMessageCustom(TELEGRAM_COACH_BOT_TOKEN, purchaseTgId, onlineTestMsg1, {
+      await sendTelegramMessageCustom(IDCMAIN_BOT_TOKEN, purchaseTgId, onlineTestMsg1, {
         target: "user",
         invId: String(invId),
         source: "purchases",
         email: purchaseEmail,
       });
       await sendTelegramMessageCustomWithInlineButtons(
-        TELEGRAM_COACH_BOT_TOKEN,
+        IDCMAIN_BOT_TOKEN,
         purchaseTgId,
         "Ссылки для установки приложения:",
         [
@@ -705,7 +705,7 @@ async function handle(params: URLSearchParams) {
         `<b>Краткая инструкция как выполнять тест силы от I Do Calisthenics:</b>\n` +
         `Всего 5-7 упражнений (в зависимости от выбранного курса). Для каждого упражнения в приложении указано возможное количество вариаций (от 1 до 3): вам надо выбрать и выполнить только одну вариацию и один подход в каждом упражнении — ту, которая для вас не самая простая, но с которой вы уверенно справитесь.\n` +
         `Важно: все упражнения необходимо снять на видео и загрузить в приложение — это поможет нам определить ваш текущий уровень и составить последующие тренировки эффективно.`;
-      await sendTelegramMessageCustom(TELEGRAM_COACH_BOT_TOKEN, purchaseTgId, onlineTestMsg2, {
+      await sendTelegramMessageCustom(IDCMAIN_BOT_TOKEN, purchaseTgId, onlineTestMsg2, {
         target: "user",
         invId: String(invId),
         source: "purchases",
@@ -716,7 +716,7 @@ async function handle(params: URLSearchParams) {
         `Ура! Оплата прошла успешно ✅\n` +
         `Ваш баланс пополнен на: ${escapeTgHtml(String(purchaseSum))} ₽.\n\n` +
         `Дата окончания вашего тарифа обновлена. Посмотреть её можно, нажав кнопку «Дата окончания».`;
-      await sendTelegramMessageCustom(TELEGRAM_COACH_BOT_TOKEN, purchaseTgId, userMsg, {
+      await sendTelegramMessageCustom(IDCMAIN_BOT_TOKEN, purchaseTgId, userMsg, {
         target: "user",
         invId: String(invId),
         source: "purchases",
@@ -727,7 +727,7 @@ async function handle(params: URLSearchParams) {
         `Ура! Оплата прошла успешно ✅\n` +
         `Ваш баланс пополнен на: ${escapeTgHtml(String(purchaseSum))} ₽.\n\n` +
         `Дата окончания вашего тарифа обновлена. Посмотреть её можно, нажав кнопку «Дата окончания».`;
-      await sendTelegramMessageCustom(TELEGRAM_COACH_BOT_TOKEN, purchaseTgId, userMsg, {
+      await sendTelegramMessageCustom(IDCMAIN_BOT_TOKEN, purchaseTgId, userMsg, {
         target: "user",
         invId: String(invId),
         source: "purchases",
@@ -772,7 +772,7 @@ async function handle(params: URLSearchParams) {
     await settleTelegramNotifications(
       [
         sendTelegramMessage(textAdmin, { target: "admin", invId: String(invId), source: "website", email, studioId }),
-        sendTelegramMessageCustom(TELEGRAM_COACH_BOT_TOKEN, websiteCoachChat as number | undefined, textCoach, {
+        sendTelegramMessageCustom(IDCMAIN_BOT_TOKEN, websiteCoachChat as number | undefined, textCoach, {
           target: "coach",
           invId: String(invId),
           source: "website",
