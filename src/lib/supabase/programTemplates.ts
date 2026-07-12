@@ -162,6 +162,10 @@ type ProgramTemplateExerciseRow = {
   sort_order?: number | null;
 };
 
+type CoachClientProgramPreference = {
+  programTemplateId: string | null;
+};
+
 function cleanOptional(raw: unknown): string | null {
   const value = String(raw || "").trim();
   return value || null;
@@ -311,6 +315,102 @@ async function getCoachForProgram(coachEmail: string) {
   const normalized = String(coachEmail || "").trim().toLowerCase();
   if (!normalized) return null;
   return getCoachByEmail(normalized);
+}
+
+async function getReadableProgramTemplateRow(
+  coachEmail: string,
+  programId: string
+): Promise<ProgramTemplateResult<{ id: string }>> {
+  const sb = getSupabaseAdmin();
+  if (!isSupabaseEnabled("read_coach_lk") || !sb) return { ok: false, reason: "disabled" };
+  const coach = await getCoachForProgram(coachEmail);
+  if (!coach) return { ok: false, reason: "forbidden" };
+  const actor = actorFromCoach(coach);
+  const id = String(programId || "").trim();
+  if (!id) return { ok: false, reason: "invalid" };
+
+  let query = sb
+    .from("program_templates")
+    .select("id, coach_id")
+    .eq("id", id)
+    .eq("is_active", true);
+
+  if (!isPrivilegedActor(actor)) {
+    query = query.or(`coach_id.eq.${coach.id},coach_id.is.null`);
+  }
+
+  const { data, error } = await query.maybeSingle();
+  if (error) return { ok: false, reason: "db_error", message: error.message };
+  if (!data) return { ok: false, reason: "not_found" };
+  if (!canReadProgram(actor, { coachId: (data as { coach_id?: string | null }).coach_id })) {
+    return { ok: false, reason: "not_found" };
+  }
+  return { ok: true, data: { id } };
+}
+
+export async function getLastProgramTemplatePreference(params: {
+  coachEmail: string;
+  clientId: string;
+}): Promise<ProgramTemplateResult<CoachClientProgramPreference>> {
+  const sb = getSupabaseAdmin();
+  if (!isSupabaseEnabled("read_coach_lk") || !sb) return { ok: false, reason: "disabled" };
+  const coach = await getCoachForProgram(params.coachEmail);
+  if (!coach) return { ok: false, reason: "forbidden" };
+  const clientId = String(params.clientId || "").trim();
+  if (!clientId) return { ok: false, reason: "invalid" };
+
+  const { data: link, error: linkErr } = await sb
+    .from("coach_clients")
+    .select("last_program_template_id")
+    .eq("coach_id", coach.id)
+    .eq("client_id", clientId)
+    .eq("is_active", true)
+    .maybeSingle();
+
+  if (linkErr) return { ok: false, reason: "db_error", message: linkErr.message };
+  if (!link) return { ok: false, reason: "forbidden" };
+
+  const programTemplateId = cleanOptional((link as { last_program_template_id?: string | null }).last_program_template_id);
+  if (!programTemplateId) return { ok: true, data: { programTemplateId: null } };
+
+  const readable = await getReadableProgramTemplateRow(params.coachEmail, programTemplateId);
+  if (readable.ok) return { ok: true, data: { programTemplateId } };
+  if (readable.reason === "not_found" || readable.reason === "forbidden") {
+    return { ok: true, data: { programTemplateId: null } };
+  }
+  return readable;
+}
+
+export async function saveLastProgramTemplatePreference(params: {
+  coachEmail: string;
+  clientId: string;
+  programTemplateId: string;
+}): Promise<ProgramTemplateResult<{ preferenceSaved: boolean }>> {
+  const sb = getSupabaseAdmin();
+  if (!isSupabaseEnabled("read_coach_lk") || !sb) return { ok: false, reason: "disabled" };
+  const coach = await getCoachForProgram(params.coachEmail);
+  if (!coach) return { ok: false, reason: "forbidden" };
+  const clientId = String(params.clientId || "").trim();
+  const programTemplateId = String(params.programTemplateId || "").trim();
+  if (!clientId || !programTemplateId) return { ok: false, reason: "invalid" };
+
+  const readable = await getReadableProgramTemplateRow(params.coachEmail, programTemplateId);
+  if (!readable.ok) return readable;
+
+  const { data, error } = await sb
+    .from("coach_clients")
+    .update({
+      last_program_template_id: programTemplateId,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("coach_id", coach.id)
+    .eq("client_id", clientId)
+    .eq("is_active", true)
+    .select("client_id")
+    .maybeSingle();
+
+  if (error) return { ok: false, reason: "db_error", message: error.message };
+  return { ok: true, data: { preferenceSaved: Boolean(data) } };
 }
 
 export async function verifyProgramTemplateSchema(

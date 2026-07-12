@@ -78,8 +78,12 @@ type ProgramTemplateWorkoutPreview = {
   weekNumber: number;
   title: string;
   summary?: string;
-  exercises: Array<{ id: string; groupId?: string; title: string }>;
-  groups: Array<{ id: string; title: string; exercises?: unknown[] }>;
+  exercises: Array<{ id?: string; groupId?: string; title?: string; exerciseTitle?: string }>;
+  groups: Array<{
+    id: string;
+    title: string;
+    exercises?: Array<{ id?: string; title?: string; exerciseTitle?: string }>;
+  }>;
 };
 
 type ProgramTemplatePreview = {
@@ -100,6 +104,8 @@ type ImportWorkoutItem = {
   clientWorkoutId: string;
   status: "created" | "reused";
 };
+
+const PROGRAM_WORKOUT_PREVIEW_LIMIT = 5;
 
 function createDraftId() {
   if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
@@ -682,7 +688,7 @@ function DayCell({
             {dayLabel(day)} {dateLabel(day).slice(0, 2)}
           </p>
         </div>
-        <div className="flex flex-wrap justify-end gap-1 opacity-100 transition-opacity duration-150 sm:opacity-0 sm:group-hover/day:opacity-100 sm:group-focus-within/day:opacity-100">
+        <div className="grid min-w-[8.75rem] grid-cols-1 gap-1 opacity-100 transition-opacity duration-150 sm:opacity-0 sm:group-hover/day:opacity-100 sm:group-focus-within/day:opacity-100">
           {copiedWorkout ? (
             <button
               type="button"
@@ -697,14 +703,14 @@ function DayCell({
           <button
             type="button"
             onClick={onCreate}
-            className="min-h-7 rounded-full bg-white/50 px-2.5 text-[10px] font-medium text-slate-500 transition-colors duration-150 hover:bg-brand-primary/10 hover:text-brand-primary focus:outline-none focus:ring-2 focus:ring-brand-primary/20"
+            className="min-h-7 w-full rounded-full bg-white/65 px-2.5 text-center text-[10px] font-semibold text-slate-500 transition-colors duration-150 hover:bg-slate-100 hover:text-slate-700 focus:outline-none focus:ring-2 focus:ring-brand-primary/20"
           >
             + Пустая тренировка
           </button>
           <button
             type="button"
             onClick={onImportFromProgram}
-            className="min-h-7 rounded-full bg-emerald-50 px-2.5 text-[10px] font-medium text-emerald-700 transition-colors duration-150 hover:bg-emerald-100 hover:text-emerald-800 focus:outline-none focus:ring-2 focus:ring-emerald-200"
+            className="min-h-7 w-full rounded-full bg-emerald-50 px-2.5 text-center text-[10px] font-semibold text-emerald-700 transition-colors duration-150 hover:bg-emerald-100 hover:text-emerald-800 focus:outline-none focus:ring-2 focus:ring-emerald-200"
           >
             + Из программы
           </button>
@@ -726,6 +732,127 @@ function DayCell({
         </div>
       ) : null}
     </article>
+  );
+}
+
+function previewExerciseTitle(exercise: { title?: string; exerciseTitle?: string } | undefined) {
+  return String(exercise?.title || exercise?.exerciseTitle || "").trim();
+}
+
+function buildWorkoutPreviewExercises(workout: ProgramTemplateWorkoutPreview) {
+  const seen = new Set<string>();
+  const items: string[] = [];
+  const addExercise = (exercise: { id?: string; title?: string; exerciseTitle?: string } | undefined) => {
+    const title = previewExerciseTitle(exercise);
+    if (!title) return;
+    const key = String(exercise?.id || title).trim().toLowerCase();
+    if (seen.has(key)) return;
+    seen.add(key);
+    items.push(title);
+  };
+
+  (workout.exercises || []).forEach(addExercise);
+  (workout.groups || []).forEach((group) => (group.exercises || []).forEach(addExercise));
+  return items;
+}
+
+function ProgramWorkoutPreviewCard({
+  workout,
+  selected,
+  disabled,
+  onToggle,
+}: {
+  workout: ProgramTemplateWorkoutPreview;
+  selected: boolean;
+  disabled: boolean;
+  onToggle: () => void;
+}) {
+  const exerciseTitles = buildWorkoutPreviewExercises(workout);
+  const visibleExercises = exerciseTitles.slice(0, PROGRAM_WORKOUT_PREVIEW_LIMIT);
+  const hiddenCount = Math.max(0, exerciseTitles.length - visibleExercises.length);
+  const exerciseCount = exerciseTitles.length;
+  const groupCount = workout.groups?.length || 0;
+  const checkboxId = `program-workout-${workout.id}`;
+
+  function toggleIfAllowed() {
+    if (!disabled) onToggle();
+  }
+
+  return (
+    <div
+      role="checkbox"
+      aria-checked={selected}
+      tabIndex={disabled ? -1 : 0}
+      onClick={toggleIfAllowed}
+      onKeyDown={(e) => {
+        if (e.key !== "Enter" && e.key !== " ") return;
+        e.preventDefault();
+        toggleIfAllowed();
+      }}
+      className={`group flex min-h-52 cursor-pointer flex-col rounded-3xl border p-4 text-left shadow-sm transition-all duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-300 ${
+        selected
+          ? "border-emerald-300 bg-emerald-50/80 shadow-emerald-100"
+          : "border-slate-200 bg-white hover:-translate-y-px hover:border-slate-300 hover:shadow-md"
+      } ${disabled ? "pointer-events-none cursor-not-allowed opacity-60" : ""}`}
+    >
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="mb-2 inline-flex rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.08em] text-slate-500">
+            День {workout.dayNumber || 1}
+          </p>
+          <h4 className="line-clamp-2 text-base font-semibold leading-snug text-slate-950">
+            {workout.title || "Тренировка"}
+          </h4>
+        </div>
+        <input
+          id={checkboxId}
+          type="checkbox"
+          checked={selected}
+          disabled={disabled}
+          onClick={(e) => e.stopPropagation()}
+          onChange={toggleIfAllowed}
+          className="mt-1 h-5 w-5 shrink-0 rounded border-slate-300 text-emerald-600 focus:ring-emerald-200"
+          aria-label={`Выбрать тренировку ${workout.title || "Тренировка"}`}
+        />
+      </div>
+
+      <div className="mt-3 flex flex-wrap gap-1.5">
+        <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-600">
+          {exerciseCount} {pluralRu(String(exerciseCount), "упражнение", "упражнения", "упражнений")}
+        </span>
+        {groupCount ? (
+          <span className="rounded-full bg-emerald-100/80 px-2.5 py-1 text-xs font-medium text-emerald-700">
+            {groupCount} {pluralRu(String(groupCount), "группа", "группы", "групп")}
+          </span>
+        ) : null}
+      </div>
+
+      {visibleExercises.length > 0 ? (
+        <ol className="mt-4 flex-1 space-y-1.5 text-sm text-slate-600">
+          {visibleExercises.map((title, index) => (
+            <li key={`${title}-${index}`} className="flex gap-2">
+              <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-slate-100 text-[11px] font-semibold text-slate-500">
+                {String.fromCharCode(65 + index)}
+              </span>
+              <span className="line-clamp-1">{title}</span>
+            </li>
+          ))}
+        </ol>
+      ) : (
+        <p className="mt-4 flex-1 rounded-2xl bg-slate-50 px-3 py-2 text-sm text-slate-500">Упражнения не указаны.</p>
+      )}
+
+      {hiddenCount > 0 ? (
+        <p className="mt-3 text-xs font-semibold text-slate-400">
+          +{hiddenCount} {pluralRu(String(hiddenCount), "ещё", "ещё", "ещё")}
+        </p>
+      ) : null}
+      {workout.summary ? (
+        <p className="mt-3 line-clamp-2 rounded-2xl bg-white/60 px-3 py-2 text-xs leading-5 text-slate-500">
+          {workout.summary}
+        </p>
+      ) : null}
+    </div>
   );
 }
 
@@ -1254,6 +1381,8 @@ export function LkStudentCalendar({ studentId, workouts, exerciseLibrary }: Prop
   const [programs, setPrograms] = useState<ProgramTemplatePreview[] | null>(null);
   const [programsLoading, setProgramsLoading] = useState(false);
   const [programsError, setProgramsError] = useState("");
+  const [programPreferenceLoading, setProgramPreferenceLoading] = useState(false);
+  const [programPreferenceError, setProgramPreferenceError] = useState("");
   const [selectedProgramId, setSelectedProgramId] = useState("");
   const [selectedProgram, setSelectedProgram] = useState<ProgramTemplatePreview | null>(null);
   const [selectedProgramLoading, setSelectedProgramLoading] = useState(false);
@@ -1263,6 +1392,8 @@ export function LkStudentCalendar({ studentId, workouts, exerciseLibrary }: Prop
   const [importError, setImportError] = useState("");
   const [importSuccess, setImportSuccess] = useState("");
   const [pendingOpenWorkoutId, setPendingOpenWorkoutId] = useState("");
+  const programOpenRequestRef = useRef(0);
+  const programDetailsRequestRef = useRef(0);
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
     useSensor(TouchSensor, { activationConstraint: { delay: 180, tolerance: 8 } }),
@@ -1317,17 +1448,127 @@ export function LkStudentCalendar({ studentId, workouts, exerciseLibrary }: Prop
   }, [editing, saving, previewExercise]);
 
   useEffect(() => {
-    if (!programImportDate || programs !== null || programsLoading) return;
-    void loadPrograms();
-  }, [programImportDate, programs, programsLoading]);
+    if (!programImportDate) return;
+
+    const requestId = programOpenRequestRef.current + 1;
+    programOpenRequestRef.current = requestId;
+    const controller = new AbortController();
+
+    setProgramsLoading(true);
+    setProgramPreferenceLoading(true);
+    setPrograms(null);
+    setProgramsError("");
+    setProgramPreferenceError("");
+    setImportError("");
+    setSelectedProgramId("");
+    setSelectedProgram(null);
+    setSelectedProgramError("");
+    setSelectedProgramLoading(false);
+    setSelectedWorkoutIds([]);
+
+    async function loadInitialProgramState() {
+      const programsRequest = fetch("/api/lk/coach/programs", { signal: controller.signal })
+        .then(async (res) => {
+          const json = (await res.json().catch(() => null)) as {
+            ok?: boolean;
+            message?: string;
+            error?: string;
+            programs?: ProgramTemplatePreview[];
+          } | null;
+          if (!res.ok || json?.ok === false) {
+            throw new Error(json?.message || json?.error || "Не удалось загрузить программы.");
+          }
+          return Array.isArray(json?.programs) ? json.programs : [];
+        });
+
+      const preferenceRequest = fetch(`/api/lk/coach/students/${studentId}/calendar/program-preference`, {
+        signal: controller.signal,
+      })
+        .then(async (res) => {
+          const json = (await res.json().catch(() => null)) as {
+            ok?: boolean;
+            programTemplateId?: string | null;
+          } | null;
+          if (!res.ok || json?.ok === false) return null;
+          return typeof json?.programTemplateId === "string" ? json.programTemplateId : null;
+        })
+        .catch((e) => {
+          if (e instanceof DOMException && e.name === "AbortError") throw e;
+          if (programOpenRequestRef.current === requestId) {
+            setProgramPreferenceError("Не удалось загрузить последнюю программу.");
+          }
+          return null;
+        });
+
+      try {
+        const [nextPrograms, preferredProgramId] = await Promise.all([programsRequest, preferenceRequest]);
+        if (controller.signal.aborted || programOpenRequestRef.current !== requestId) return;
+        setPrograms(nextPrograms);
+        const rememberedProgram = preferredProgramId
+          ? nextPrograms.find((program) => program.id === preferredProgramId)
+          : undefined;
+        if (rememberedProgram) {
+          setSelectedProgramId(rememberedProgram.id);
+        }
+      } catch (e) {
+        if (controller.signal.aborted || programOpenRequestRef.current !== requestId) return;
+        setPrograms(null);
+        setProgramsError(e instanceof Error ? e.message : "Не удалось загрузить программы.");
+      } finally {
+        if (!controller.signal.aborted && programOpenRequestRef.current === requestId) {
+          setProgramsLoading(false);
+          setProgramPreferenceLoading(false);
+        }
+      }
+    }
+
+    void loadInitialProgramState();
+    return () => controller.abort();
+  }, [programImportDate, studentId]);
 
   useEffect(() => {
+    const requestId = programDetailsRequestRef.current + 1;
+    programDetailsRequestRef.current = requestId;
+    const controller = new AbortController();
+    setSelectedWorkoutIds([]);
+
     if (!selectedProgramId) {
       setSelectedProgram(null);
-      setSelectedWorkoutIds([]);
-      return;
+      setSelectedProgramError("");
+      setSelectedProgramLoading(false);
+      return () => controller.abort();
     }
-    void loadProgramDetails(selectedProgramId);
+
+    setSelectedProgramLoading(true);
+    setSelectedProgramError("");
+    setSelectedProgram(null);
+
+    async function loadSelectedProgram() {
+      try {
+        const res = await fetch(`/api/lk/coach/programs/${selectedProgramId}`, { signal: controller.signal });
+        const json = (await res.json().catch(() => null)) as {
+          ok?: boolean;
+          message?: string;
+          error?: string;
+          program?: ProgramTemplatePreview;
+        } | null;
+        if (!res.ok || json?.ok === false || !json?.program) {
+          throw new Error(json?.message || json?.error || "Не удалось загрузить программу.");
+        }
+        if (controller.signal.aborted || programDetailsRequestRef.current !== requestId) return;
+        setSelectedProgram(json.program);
+      } catch (e) {
+        if (controller.signal.aborted || programDetailsRequestRef.current !== requestId) return;
+        setSelectedProgramError(e instanceof Error ? e.message : "Не удалось загрузить программу.");
+      } finally {
+        if (!controller.signal.aborted && programDetailsRequestRef.current === requestId) {
+          setSelectedProgramLoading(false);
+        }
+      }
+    }
+
+    void loadSelectedProgram();
+    return () => controller.abort();
   }, [selectedProgramId]);
 
   const daysCount = 42;
@@ -1366,65 +1607,20 @@ export function LkStudentCalendar({ studentId, workouts, exerciseLibrary }: Prop
     setImportError("");
     setImportSuccess("");
     setCalendarError("");
-    if (programs?.length === 1) setSelectedProgramId(programs[0].id);
+    setSelectedWorkoutIds([]);
   }
 
   function closeProgramImport() {
     if (importingProgram) return;
+    programOpenRequestRef.current += 1;
+    programDetailsRequestRef.current += 1;
     setProgramImportDate("");
     setImportError("");
-    setSelectedProgramError("");
-  }
-
-  async function loadPrograms() {
-    setProgramsLoading(true);
-    setProgramsError("");
-    try {
-      const res = await fetch("/api/lk/coach/programs");
-      const json = (await res.json().catch(() => null)) as {
-        ok?: boolean;
-        message?: string;
-        error?: string;
-        programs?: ProgramTemplatePreview[];
-      } | null;
-      if (!res.ok || json?.ok === false) {
-        throw new Error(json?.message || json?.error || "Не удалось загрузить программы.");
-      }
-      const nextPrograms = Array.isArray(json?.programs) ? json.programs : [];
-      setPrograms(nextPrograms);
-      if (!selectedProgramId && nextPrograms.length === 1) setSelectedProgramId(nextPrograms[0].id);
-    } catch (e) {
-      setProgramsError(e instanceof Error ? e.message : "Не удалось загрузить программы.");
-    } finally {
-      setProgramsLoading(false);
-    }
-  }
-
-  async function loadProgramDetails(programId: string) {
-    setSelectedProgramLoading(true);
-    setSelectedProgramError("");
+    setProgramPreferenceError("");
+    setSelectedProgramId("");
     setSelectedProgram(null);
+    setSelectedProgramError("");
     setSelectedWorkoutIds([]);
-    try {
-      const res = await fetch(`/api/lk/coach/programs/${programId}`);
-      const json = (await res.json().catch(() => null)) as {
-        ok?: boolean;
-        message?: string;
-        error?: string;
-        program?: ProgramTemplatePreview;
-      } | null;
-      if (!res.ok || json?.ok === false || !json?.program) {
-        throw new Error(json?.message || json?.error || "Не удалось загрузить программу.");
-      }
-      const program = json.program;
-      const workouts = Array.isArray(program.workouts) ? program.workouts : [];
-      setSelectedProgram(program);
-      setSelectedWorkoutIds(workouts.map((workout) => workout.id));
-    } catch (e) {
-      setSelectedProgramError(e instanceof Error ? e.message : "Не удалось загрузить программу.");
-    } finally {
-      setSelectedProgramLoading(false);
-    }
   }
 
   function toggleSelectedWorkout(workoutId: string) {
@@ -1467,6 +1663,9 @@ export function LkStudentCalendar({ studentId, workouts, exerciseLibrary }: Prop
       const workoutIds = Array.isArray(json?.workoutIds) ? json.workoutIds.filter(Boolean) : [];
       const totalImported = importedWorkouts.length || workoutIds.length || selectedWorkoutIds.length;
       setProgramImportDate("");
+      setSelectedWorkoutIds([]);
+      setSelectedProgramId("");
+      setSelectedProgram(null);
       setImportSuccess(
         totalImported === 1 ? "Тренировка добавлена." : `Добавлено тренировок: ${totalImported}.`
       );
@@ -1998,34 +2197,36 @@ export function LkStudentCalendar({ studentId, workouts, exerciseLibrary }: Prop
 
       {programImportDate ? (
         <div
-          className="fixed inset-0 z-50 flex items-end bg-slate-950/40 px-3 py-4 sm:items-center sm:justify-center"
+          className="fixed inset-0 z-50 flex items-end bg-slate-950/40 px-2 py-3 sm:items-center sm:justify-center sm:px-4"
           onMouseDown={(e) => {
             if (e.target === e.currentTarget) closeProgramImport();
           }}
         >
           <div
-            className="max-h-[86vh] w-full max-w-2xl overflow-y-auto rounded-3xl bg-white p-4 text-slate-950 shadow-2xl sm:p-5"
+            className="flex h-[90vh] max-h-[calc(100vh-1.5rem)] w-full max-w-[1320px] flex-col overflow-hidden rounded-3xl bg-white text-slate-950 shadow-2xl"
             onMouseDown={(e) => e.stopPropagation()}
           >
-            <div className="mb-4 flex items-start justify-between gap-3">
-              <div>
-                <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Из программы</p>
-                <h3 className="mt-1 text-xl font-semibold">Добавить тренировки</h3>
-                <p className="mt-1 text-sm text-slate-500">
-                  Дата старта: {formatDateHuman(programImportDate)}. Смещения дней сохраняются из шаблона.
-                </p>
+            <div className="shrink-0 border-b border-slate-100 px-4 py-4 sm:px-6">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="text-xs uppercase tracking-[0.18em] text-emerald-600">Из программы</p>
+                  <h3 className="mt-1 text-2xl font-semibold">Добавить тренировки</h3>
+                  <p className="mt-1 text-sm text-slate-500">
+                    Дата старта: {formatDateHuman(programImportDate)}. Смещения дней сохраняются из шаблона.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={closeProgramImport}
+                  disabled={importingProgram}
+                  className="rounded-full px-3 py-1 text-sm text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  Закрыть
+                </button>
               </div>
-              <button
-                type="button"
-                onClick={closeProgramImport}
-                disabled={importingProgram}
-                className="rounded-full px-3 py-1 text-sm text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700 disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                Закрыть
-              </button>
             </div>
 
-            <div className="space-y-4">
+            <div className="shrink-0 space-y-3 border-b border-slate-100 px-4 py-4 sm:px-6">
               <label className="block">
                 <span className="mb-1 block text-sm font-medium text-slate-700">Программа</span>
                 <select
@@ -2035,7 +2236,7 @@ export function LkStudentCalendar({ studentId, workouts, exerciseLibrary }: Prop
                     setImportError("");
                   }}
                   disabled={programsLoading || importingProgram}
-                  className="w-full rounded-2xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-brand-primary disabled:cursor-not-allowed disabled:bg-slate-50"
+                  className="w-full rounded-2xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-emerald-400 disabled:cursor-not-allowed disabled:bg-slate-50"
                 >
                   <option value="">Выбери программу</option>
                   {(programs || []).map((program) => (
@@ -2047,37 +2248,45 @@ export function LkStudentCalendar({ studentId, workouts, exerciseLibrary }: Prop
                 </select>
               </label>
 
-              {programsLoading ? (
-                <p className="rounded-2xl bg-slate-50 px-3 py-2 text-sm text-slate-500">Загружаю программы...</p>
-              ) : null}
-              {programsError ? (
-                <p className="rounded-2xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
-                  {programsError}
-                </p>
-              ) : null}
-              {!programsLoading && programs && programs.length === 0 ? (
-                <p className="rounded-2xl bg-slate-50 px-3 py-2 text-sm text-slate-500">
-                  Нет доступных программ для импорта.
-                </p>
-              ) : null}
+              <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                <div className="min-w-0 flex-1">
+                  {programsLoading ? (
+                    <p className="rounded-2xl bg-slate-50 px-3 py-2 text-sm text-slate-500">Загружаю программы...</p>
+                  ) : null}
+                  {programPreferenceLoading ? (
+                    <p className="mt-2 rounded-2xl bg-slate-50 px-3 py-2 text-sm text-slate-500">
+                      Проверяю последнюю программу ученика...
+                    </p>
+                  ) : null}
+                  {programPreferenceError ? (
+                    <p className="mt-2 rounded-2xl bg-slate-50 px-3 py-2 text-sm text-slate-500">
+                      Последнюю программу не удалось загрузить, можно выбрать вручную.
+                    </p>
+                  ) : null}
+                  {programsError ? (
+                    <p className="rounded-2xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+                      {programsError}
+                    </p>
+                  ) : null}
+                  {!programsLoading && programs && programs.length === 0 ? (
+                    <p className="rounded-2xl bg-slate-50 px-3 py-2 text-sm text-slate-500">
+                      Нет доступных программ для импорта.
+                    </p>
+                  ) : null}
 
-              {selectedProgramLoading ? (
-                <p className="rounded-2xl bg-slate-50 px-3 py-2 text-sm text-slate-500">Загружаю тренировки...</p>
-              ) : null}
-              {selectedProgramError ? (
-                <p className="rounded-2xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
-                  {selectedProgramError}
-                </p>
-              ) : null}
-
-              {selectedProgram ? (
-                <div className="rounded-3xl border border-slate-200 bg-slate-50/70 p-3">
-                  <div className="mb-3 flex flex-wrap items-start justify-between gap-3">
-                    <div>
-                      <h4 className="text-base font-semibold text-slate-950">{selectedProgram.title}</h4>
-                      {selectedProgram.description ? (
-                        <p className="mt-1 line-clamp-2 text-sm text-slate-500">{selectedProgram.description}</p>
-                      ) : null}
+                  {selectedProgram ? (
+                    <div className="rounded-3xl border border-slate-200 bg-slate-50/70 p-3">
+                      <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                        <div className="min-w-0">
+                          <h4 className="truncate text-base font-semibold text-slate-950">{selectedProgram.title}</h4>
+                          {selectedProgram.description ? (
+                            <p className="mt-1 line-clamp-2 text-sm text-slate-500">{selectedProgram.description}</p>
+                          ) : null}
+                        </div>
+                        <p className="shrink-0 rounded-full bg-white px-3 py-1 text-xs font-semibold text-slate-500">
+                          Выбрано: {selectedWorkoutIds.length}
+                        </p>
+                      </div>
                       <div className="mt-2 flex flex-wrap gap-1.5 text-[11px] text-slate-500">
                         {selectedProgram.level ? (
                           <span className="rounded-full bg-white px-2 py-1">{selectedProgram.level}</span>
@@ -2085,6 +2294,11 @@ export function LkStudentCalendar({ studentId, workouts, exerciseLibrary }: Prop
                         {selectedProgram.goal ? (
                           <span className="rounded-full bg-white px-2 py-1">{selectedProgram.goal}</span>
                         ) : null}
+                        {selectedProgram.tags?.slice(0, 4).map((tag) => (
+                          <span key={tag} className="rounded-full bg-white px-2 py-1">
+                            {tag}
+                          </span>
+                        ))}
                         {selectedProgram.ownerType === "global" ? (
                           <span className="rounded-full bg-white px-2 py-1">общая</span>
                         ) : selectedProgram.ownerType === "other" ? (
@@ -2092,100 +2306,98 @@ export function LkStudentCalendar({ studentId, workouts, exerciseLibrary }: Prop
                         ) : null}
                       </div>
                     </div>
-                    {selectedProgramWorkouts.length > 0 ? (
-                      <div className="flex gap-2">
-                        <button
-                          type="button"
-                          onClick={() => setSelectedWorkoutIds(selectedProgramWorkouts.map((workout) => workout.id))}
-                          disabled={importingProgram}
-                          className="rounded-full bg-white px-3 py-1.5 text-xs font-medium text-slate-600 transition-colors hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50"
-                        >
-                          Выбрать все
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setSelectedWorkoutIds([])}
-                          disabled={importingProgram}
-                          className="rounded-full bg-white px-3 py-1.5 text-xs font-medium text-slate-500 transition-colors hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50"
-                        >
-                          Сбросить
-                        </button>
-                      </div>
-                    ) : null}
-                  </div>
-
-                  {selectedProgramWorkouts.length > 0 ? (
-                    <div className="max-h-80 space-y-2 overflow-y-auto pr-1">
-                      {selectedProgramWorkouts.map((workout) => {
-                        const exerciseCount = workout.exercises?.length || 0;
-                        const groupCount = workout.groups?.length || 0;
-                        const checked = selectedWorkoutIds.includes(workout.id);
-                        return (
-                          <label
-                            key={workout.id}
-                            className={`flex cursor-pointer gap-3 rounded-2xl border bg-white px-3 py-2 transition-colors ${
-                              checked ? "border-emerald-200 ring-1 ring-emerald-100" : "border-slate-100 hover:border-slate-200"
-                            }`}
-                          >
-                            <input
-                              type="checkbox"
-                              checked={checked}
-                              onChange={() => toggleSelectedWorkout(workout.id)}
-                              disabled={importingProgram}
-                              className="mt-1 h-4 w-4 rounded border-slate-300 text-emerald-600 focus:ring-emerald-200"
-                            />
-                            <span className="min-w-0 flex-1">
-                              <span className="flex flex-wrap items-center gap-2">
-                                <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-medium text-slate-500">
-                                  День {workout.dayNumber || 1}
-                                </span>
-                                <span className="truncate text-sm font-semibold text-slate-900">
-                                  {workout.title || "Тренировка"}
-                                </span>
-                              </span>
-                              {workout.summary ? (
-                                <span className="mt-1 block line-clamp-2 text-xs text-slate-500">{workout.summary}</span>
-                              ) : null}
-                              <span className="mt-1 block text-xs text-slate-400">
-                                {exerciseCount} {pluralRu(String(exerciseCount), "упражнение", "упражнения", "упражнений")}
-                                {groupCount ? `, ${groupCount} ${pluralRu(String(groupCount), "комбо", "комбо", "комбо")}` : ""}
-                              </span>
-                            </span>
-                          </label>
-                        );
-                      })}
-                    </div>
-                  ) : (
-                    <p className="rounded-2xl bg-white px-3 py-2 text-sm text-slate-500">
-                      В этой программе нет тренировок для импорта.
-                    </p>
-                  )}
+                  ) : null}
                 </div>
-              ) : null}
 
-              {importError ? (
+                <div className="flex shrink-0 flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setSelectedWorkoutIds(selectedProgramWorkouts.map((workout) => workout.id))}
+                    disabled={selectedProgramLoading || importingProgram || selectedProgramWorkouts.length === 0}
+                    className="rounded-full bg-slate-100 px-3 py-2 text-xs font-semibold text-slate-600 transition-colors hover:bg-slate-200 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    Выбрать все
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setSelectedWorkoutIds([])}
+                    disabled={selectedProgramLoading || importingProgram || selectedWorkoutIds.length === 0}
+                    className="rounded-full bg-slate-100 px-3 py-2 text-xs font-semibold text-slate-500 transition-colors hover:bg-slate-200 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    Сбросить
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4 sm:px-6">
+              {selectedProgramLoading ? (
+                <p className="rounded-3xl bg-slate-50 px-4 py-6 text-center text-sm text-slate-500">
+                  Загружаю тренировки...
+                </p>
+              ) : null}
+              {selectedProgramError ? (
                 <p className="rounded-2xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
-                  {importError}
+                  {selectedProgramError}
+                </p>
+              ) : null}
+              {!selectedProgramId && !selectedProgramLoading && !programsLoading ? (
+                <p className="rounded-3xl border border-dashed border-slate-200 bg-slate-50/70 px-4 py-8 text-center text-sm text-slate-500">
+                  Выбери программу, чтобы увидеть тренировки.
                 </p>
               ) : null}
 
-              <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
-                <button
-                  type="button"
-                  onClick={closeProgramImport}
-                  disabled={importingProgram}
-                  className="rounded-full px-4 py-2 text-sm font-medium text-slate-500 transition-colors hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50"
-                >
-                  Отмена
-                </button>
-                <button
-                  type="button"
-                  onClick={() => void importSelectedWorkouts()}
-                  disabled={!selectedProgramId || selectedWorkoutIds.length === 0 || selectedProgramLoading || importingProgram}
-                  className="rounded-full bg-brand-primary px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-brand-primary/90 disabled:cursor-not-allowed disabled:bg-slate-300"
-                >
-                  {importingProgram ? "Добавляю..." : "Добавить выбранные"}
-                </button>
+              {selectedProgram && !selectedProgramLoading ? (
+                selectedProgramWorkouts.length > 0 ? (
+                  <div className="grid gap-3 md:grid-cols-2 2xl:grid-cols-3">
+                    {selectedProgramWorkouts.map((workout) => (
+                      <ProgramWorkoutPreviewCard
+                        key={workout.id}
+                        workout={workout}
+                        selected={selectedWorkoutIds.includes(workout.id)}
+                        disabled={importingProgram}
+                        onToggle={() => toggleSelectedWorkout(workout.id)}
+                      />
+                    ))}
+                  </div>
+                ) : (
+                  <p className="rounded-3xl bg-slate-50 px-4 py-8 text-center text-sm text-slate-500">
+                    В этой программе нет тренировок для импорта.
+                  </p>
+                )
+              ) : null}
+            </div>
+
+            <div className="shrink-0 border-t border-slate-100 bg-white/95 px-4 py-3 backdrop-blur sm:px-6">
+              {importError ? (
+                <p className="mb-3 rounded-2xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+                  {importError}
+                </p>
+              ) : null}
+              <div className="flex flex-col-reverse gap-2 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <p className="text-xs text-slate-400">
+                    Первая выбранная по дню тренировка попадёт на дату старта, остальные сохранят смещения.
+                  </p>
+                </div>
+                <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+                  <button
+                    type="button"
+                    onClick={closeProgramImport}
+                    disabled={importingProgram}
+                    className="rounded-full px-4 py-2 text-sm font-medium text-slate-500 transition-colors hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    Отмена
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void importSelectedWorkouts()}
+                    disabled={!selectedProgramId || selectedWorkoutIds.length === 0 || selectedProgramLoading || importingProgram}
+                    className="rounded-full bg-emerald-600 px-5 py-2 text-sm font-semibold text-white transition-colors hover:bg-emerald-700 disabled:cursor-not-allowed disabled:bg-slate-300"
+                  >
+                    {importingProgram ? "Добавляю..." : "Добавить выбранные"}
+                  </button>
+                </div>
               </div>
             </div>
           </div>

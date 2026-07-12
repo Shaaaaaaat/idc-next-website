@@ -1,7 +1,10 @@
 import { NextResponse } from "next/server";
 import { getValidatedSessionEmail } from "@/lib/auth/lkSession";
 import { resolveLkAccessByEmail } from "@/lib/auth/lkAccess";
-import { importProgramTemplateWorkoutsToCalendar } from "@/lib/supabase/programTemplates";
+import {
+  importProgramTemplateWorkoutsToCalendar,
+  saveLastProgramTemplatePreference,
+} from "@/lib/supabase/programTemplates";
 
 type RouteContext = {
   params: Promise<{ id: string }>;
@@ -40,10 +43,11 @@ export async function POST(req: Request, context: RouteContext) {
     return NextResponse.json({ ok: false, error: "invalid_json" }, { status: 400 });
   }
 
+  const programTemplateId = String(body.programTemplateId || "");
   const result = await importProgramTemplateWorkoutsToCalendar({
     coachEmail: access.email,
     clientId: id,
-    programTemplateId: String(body.programTemplateId || ""),
+    programTemplateId,
     startDate: String(body.startDate || ""),
     templateWorkoutIds: Array.isArray(body.templateWorkoutIds) ? body.templateWorkoutIds.map(String) : [],
     workoutDates:
@@ -59,11 +63,27 @@ export async function POST(req: Request, context: RouteContext) {
     );
   }
 
+  let preferenceSaved = false;
+  const preferenceResult = await saveLastProgramTemplatePreference({
+    coachEmail: access.email,
+    clientId: id,
+    programTemplateId,
+  });
+  if (preferenceResult.ok) {
+    preferenceSaved = preferenceResult.data.preferenceSaved;
+  } else {
+    console.warn("[calendar/import-template-workouts] preference save failed", {
+      reason: preferenceResult.reason,
+      message: preferenceResult.message,
+    });
+  }
+
   return NextResponse.json({
     ok: true,
     createdWorkouts: result.data.createdWorkouts,
     reusedWorkouts: result.data.reusedWorkouts,
     workoutIds: result.data.workoutIds,
     importedWorkouts: result.data.importedWorkouts,
+    preferenceSaved,
   });
 }
