@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import { useRouter } from "next/navigation";
 import {
   closestCenter,
@@ -105,7 +105,46 @@ type ImportWorkoutItem = {
   status: "created" | "reused";
 };
 
-const PROGRAM_WORKOUT_PREVIEW_LIMIT = 5;
+type ProgramImportFetchEventKind = "abort" | "stale" | "network" | "timeout" | "backend_response";
+type ProgramImportFetchEndpoint = "programs" | "program-preference" | "program-details";
+
+const PROGRAMS_LOAD_ERROR_MESSAGE = "Не удалось загрузить программы. Проверь соединение и попробуй ещё раз.";
+const PROGRAM_PREVIEW_LOAD_ERROR_MESSAGE = "Не удалось загрузить тренировки программы. Проверь соединение и попробуй ещё раз.";
+const PROGRAM_PREFERENCE_LOAD_ERROR_MESSAGE = "Последнюю программу не удалось загрузить, можно выбрать вручную.";
+
+function getErrorName(error: unknown): string {
+  return typeof error === "object" && error && "name" in error ? String((error as { name?: unknown }).name || "") : "";
+}
+
+function getErrorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error || "");
+}
+
+function classifyFetchRejection(error: unknown): Extract<ProgramImportFetchEventKind, "network" | "timeout"> {
+  const name = getErrorName(error).toLowerCase();
+  const message = getErrorMessage(error).toLowerCase();
+  return name.includes("timeout") || message.includes("timeout") || message.includes("timed out")
+    ? "timeout"
+    : "network";
+}
+
+function logProgramImportFetchEvent(
+  kind: ProgramImportFetchEventKind,
+  details: {
+    endpoint: ProgramImportFetchEndpoint;
+    requestId?: number;
+    programId?: string;
+    status?: number;
+    error?: string;
+    message?: string;
+  }
+) {
+  if (kind === "abort" || kind === "stale") {
+    console.debug("[calendar/program-import/fetch]", { kind, ...details });
+    return;
+  }
+  console.warn("[calendar/program-import/fetch]", { kind, ...details });
+}
 
 function createDraftId() {
   if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
@@ -158,70 +197,6 @@ function dayLabel(date: Date) {
 
 function dateLabel(date: Date) {
   return date.toLocaleDateString("ru-RU", { day: "2-digit", month: "2-digit" });
-}
-
-function formatDateHuman(value: string) {
-  const [year, month, day] = value.split("-").map(Number);
-  if (!year || !month || !day) return value;
-  return new Date(year, month - 1, day).toLocaleDateString("ru-RU", {
-    day: "2-digit",
-    month: "long",
-    year: "numeric",
-  });
-}
-
-function workoutSummary(workout: CoachWorkout) {
-  if (workout.exercises.length === 0) return "Без упражнений";
-  const names = workout.exercises.slice(0, 3).map((exercise) => exercise.title);
-  const suffix = workout.exercises.length > names.length ? ` +${workout.exercises.length - names.length}` : "";
-  return `${names.join(" · ")}${suffix}`;
-}
-
-// Keep visual primitives reusable for future week/month/agenda views.
-function workoutTone(workout: CoachWorkout) {
-  const title = workout.title.toLowerCase();
-  if (/skill|стойк|навык|техник/.test(title)) {
-    return "border-violet-200/90 bg-violet-50/75 hover:border-violet-300 hover:bg-violet-50";
-  }
-  if (/mobility|мобил|растяж|stretch|гибк/.test(title)) {
-    return "border-sky-200/90 bg-sky-50/75 hover:border-sky-300 hover:bg-sky-50";
-  }
-  if (/recovery|восстанов|легк|easy|rest/.test(title)) {
-    return "border-emerald-200/90 bg-emerald-50/75 hover:border-emerald-300 hover:bg-emerald-50";
-  }
-  if (/strength|силов|сила/.test(title)) {
-    return "border-slate-300/90 bg-slate-50/90 hover:border-slate-400 hover:bg-white";
-  }
-  return "border-slate-200/90 bg-white/95 hover:border-slate-300 hover:bg-white";
-}
-
-function workoutDensity(workout: CoachWorkout) {
-  if (workout.exercises.length >= 4) {
-    return {
-      card: "p-4",
-      summary: "line-clamp-2",
-      meta: `${workout.exercises.length} упражнений · плотная тренировка`,
-    };
-  }
-  if (workout.exercises.length === 1) {
-    return {
-      card: "p-2",
-      summary: "line-clamp-1",
-      meta: "1 упр.",
-    };
-  }
-  if (workout.exercises.length === 0) {
-    return {
-      card: "p-2",
-      summary: "line-clamp-1",
-      meta: "без упражнений",
-    };
-  }
-  return {
-    card: "p-3",
-    summary: "line-clamp-2",
-    meta: `${workout.exercises.length} упр.`,
-  };
 }
 
 function loadDots(count: number) {
@@ -469,8 +444,9 @@ function WorkoutCard({
   const style = {
     transform: isDragging ? `${translate || ""} rotate(0.5deg) scale(1.02)` : translate,
   };
-  const tone = workoutTone(workout);
-  const density = workoutDensity(workout);
+  const exerciseTitles = buildWorkoutPreviewExercises(workout);
+  const exerciseCount = exerciseTitles.length;
+  const groupCount = workout.groups?.length || 0;
 
   useEffect(() => {
     if (!menuOpen) return;
@@ -497,27 +473,38 @@ function WorkoutCard({
     };
   }, [menuOpen]);
 
+  function handleCardKeyDown(e: ReactKeyboardEvent<HTMLDivElement>) {
+    if (e.target !== e.currentTarget) return;
+    if (e.key !== "Enter" && e.key !== " ") return;
+    e.preventDefault();
+    onEdit();
+  }
+
   return (
     <div
       ref={setNodeRef}
       data-workout-card="true"
+      role="button"
+      tabIndex={0}
+      aria-label={`Открыть тренировку ${workout.title}`}
       style={style}
-      className={`group cursor-grab rounded-2xl border shadow-[0_8px_22px_rgba(15,23,42,0.055)] transition-all duration-150 hover:-translate-y-px hover:shadow-[0_16px_34px_rgba(15,23,42,0.11)] active:scale-[0.985] active:cursor-grabbing ${density.card} ${tone} ${
+      onClick={onEdit}
+      onKeyDown={handleCardKeyDown}
+      className={`group cursor-pointer rounded-3xl border border-slate-200 bg-white p-3 text-left shadow-sm transition-all duration-150 hover:-translate-y-px hover:border-slate-300 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-primary/20 active:scale-[0.985] ${
         isDragging ? "relative z-30 opacity-95 shadow-[0_24px_52px_rgba(15,23,42,0.18)] ring-2 ring-brand-primary/20" : ""
       } ${isMoving ? "pointer-events-none opacity-60" : ""}`}
     >
-      <div className="mb-2 flex items-start justify-between gap-2">
-        <button
-          type="button"
-          onClick={onEdit}
-          className="min-w-0 flex-1 text-left"
-        >
-          <p className="truncate text-base font-semibold leading-snug text-slate-950">{workout.title}</p>
-        </button>
+      <div className="flex items-start justify-between gap-2">
+        <div className="min-w-0 flex-1">
+          <h4 className="break-words text-base font-semibold leading-snug text-slate-950">{workout.title}</h4>
+        </div>
         <div className="flex shrink-0 items-center gap-1">
           <button
             type="button"
-            onClick={onCopy}
+            onClick={(e) => {
+              e.stopPropagation();
+              onCopy();
+            }}
             className="flex h-7 w-7 items-center justify-center rounded-full text-slate-400 opacity-100 transition-all duration-150 hover:bg-slate-100 hover:text-brand-primary sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100"
             title="Скопировать тренировку"
           >
@@ -526,6 +513,7 @@ function WorkoutCard({
           <button
             type="button"
             ref={setActivatorNodeRef}
+            onClick={(e) => e.stopPropagation()}
             className="flex h-7 w-7 cursor-grab items-center justify-center rounded-full text-slate-400 opacity-100 transition-all duration-150 hover:bg-slate-100 hover:text-brand-primary active:cursor-grabbing sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100"
             title="Перенести тренировку"
             {...attributes}
@@ -536,7 +524,8 @@ function WorkoutCard({
           <div ref={menuRef} className="relative">
             <button
               type="button"
-              onClick={() => {
+              onClick={(e) => {
+                e.stopPropagation();
                 setMenuOpen((current) => !current);
                 setConfirmDelete(false);
               }}
@@ -546,7 +535,10 @@ function WorkoutCard({
               ⋯
             </button>
             {menuOpen ? (
-              <div className="absolute right-0 z-20 mt-1 w-56 rounded-2xl border border-slate-200 bg-white p-1 text-sm shadow-xl">
+              <div
+                className="absolute right-0 z-20 mt-1 w-56 rounded-2xl border border-slate-200 bg-white p-1 text-sm shadow-xl"
+                onClick={(e) => e.stopPropagation()}
+              >
                 {confirmDelete ? (
                   <div className="space-y-2 p-2">
                     <p className="text-sm font-medium text-slate-900">Удалить тренировку?</p>
@@ -577,16 +569,6 @@ function WorkoutCard({
                       type="button"
                       onClick={() => {
                         setMenuOpen(false);
-                        onEdit();
-                      }}
-                      className="block w-full rounded-xl px-3 py-2 text-left text-slate-700 hover:bg-slate-100"
-                    >
-                      Открыть
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setMenuOpen(false);
                         onCopy();
                       }}
                       className="block w-full rounded-xl px-3 py-2 text-left text-slate-700 hover:bg-slate-100"
@@ -608,15 +590,39 @@ function WorkoutCard({
         </div>
       </div>
 
-      <button type="button" onClick={onEdit} className="block w-full text-left">
-        <p className={`${density.summary} text-xs leading-5 text-slate-500/80`}>{workoutSummary(workout)}</p>
-        <p className="mt-1.5 text-[11px] font-medium text-slate-400/80">{density.meta}</p>
+      <div className="mt-3">
+        {exerciseTitles.length > 0 ? (
+          <ol className="space-y-1.5 text-sm leading-5 text-slate-600">
+            {exerciseTitles.map((title, index) => (
+              <li key={`${title}-${index}`} className="flex min-w-0 items-start gap-2">
+                <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-slate-100 text-[11px] font-semibold leading-none text-slate-500">
+                  {String.fromCharCode(65 + index)}
+                </span>
+                <span className="min-w-0 break-words">{title}</span>
+              </li>
+            ))}
+          </ol>
+        ) : (
+          <p className="rounded-2xl border border-dashed border-slate-200 bg-slate-50/70 px-3 py-2 text-sm text-slate-500">
+            Без упражнений.
+          </p>
+        )}
         {workout.coachComment ? (
-          <p className="mt-2 line-clamp-1 rounded-lg bg-white/55 px-2 py-1 text-xs text-slate-500/80">
+          <p className="mt-3 rounded-2xl bg-slate-50 px-3 py-2 text-xs leading-5 text-slate-500">
             {workout.coachComment}
           </p>
         ) : null}
-      </button>
+      </div>
+      <div className="mt-3 flex flex-wrap gap-1.5">
+        <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-600">
+          {exerciseCount} {pluralRu(String(exerciseCount), "упражнение", "упражнения", "упражнений")}
+        </span>
+        {groupCount ? (
+          <span className="rounded-full bg-emerald-100/80 px-2.5 py-1 text-xs font-medium text-emerald-700">
+            {groupCount} комбо
+          </span>
+        ) : null}
+      </div>
     </div>
   );
 }
@@ -658,6 +664,7 @@ function DayCell({
     id: `day:${dayKey}`,
     data: { type: "day", date: dayKey },
   });
+  const hasWorkouts = workouts.length > 0;
 
   return (
     <article
@@ -666,6 +673,7 @@ function DayCell({
         const target = e.target;
         if (!(target instanceof HTMLElement)) return;
         if (target.closest("button,a,[data-workout-card]")) return;
+        if (hasWorkouts) return;
         onCreate();
       }}
       className={`group/day min-h-28 rounded-2xl p-2 transition-all duration-200 ${
@@ -688,36 +696,38 @@ function DayCell({
             {dayLabel(day)} {dateLabel(day).slice(0, 2)}
           </p>
         </div>
-        <div className="grid min-w-[8.75rem] grid-cols-1 gap-1 opacity-100 transition-opacity duration-150 sm:opacity-0 sm:group-hover/day:opacity-100 sm:group-focus-within/day:opacity-100">
-          {copiedWorkout ? (
+        {!hasWorkouts ? (
+          <div className="grid min-w-[8.75rem] grid-cols-1 gap-1 opacity-100 transition-opacity duration-150 sm:opacity-0 sm:group-hover/day:opacity-100 sm:group-focus-within/day:opacity-100">
+            {copiedWorkout ? (
+              <button
+                type="button"
+                onClick={onPaste}
+                disabled={pastingDate === dayKey}
+                title="Вставить копию тренировки"
+                className="flex h-7 w-7 items-center justify-center rounded-full bg-white/40 text-slate-400 transition-colors duration-150 hover:bg-brand-primary/10 hover:text-brand-primary disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                ⧉
+              </button>
+            ) : null}
             <button
               type="button"
-              onClick={onPaste}
-              disabled={pastingDate === dayKey}
-              title="Вставить копию тренировки"
-              className="flex h-7 w-7 items-center justify-center rounded-full bg-white/40 text-slate-400 transition-colors duration-150 hover:bg-brand-primary/10 hover:text-brand-primary disabled:cursor-not-allowed disabled:opacity-50"
+              onClick={onCreate}
+              className="min-h-7 w-full rounded-full bg-white/65 px-2.5 text-center text-[10px] font-semibold text-slate-500 transition-colors duration-150 hover:bg-slate-100 hover:text-slate-700 focus:outline-none focus:ring-2 focus:ring-brand-primary/20"
             >
-              ⧉
+              + Пустая тренировка
             </button>
-          ) : null}
-          <button
-            type="button"
-            onClick={onCreate}
-            className="min-h-7 w-full rounded-full bg-white/65 px-2.5 text-center text-[10px] font-semibold text-slate-500 transition-colors duration-150 hover:bg-slate-100 hover:text-slate-700 focus:outline-none focus:ring-2 focus:ring-brand-primary/20"
-          >
-            + Пустая тренировка
-          </button>
-          <button
-            type="button"
-            onClick={onImportFromProgram}
-            className="min-h-7 w-full rounded-full bg-emerald-50 px-2.5 text-center text-[10px] font-semibold text-emerald-700 transition-colors duration-150 hover:bg-emerald-100 hover:text-emerald-800 focus:outline-none focus:ring-2 focus:ring-emerald-200"
-          >
-            + Из программы
-          </button>
-        </div>
+            <button
+              type="button"
+              onClick={onImportFromProgram}
+              className="min-h-7 w-full rounded-full bg-emerald-50 px-2.5 text-center text-[10px] font-semibold text-emerald-700 transition-colors duration-150 hover:bg-emerald-100 hover:text-emerald-800 focus:outline-none focus:ring-2 focus:ring-emerald-200"
+            >
+              + Из программы
+            </button>
+          </div>
+        ) : null}
       </div>
 
-      {workouts.length > 0 ? (
+      {hasWorkouts ? (
         <div className="space-y-2">
           {workouts.map((workout) => (
             <WorkoutCard
@@ -735,14 +745,20 @@ function DayCell({
   );
 }
 
-function previewExerciseTitle(exercise: { title?: string; exerciseTitle?: string } | undefined) {
+type WorkoutPreviewExerciseShape = { id?: string; title?: string; exerciseTitle?: string };
+type WorkoutPreviewShape = {
+  exercises?: WorkoutPreviewExerciseShape[];
+  groups?: Array<{ exercises?: WorkoutPreviewExerciseShape[] }>;
+};
+
+function previewExerciseTitle(exercise: WorkoutPreviewExerciseShape | undefined) {
   return String(exercise?.title || exercise?.exerciseTitle || "").trim();
 }
 
-function buildWorkoutPreviewExercises(workout: ProgramTemplateWorkoutPreview) {
+function buildWorkoutPreviewExercises(workout: WorkoutPreviewShape) {
   const seen = new Set<string>();
   const items: string[] = [];
-  const addExercise = (exercise: { id?: string; title?: string; exerciseTitle?: string } | undefined) => {
+  const addExercise = (exercise: WorkoutPreviewExerciseShape | undefined) => {
     const title = previewExerciseTitle(exercise);
     if (!title) return;
     const key = String(exercise?.id || title).trim().toLowerCase();
@@ -768,8 +784,6 @@ function ProgramWorkoutPreviewCard({
   onToggle: () => void;
 }) {
   const exerciseTitles = buildWorkoutPreviewExercises(workout);
-  const visibleExercises = exerciseTitles.slice(0, PROGRAM_WORKOUT_PREVIEW_LIMIT);
-  const hiddenCount = Math.max(0, exerciseTitles.length - visibleExercises.length);
   const exerciseCount = exerciseTitles.length;
   const groupCount = workout.groups?.length || 0;
   const checkboxId = `program-workout-${workout.id}`;
@@ -822,19 +836,19 @@ function ProgramWorkoutPreviewCard({
         </span>
         {groupCount ? (
           <span className="rounded-full bg-emerald-100/80 px-2.5 py-1 text-xs font-medium text-emerald-700">
-            {groupCount} {pluralRu(String(groupCount), "группа", "группы", "групп")}
+            {groupCount} комбо
           </span>
         ) : null}
       </div>
 
-      {visibleExercises.length > 0 ? (
+      {exerciseTitles.length > 0 ? (
         <ol className="mt-4 flex-1 space-y-1.5 text-sm text-slate-600">
-          {visibleExercises.map((title, index) => (
+          {exerciseTitles.map((title, index) => (
             <li key={`${title}-${index}`} className="flex gap-2">
               <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-slate-100 text-[11px] font-semibold text-slate-500">
                 {String.fromCharCode(65 + index)}
               </span>
-              <span className="line-clamp-1">{title}</span>
+              <span>{title}</span>
             </li>
           ))}
         </ol>
@@ -842,11 +856,6 @@ function ProgramWorkoutPreviewCard({
         <p className="mt-4 flex-1 rounded-2xl bg-slate-50 px-3 py-2 text-sm text-slate-500">Упражнения не указаны.</p>
       )}
 
-      {hiddenCount > 0 ? (
-        <p className="mt-3 text-xs font-semibold text-slate-400">
-          +{hiddenCount} {pluralRu(String(hiddenCount), "ещё", "ещё", "ещё")}
-        </p>
-      ) : null}
       {workout.summary ? (
         <p className="mt-3 line-clamp-2 rounded-2xl bg-white/60 px-3 py-2 text-xs leading-5 text-slate-500">
           {workout.summary}
@@ -1387,13 +1396,16 @@ export function LkStudentCalendar({ studentId, workouts, exerciseLibrary }: Prop
   const [selectedProgram, setSelectedProgram] = useState<ProgramTemplatePreview | null>(null);
   const [selectedProgramLoading, setSelectedProgramLoading] = useState(false);
   const [selectedProgramError, setSelectedProgramError] = useState("");
+  const [programInitialLoadRetryKey, setProgramInitialLoadRetryKey] = useState(0);
+  const [programDetailsRetryKey, setProgramDetailsRetryKey] = useState(0);
   const [selectedWorkoutIds, setSelectedWorkoutIds] = useState<string[]>([]);
   const [importingProgram, setImportingProgram] = useState(false);
   const [importError, setImportError] = useState("");
   const [importSuccess, setImportSuccess] = useState("");
-  const [pendingOpenWorkoutId, setPendingOpenWorkoutId] = useState("");
   const programOpenRequestRef = useRef(0);
   const programDetailsRequestRef = useRef(0);
+  const programDetailsCacheRef = useRef<Map<string, ProgramTemplatePreview>>(new Map());
+  const importSuccessTimerRef = useRef<number | null>(null);
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
     useSensor(TouchSensor, { activationConstraint: { delay: 180, tolerance: 8 } }),
@@ -1417,13 +1429,10 @@ export function LkStudentCalendar({ studentId, workouts, exerciseLibrary }: Prop
   }, [workouts]);
 
   useEffect(() => {
-    if (!pendingOpenWorkoutId) return;
-    const workout = localWorkouts.find((item) => item.id === pendingOpenWorkoutId);
-    if (!workout) return;
-    openEdit(workout);
-    setPendingOpenWorkoutId("");
-    setImportSuccess("");
-  }, [localWorkouts, pendingOpenWorkoutId]);
+    return () => {
+      if (importSuccessTimerRef.current) window.clearTimeout(importSuccessTimerRef.current);
+    };
+  }, []);
 
   useEffect(() => {
     if (!previewExercise) return;
@@ -1448,6 +1457,10 @@ export function LkStudentCalendar({ studentId, workouts, exerciseLibrary }: Prop
   }, [editing, saving, previewExercise]);
 
   useEffect(() => {
+    programDetailsCacheRef.current.clear();
+  }, [studentId]);
+
+  useEffect(() => {
     if (!programImportDate) return;
 
     const requestId = programOpenRequestRef.current + 1;
@@ -1467,8 +1480,9 @@ export function LkStudentCalendar({ studentId, workouts, exerciseLibrary }: Prop
     setSelectedWorkoutIds([]);
 
     async function loadInitialProgramState() {
-      const programsRequest = fetch("/api/lk/coach/programs", { signal: controller.signal })
-        .then(async (res) => {
+      const programsRequest = (async () => {
+        try {
+          const res = await fetch("/api/lk/coach/programs", { signal: controller.signal });
           const json = (await res.json().catch(() => null)) as {
             ok?: boolean;
             message?: string;
@@ -1476,33 +1490,110 @@ export function LkStudentCalendar({ studentId, workouts, exerciseLibrary }: Prop
             programs?: ProgramTemplatePreview[];
           } | null;
           if (!res.ok || json?.ok === false) {
-            throw new Error(json?.message || json?.error || "Не удалось загрузить программы.");
+            logProgramImportFetchEvent("backend_response", {
+              endpoint: "programs",
+              requestId,
+              status: res.status,
+              error: json?.error,
+              message: json?.message,
+            });
+            throw new Error(PROGRAMS_LOAD_ERROR_MESSAGE);
           }
           return Array.isArray(json?.programs) ? json.programs : [];
-        });
+        } catch (e) {
+          if (controller.signal.aborted) {
+            logProgramImportFetchEvent("abort", {
+              endpoint: "programs",
+              requestId,
+              error: getErrorName(e),
+              message: getErrorMessage(e),
+            });
+            throw e;
+          }
+          if (programOpenRequestRef.current !== requestId) {
+            logProgramImportFetchEvent("stale", {
+              endpoint: "programs",
+              requestId,
+              message: getErrorMessage(e),
+            });
+            throw e;
+          }
+          if (getErrorMessage(e) === PROGRAMS_LOAD_ERROR_MESSAGE) {
+            throw e;
+          }
+          const kind = classifyFetchRejection(e);
+          logProgramImportFetchEvent(kind, {
+            endpoint: "programs",
+            requestId,
+            error: getErrorName(e),
+            message: getErrorMessage(e),
+          });
+          throw new Error(PROGRAMS_LOAD_ERROR_MESSAGE);
+        }
+      })();
 
-      const preferenceRequest = fetch(`/api/lk/coach/students/${studentId}/calendar/program-preference`, {
-        signal: controller.signal,
-      })
-        .then(async (res) => {
+      const preferenceRequest = (async () => {
+        try {
+          const res = await fetch(`/api/lk/coach/students/${studentId}/calendar/program-preference`, {
+            signal: controller.signal,
+          });
           const json = (await res.json().catch(() => null)) as {
             ok?: boolean;
+            error?: string;
             programTemplateId?: string | null;
           } | null;
-          if (!res.ok || json?.ok === false) return null;
+          if (!res.ok || json?.ok === false) {
+            logProgramImportFetchEvent("backend_response", {
+              endpoint: "program-preference",
+              requestId,
+              status: res.status,
+              error: json?.error,
+            });
+            return null;
+          }
           return typeof json?.programTemplateId === "string" ? json.programTemplateId : null;
-        })
-        .catch((e) => {
-          if (e instanceof DOMException && e.name === "AbortError") throw e;
+        } catch (e) {
+          if (controller.signal.aborted) {
+            logProgramImportFetchEvent("abort", {
+              endpoint: "program-preference",
+              requestId,
+              error: getErrorName(e),
+              message: getErrorMessage(e),
+            });
+            return null;
+          }
+          if (programOpenRequestRef.current !== requestId) {
+            logProgramImportFetchEvent("stale", {
+              endpoint: "program-preference",
+              requestId,
+              message: getErrorMessage(e),
+            });
+            return null;
+          }
+          const kind = classifyFetchRejection(e);
+          logProgramImportFetchEvent(kind, {
+            endpoint: "program-preference",
+            requestId,
+            error: getErrorName(e),
+            message: getErrorMessage(e),
+          });
           if (programOpenRequestRef.current === requestId) {
-            setProgramPreferenceError("Не удалось загрузить последнюю программу.");
+            setProgramPreferenceError(PROGRAM_PREFERENCE_LOAD_ERROR_MESSAGE);
           }
           return null;
-        });
+        }
+      })();
 
       try {
         const [nextPrograms, preferredProgramId] = await Promise.all([programsRequest, preferenceRequest]);
-        if (controller.signal.aborted || programOpenRequestRef.current !== requestId) return;
+        if (controller.signal.aborted) {
+          logProgramImportFetchEvent("abort", { endpoint: "programs", requestId });
+          return;
+        }
+        if (programOpenRequestRef.current !== requestId) {
+          logProgramImportFetchEvent("stale", { endpoint: "programs", requestId });
+          return;
+        }
         setPrograms(nextPrograms);
         const rememberedProgram = preferredProgramId
           ? nextPrograms.find((program) => program.id === preferredProgramId)
@@ -1511,9 +1602,25 @@ export function LkStudentCalendar({ studentId, workouts, exerciseLibrary }: Prop
           setSelectedProgramId(rememberedProgram.id);
         }
       } catch (e) {
-        if (controller.signal.aborted || programOpenRequestRef.current !== requestId) return;
+        if (controller.signal.aborted) {
+          logProgramImportFetchEvent("abort", {
+            endpoint: "programs",
+            requestId,
+            error: getErrorName(e),
+            message: getErrorMessage(e),
+          });
+          return;
+        }
+        if (programOpenRequestRef.current !== requestId) {
+          logProgramImportFetchEvent("stale", {
+            endpoint: "programs",
+            requestId,
+            message: getErrorMessage(e),
+          });
+          return;
+        }
         setPrograms(null);
-        setProgramsError(e instanceof Error ? e.message : "Не удалось загрузить программы.");
+        setProgramsError(PROGRAMS_LOAD_ERROR_MESSAGE);
       } finally {
         if (!controller.signal.aborted && programOpenRequestRef.current === requestId) {
           setProgramsLoading(false);
@@ -1524,7 +1631,7 @@ export function LkStudentCalendar({ studentId, workouts, exerciseLibrary }: Prop
 
     void loadInitialProgramState();
     return () => controller.abort();
-  }, [programImportDate, studentId]);
+  }, [programImportDate, studentId, programInitialLoadRetryKey]);
 
   useEffect(() => {
     const requestId = programDetailsRequestRef.current + 1;
@@ -1534,6 +1641,14 @@ export function LkStudentCalendar({ studentId, workouts, exerciseLibrary }: Prop
 
     if (!selectedProgramId) {
       setSelectedProgram(null);
+      setSelectedProgramError("");
+      setSelectedProgramLoading(false);
+      return () => controller.abort();
+    }
+
+    const cachedProgram = programDetailsCacheRef.current.get(selectedProgramId);
+    if (cachedProgram) {
+      setSelectedProgram(cachedProgram);
       setSelectedProgramError("");
       setSelectedProgramLoading(false);
       return () => controller.abort();
@@ -1553,13 +1668,65 @@ export function LkStudentCalendar({ studentId, workouts, exerciseLibrary }: Prop
           program?: ProgramTemplatePreview;
         } | null;
         if (!res.ok || json?.ok === false || !json?.program) {
-          throw new Error(json?.message || json?.error || "Не удалось загрузить программу.");
+          logProgramImportFetchEvent("backend_response", {
+            endpoint: "program-details",
+            requestId,
+            programId: selectedProgramId,
+            status: res.status,
+            error: json?.error,
+            message: json?.message,
+          });
+          throw new Error(PROGRAM_PREVIEW_LOAD_ERROR_MESSAGE);
         }
-        if (controller.signal.aborted || programDetailsRequestRef.current !== requestId) return;
+        if (controller.signal.aborted) {
+          logProgramImportFetchEvent("abort", {
+            endpoint: "program-details",
+            requestId,
+            programId: selectedProgramId,
+          });
+          return;
+        }
+        if (programDetailsRequestRef.current !== requestId) {
+          logProgramImportFetchEvent("stale", {
+            endpoint: "program-details",
+            requestId,
+            programId: selectedProgramId,
+          });
+          return;
+        }
+        programDetailsCacheRef.current.set(selectedProgramId, json.program);
         setSelectedProgram(json.program);
       } catch (e) {
-        if (controller.signal.aborted || programDetailsRequestRef.current !== requestId) return;
-        setSelectedProgramError(e instanceof Error ? e.message : "Не удалось загрузить программу.");
+        if (controller.signal.aborted) {
+          logProgramImportFetchEvent("abort", {
+            endpoint: "program-details",
+            requestId,
+            programId: selectedProgramId,
+            error: getErrorName(e),
+            message: getErrorMessage(e),
+          });
+          return;
+        }
+        if (programDetailsRequestRef.current !== requestId) {
+          logProgramImportFetchEvent("stale", {
+            endpoint: "program-details",
+            requestId,
+            programId: selectedProgramId,
+            message: getErrorMessage(e),
+          });
+          return;
+        }
+        if (getErrorMessage(e) !== PROGRAM_PREVIEW_LOAD_ERROR_MESSAGE) {
+          const kind = classifyFetchRejection(e);
+          logProgramImportFetchEvent(kind, {
+            endpoint: "program-details",
+            requestId,
+            programId: selectedProgramId,
+            error: getErrorName(e),
+            message: getErrorMessage(e),
+          });
+        }
+        setSelectedProgramError(PROGRAM_PREVIEW_LOAD_ERROR_MESSAGE);
       } finally {
         if (!controller.signal.aborted && programDetailsRequestRef.current === requestId) {
           setSelectedProgramLoading(false);
@@ -1569,7 +1736,7 @@ export function LkStudentCalendar({ studentId, workouts, exerciseLibrary }: Prop
 
     void loadSelectedProgram();
     return () => controller.abort();
-  }, [selectedProgramId]);
+  }, [selectedProgramId, programDetailsRetryKey]);
 
   const daysCount = 42;
   const days = Array.from({ length: daysCount }, (_, index) => addDays(visibleWeekStart, index));
@@ -1605,7 +1772,7 @@ export function LkStudentCalendar({ studentId, workouts, exerciseLibrary }: Prop
   function openProgramImport(workoutDate: string) {
     setProgramImportDate(workoutDate);
     setImportError("");
-    setImportSuccess("");
+    clearImportSuccess();
     setCalendarError("");
     setSelectedWorkoutIds([]);
   }
@@ -1621,12 +1788,30 @@ export function LkStudentCalendar({ studentId, workouts, exerciseLibrary }: Prop
     setSelectedProgram(null);
     setSelectedProgramError("");
     setSelectedWorkoutIds([]);
+    programDetailsCacheRef.current.clear();
   }
 
   function toggleSelectedWorkout(workoutId: string) {
     setSelectedWorkoutIds((current) =>
       current.includes(workoutId) ? current.filter((id) => id !== workoutId) : [...current, workoutId]
     );
+  }
+
+  function clearImportSuccess() {
+    if (importSuccessTimerRef.current) {
+      window.clearTimeout(importSuccessTimerRef.current);
+      importSuccessTimerRef.current = null;
+    }
+    setImportSuccess("");
+  }
+
+  function showTemporaryImportSuccess(message: string) {
+    setImportSuccess(message);
+    if (importSuccessTimerRef.current) window.clearTimeout(importSuccessTimerRef.current);
+    importSuccessTimerRef.current = window.setTimeout(() => {
+      setImportSuccess("");
+      importSuccessTimerRef.current = null;
+    }, 3000);
   }
 
   async function importSelectedWorkouts() {
@@ -1637,7 +1822,7 @@ export function LkStudentCalendar({ studentId, workouts, exerciseLibrary }: Prop
 
     setImportingProgram(true);
     setImportError("");
-    setImportSuccess("");
+    clearImportSuccess();
     try {
       const res = await fetch(`/api/lk/coach/students/${studentId}/calendar/import-template-workouts`, {
         method: "POST",
@@ -1666,26 +1851,11 @@ export function LkStudentCalendar({ studentId, workouts, exerciseLibrary }: Prop
       setSelectedWorkoutIds([]);
       setSelectedProgramId("");
       setSelectedProgram(null);
-      setImportSuccess(
+      programDetailsCacheRef.current.clear();
+      router.refresh();
+      showTemporaryImportSuccess(
         totalImported === 1 ? "Тренировка добавлена." : `Добавлено тренировок: ${totalImported}.`
       );
-      router.refresh();
-
-      if (totalImported === 1) {
-        const importedWorkoutId = importedWorkouts[0]?.clientWorkoutId || workoutIds[0] || "";
-        if (importedWorkoutId) {
-          const existingWorkout = localWorkouts.find((workout) => workout.id === importedWorkoutId);
-          if (existingWorkout) {
-            openEdit(existingWorkout);
-            setImportSuccess("");
-          } else {
-            setPendingOpenWorkoutId(importedWorkoutId);
-            window.setTimeout(() => {
-              setPendingOpenWorkoutId((current) => (current === importedWorkoutId ? "" : current));
-            }, 2500);
-          }
-        }
-      }
     } catch (e) {
       setImportError(e instanceof Error ? e.message : "Не удалось импортировать тренировки.");
     } finally {
@@ -2211,9 +2381,6 @@ export function LkStudentCalendar({ studentId, workouts, exerciseLibrary }: Prop
                 <div>
                   <p className="text-xs uppercase tracking-[0.18em] text-emerald-600">Из программы</p>
                   <h3 className="mt-1 text-2xl font-semibold">Добавить тренировки</h3>
-                  <p className="mt-1 text-sm text-slate-500">
-                    Дата старта: {formatDateHuman(programImportDate)}. Смещения дней сохраняются из шаблона.
-                  </p>
                 </div>
                 <button
                   type="button"
@@ -2264,9 +2431,20 @@ export function LkStudentCalendar({ studentId, workouts, exerciseLibrary }: Prop
                     </p>
                   ) : null}
                   {programsError ? (
-                    <p className="rounded-2xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
-                      {programsError}
-                    </p>
+                    <div className="flex flex-col gap-2 rounded-2xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700 sm:flex-row sm:items-center sm:justify-between">
+                      <span>{programsError}</span>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setProgramsError("");
+                          setProgramInitialLoadRetryKey((current) => current + 1);
+                        }}
+                        disabled={programsLoading}
+                        className="self-start rounded-full bg-white px-3 py-1 text-xs font-semibold text-red-700 transition-colors hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-60 sm:self-auto"
+                      >
+                        Повторить
+                      </button>
+                    </div>
                   ) : null}
                   {!programsLoading && programs && programs.length === 0 ? (
                     <p className="rounded-2xl bg-slate-50 px-3 py-2 text-sm text-slate-500">
@@ -2275,37 +2453,9 @@ export function LkStudentCalendar({ studentId, workouts, exerciseLibrary }: Prop
                   ) : null}
 
                   {selectedProgram ? (
-                    <div className="rounded-3xl border border-slate-200 bg-slate-50/70 p-3">
-                      <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
-                        <div className="min-w-0">
-                          <h4 className="truncate text-base font-semibold text-slate-950">{selectedProgram.title}</h4>
-                          {selectedProgram.description ? (
-                            <p className="mt-1 line-clamp-2 text-sm text-slate-500">{selectedProgram.description}</p>
-                          ) : null}
-                        </div>
-                        <p className="shrink-0 rounded-full bg-white px-3 py-1 text-xs font-semibold text-slate-500">
-                          Выбрано: {selectedWorkoutIds.length}
-                        </p>
-                      </div>
-                      <div className="mt-2 flex flex-wrap gap-1.5 text-[11px] text-slate-500">
-                        {selectedProgram.level ? (
-                          <span className="rounded-full bg-white px-2 py-1">{selectedProgram.level}</span>
-                        ) : null}
-                        {selectedProgram.goal ? (
-                          <span className="rounded-full bg-white px-2 py-1">{selectedProgram.goal}</span>
-                        ) : null}
-                        {selectedProgram.tags?.slice(0, 4).map((tag) => (
-                          <span key={tag} className="rounded-full bg-white px-2 py-1">
-                            {tag}
-                          </span>
-                        ))}
-                        {selectedProgram.ownerType === "global" ? (
-                          <span className="rounded-full bg-white px-2 py-1">общая</span>
-                        ) : selectedProgram.ownerType === "other" ? (
-                          <span className="rounded-full bg-white px-2 py-1">другой тренер</span>
-                        ) : null}
-                      </div>
-                    </div>
+                    <p className="rounded-2xl bg-slate-50 px-3 py-2 text-sm font-medium text-slate-600">
+                      Выбрано: {selectedWorkoutIds.length}
+                    </p>
                   ) : null}
                 </div>
 
@@ -2337,9 +2487,20 @@ export function LkStudentCalendar({ studentId, workouts, exerciseLibrary }: Prop
                 </p>
               ) : null}
               {selectedProgramError ? (
-                <p className="rounded-2xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
-                  {selectedProgramError}
-                </p>
+                <div className="flex flex-col gap-2 rounded-2xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700 sm:flex-row sm:items-center sm:justify-between">
+                  <span>{selectedProgramError}</span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSelectedProgramError("");
+                      setProgramDetailsRetryKey((current) => current + 1);
+                    }}
+                    disabled={selectedProgramLoading || !selectedProgramId}
+                    className="self-start rounded-full bg-white px-3 py-1 text-xs font-semibold text-red-700 transition-colors hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-60 sm:self-auto"
+                  >
+                    Повторить
+                  </button>
+                </div>
               ) : null}
               {!selectedProgramId && !selectedProgramLoading && !programsLoading ? (
                 <p className="rounded-3xl border border-dashed border-slate-200 bg-slate-50/70 px-4 py-8 text-center text-sm text-slate-500">
@@ -2375,11 +2536,7 @@ export function LkStudentCalendar({ studentId, workouts, exerciseLibrary }: Prop
                 </p>
               ) : null}
               <div className="flex flex-col-reverse gap-2 sm:flex-row sm:items-center sm:justify-between">
-                <div>
-                  <p className="text-xs text-slate-400">
-                    Первая выбранная по дню тренировка попадёт на дату старта, остальные сохранят смещения.
-                  </p>
-                </div>
+                <div />
                 <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
                   <button
                     type="button"
