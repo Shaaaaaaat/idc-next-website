@@ -61,6 +61,7 @@ type ClientRow = {
   pr_price?: string | number | null;
   sp_price?: string | number | null;
   future_plan?: string | null;
+  first_fact?: string | number | null;
   tag?: string | null;
   coach?: string | null;
 };
@@ -182,6 +183,7 @@ function mapClientToAdminStudent(row: ClientRow): CoachStudent {
     prPrice: displayValue(row.pr_price),
     spPrice: displayValue(row.sp_price),
     futurePlan: displayValue(row.future_plan),
+    firstFact: displayValue(row.first_fact),
     tag: displayValue(row.tag),
   };
 }
@@ -198,7 +200,7 @@ async function loadAllAdminClientRows(sb: NonNullable<ReturnType<typeof getSupab
   while (true) {
     const { data, error } = await sb
       .from("clients")
-      .select("id, email, fio, is_active, final_day, balance, currency, gr_price, ds_price, pr_price, sp_price, future_plan, tag, coach")
+      .select("id, email, fio, is_active, final_day, balance, currency, gr_price, ds_price, pr_price, sp_price, future_plan, first_fact, tag, coach")
       .order("fio", { ascending: true })
       .range(from, from + pageSize - 1);
 

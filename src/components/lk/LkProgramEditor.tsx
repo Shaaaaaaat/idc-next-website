@@ -1,12 +1,20 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState, type MouseEvent, type RefObject } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent, type RefObject } from "react";
 import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
 import { LkExerciseEditorModal } from "@/components/lk/LkExerciseEditorModal";
 import { useLkUnsavedChanges, UNSAVED_CHANGES_CONFIRM_MESSAGE } from "@/components/lk/LkUnsavedChangesContext";
-import { WorkoutCardMenu } from "@/components/lk/WorkoutCardMenu";
 import { WorkoutSelectionBar } from "@/components/lk/WorkoutSelectionBar";
+import { ClipboardNotification } from "@/components/lk/workout-editor/ClipboardNotification";
+import { ExerciseLibrarySearchInput } from "@/components/lk/workout-editor/ExerciseLibrarySearchInput";
+import {
+  clearWorkoutClipboard,
+  copyWorkoutClipboard,
+  useWorkoutClipboard,
+  type WorkoutClipboard,
+  type WorkoutClipboardSource,
+} from "@/components/lk/workout-editor/workoutClipboard";
 import {
   closestCenter,
   DndContext,
@@ -164,8 +172,14 @@ function seedEmptyDayDraft(workout: DraftWorkout): DraftWorkout {
   return next;
 }
 
-const METRIC_CELL_CLASS =
-  "rounded-md border border-[#E6EBF1] bg-[#FAFBFC] px-2 py-1 text-[11px] text-slate-500 outline-none focus:border-slate-300 focus:ring-0 placeholder:text-slate-400 disabled:opacity-50";
+const INLINE_METRIC_INPUT_CLASS =
+  "min-w-0 border-0 bg-transparent p-0 text-[13px] leading-5 text-slate-700 shadow-none outline-none focus:border-transparent focus:outline-none focus:ring-0 placeholder:text-slate-400";
+const INLINE_REPS_METRIC_CLASS = `${INLINE_METRIC_INPUT_CLASS} block w-full max-h-20 resize-none overflow-y-auto whitespace-pre-wrap break-words`;
+const EMPTY_METRIC_FIELD_CLASS =
+  "flex h-8 min-w-0 w-full items-center rounded-md border border-[#E6EBF1] bg-[#FAFBFC] px-2 transition-colors focus-within:border-emerald-200 focus-within:bg-white focus-within:ring-2 focus-within:ring-emerald-100";
+const EMPTY_METRIC_INPUT_CLASS =
+  "h-full w-full min-w-0 border-0 bg-transparent p-0 text-center text-[12px] font-medium leading-8 text-slate-600 shadow-none outline-none focus:border-transparent focus:outline-none focus:ring-0 placeholder:text-[10px] placeholder:font-semibold placeholder:tracking-[0.05em] placeholder:text-slate-400";
+const REPS_METRIC_MAX_HEIGHT = 80;
 
 function cloneWorkout(workout: DraftWorkout, index: number): DraftWorkout {
   const groupIdMap = new Map<string, string>();
@@ -199,6 +213,79 @@ function cloneWorkoutDraft(workout: DraftWorkout): DraftWorkout {
   };
 }
 
+function draftWorkoutToClipboard(workout: DraftWorkout, source: WorkoutClipboardSource = "program"): WorkoutClipboard {
+  return {
+    version: 1,
+    source,
+    workout: {
+      title: workout.title,
+      summary: workout.summary,
+      coachComment: "",
+      estimatedMinutes: workout.estimatedMinutes,
+      workoutType: workout.workoutType,
+      groups: workout.groups.map((group) => ({
+        clipboardGroupId: group.draftId,
+        title: group.title,
+        sets: group.sets,
+        rest: group.rest,
+        notes: group.notes,
+        sortOrder: group.sortOrder,
+      })),
+      exercises: workout.exercises.map((exercise) => ({
+        exerciseId: exercise.exerciseId,
+        groupClipboardId: exercise.groupDraftId,
+        exerciseTitle: exercise.exerciseTitle,
+        sets: exercise.sets,
+        reps: exercise.reps,
+        rest: exercise.rest,
+        tempo: exercise.tempo,
+        notes: exercise.notes,
+        sortOrder: exercise.sortOrder,
+      })),
+    },
+  };
+}
+
+function clipboardToDraftWorkout(clipboard: WorkoutClipboard, index: number): DraftWorkout {
+  const groupIdMap = new Map<string, string>();
+  const groups = clipboard.workout.groups.map((group) => {
+    const draftId = createDraftId();
+    groupIdMap.set(group.clipboardGroupId, draftId);
+    return {
+      draftId,
+      title: group.title,
+      sets: group.sets,
+      rest: group.rest,
+      notes: group.notes,
+      sortOrder: group.sortOrder,
+    };
+  });
+
+  return {
+    draftId: createDraftId(),
+    dayNumber: index + 1,
+    weekNumber: Math.ceil((index + 1) / 7),
+    title: clipboard.workout.title,
+    summary: clipboard.workout.summary || clipboard.workout.coachComment,
+    estimatedMinutes: clipboard.workout.estimatedMinutes,
+    workoutType: clipboard.workout.workoutType,
+    sortOrder: index,
+    groups,
+    exercises: clipboard.workout.exercises.map((exercise) => ({
+      draftId: createDraftId(),
+      groupDraftId: exercise.groupClipboardId ? groupIdMap.get(exercise.groupClipboardId) : undefined,
+      exerciseId: exercise.exerciseId,
+      exerciseTitle: exercise.exerciseTitle,
+      sets: exercise.sets,
+      reps: exercise.reps,
+      rest: exercise.rest,
+      tempo: exercise.tempo,
+      notes: exercise.notes,
+      sortOrder: exercise.sortOrder,
+    })),
+  };
+}
+
 type WorkoutPreviewLine = {
   prefix?: string;
   title: string;
@@ -210,6 +297,7 @@ type PreviewExercise = {
 };
 
 type ClipboardMode = "copy" | "move" | null;
+type ActiveMetric = "sets" | "reps" | "rest" | null;
 
 /** Tailwind col-span для раскрытой карточки — менять после скрина. */
 const EXPANDED_WORKOUT_CARD_COL_SPAN = "col-span-2 xl:col-span-2";
@@ -550,16 +638,10 @@ function SortableWorkoutCard({
   isWorkoutDragActive,
   dropSlotPosition,
   selected,
-  selectedActionCount,
-  menuOpen,
-  onToggleMenu,
-  onCloseMenu,
   onOpen,
-  onDuplicate,
   onInsertAfter,
   onCopy,
   onPasteAfter,
-  onDelete,
   onToggleSelect,
   canPaste,
   recentlyAdded,
@@ -578,16 +660,10 @@ function SortableWorkoutCard({
   dropSlotPosition: "before" | "after" | null;
   selected: boolean;
   recentlyAdded: boolean;
-  selectedActionCount: number;
-  menuOpen: boolean;
-  onToggleMenu: () => void;
-  onCloseMenu: () => void;
   onOpen: () => void;
-  onDuplicate: () => void;
   onInsertAfter: () => void;
   onCopy: () => void;
   onPasteAfter: () => void;
-  onDelete: () => void;
   onToggleSelect: (draftId: string, weekItems: DraftWorkout[], options: { shiftKey?: boolean }) => void;
   canPaste: boolean;
   exerciseLibrary: ExerciseLibraryItem[];
@@ -597,29 +673,19 @@ function SortableWorkoutCard({
   onDirtyChange?: (dirty: boolean) => void;
   expandedScrollRef?: RefObject<HTMLElement | null>;
 }) {
-  const menuButtonRef = useRef<HTMLButtonElement>(null);
-  const [confirmDelete, setConfirmDelete] = useState(false);
   const { attributes, listeners, setActivatorNodeRef, setNodeRef, transform, transition, isDragging } = useSortable({
     id: workout.draftId,
   });
   const style = { transform: CSS.Transform.toString(transform), transition };
   const preview = buildWorkoutPreviewLines(workout);
-  const hasActiveSelection = selectedActionCount > 0;
-  const isMultiDragActivator = selected && selectedActionCount > 1 && !isOpen;
-  const useHandleAsDragActivator = isOpen || !isMultiDragActivator;
-  const canShowSingleActions = !hasActiveSelection;
-  const canDeleteFromMenu = !hasActiveSelection || !selected;
-  const canShowCardMenu = !selected || !hasActiveSelection;
   const isLastInWeek = weekWorkouts[weekWorkouts.length - 1]?.draftId === workout.draftId;
   const dragMotionClass = isDragging
     ? "relative z-30 opacity-90 shadow-md"
     : isWorkoutDragActive
     ? ""
     : "hover:z-40 hover:-translate-y-px hover:shadow-lg";
-
-  useEffect(() => {
-    if (!menuOpen) setConfirmDelete(false);
-  }, [menuOpen]);
+  const cardControlClass =
+    "flex h-7 w-7 items-center justify-center rounded-xl border border-slate-200 bg-white/80 text-slate-400 opacity-100 transition-all duration-150 hover:border-slate-300 hover:bg-slate-100 hover:text-slate-700";
 
   function handleCardClick(event: MouseEvent<HTMLButtonElement>) {
     if (event.metaKey || event.ctrlKey) {
@@ -634,7 +700,6 @@ function SortableWorkoutCard({
     <article
       ref={(node) => {
         setNodeRef(node);
-        if (isMultiDragActivator) setActivatorNodeRef(node);
         if (expandedScrollRef && isOpen) {
           expandedScrollRef.current = node;
         }
@@ -646,13 +711,11 @@ function SortableWorkoutCard({
         isOpen
           ? "border-emerald-500/35 bg-[#FAF8FC] shadow-[0_2px_12px_rgba(15,23,42,0.05)]"
           : selected
-          ? "border-slate-200 bg-slate-50/90 ring-2 ring-slate-400/60"
+          ? "border-emerald-300 bg-emerald-50/45 ring-2 ring-emerald-100"
           : "border-slate-200 bg-white"
       } ${recentlyAdded && !isOpen ? "border-emerald-400 bg-emerald-50/70 ring-2 ring-emerald-200" : ""} ${
         canPaste ? "ring-1 ring-emerald-100" : ""
-      } ${isMultiDragActivator ? "cursor-grab active:cursor-grabbing" : ""}`}
-      {...(isMultiDragActivator ? attributes : {})}
-      {...(isMultiDragActivator ? listeners : {})}
+      }`}
     >
       {dropSlotPosition === "before" ? <WorkoutDropSlot position="before" /> : null}
 
@@ -675,126 +738,49 @@ function SortableWorkoutCard({
       <div className="flex items-center gap-2">
         <button
           type="button"
-          aria-pressed={selected}
-          aria-label={selected ? `Снять выбор ${workout.title}` : `Выбрать ${workout.title}`}
+          onPointerDown={(event) => event.stopPropagation()}
           onClick={(event) => {
             event.stopPropagation();
-            onToggleSelect(workout.draftId, weekWorkouts, { shiftKey: event.shiftKey });
+            onCopy();
           }}
-          className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-md border text-[13px] font-bold leading-none transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-300 ${
-            selected
-              ? "border-emerald-500 bg-emerald-500 text-white shadow-sm"
-              : "border-slate-300 bg-white text-transparent hover:border-emerald-400"
-          }`}
+          className={cardControlClass}
+          title="Скопировать тренировку"
+          aria-label={`Скопировать ${workout.title}`}
         >
-          ✓
+          ⧉
         </button>
         <button
           type="button"
-          ref={useHandleAsDragActivator ? setActivatorNodeRef : undefined}
-          className="cursor-grab rounded-lg px-1.5 py-1 text-base leading-none text-slate-300 hover:bg-slate-100 hover:text-slate-600 active:cursor-grabbing"
+          ref={setActivatorNodeRef}
+          className={`${cardControlClass} cursor-grab active:cursor-grabbing`}
           aria-label="Перетащить день"
-          {...(useHandleAsDragActivator ? attributes : {})}
-          {...(useHandleAsDragActivator ? listeners : {})}
+          {...attributes}
+          {...listeners}
         >
           ☰
         </button>
         <button type="button" onClick={handleCardClick} className="min-w-0 flex-1 text-left">
           <p className="truncate text-xs font-semibold text-slate-400">Day {workout.dayNumber}</p>
         </button>
-        {canShowCardMenu ? (
-          <button
-            ref={menuButtonRef}
-            type="button"
-            onClick={() => {
-              onToggleMenu();
-              setConfirmDelete(false);
-            }}
-            className="flex h-8 w-8 shrink-0 cursor-pointer items-center justify-center rounded-full text-xl leading-none text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700"
-            aria-label={`Действия для ${workout.title}`}
-          >
-            ⋯
-          </button>
-        ) : (
-          <span className="h-8 w-8 shrink-0" aria-hidden="true" />
-        )}
-        {canShowCardMenu ? (
-          <WorkoutCardMenu open={menuOpen} anchorRef={menuButtonRef} onClose={onCloseMenu}>
-            {confirmDelete ? (
-              <div className="space-y-2 p-2">
-                <p className="text-sm font-medium text-slate-900">Удалить тренировку?</p>
-                <div className="flex gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setConfirmDelete(false)}
-                    className="flex-1 rounded-xl bg-slate-100 px-3 py-2 text-slate-600 transition-colors hover:bg-slate-200"
-                  >
-                    Отмена
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      onCloseMenu();
-                      setConfirmDelete(false);
-                      onDelete();
-                    }}
-                    className="flex-1 rounded-xl bg-red-50 px-3 py-2 font-semibold text-red-600 transition-colors hover:bg-red-100"
-                  >
-                    Удалить
-                  </button>
-                </div>
-              </div>
-            ) : (
-              <>
-                {canShowSingleActions ? (
-                  <>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        onCloseMenu();
-                        onDuplicate();
-                      }}
-                      className="block w-full rounded-xl px-3 py-2 text-left text-slate-700 hover:bg-slate-100"
-                    >
-                      Дублировать
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        onCloseMenu();
-                        onCopy();
-                      }}
-                      className="block w-full rounded-xl px-3 py-2 text-left text-slate-700 hover:bg-slate-100"
-                    >
-                      Копировать
-                    </button>
-                  </>
-                ) : null}
-                {canPaste ? (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      onCloseMenu();
-                      onPasteAfter();
-                    }}
-                    className="block w-full rounded-xl px-3 py-2 text-left text-slate-700 hover:bg-slate-100"
-                  >
-                    Вставить после
-                  </button>
-                ) : null}
-                {canDeleteFromMenu ? (
-                  <button
-                    type="button"
-                    onClick={() => setConfirmDelete(true)}
-                    className="block w-full rounded-xl px-3 py-2 text-left text-red-600 hover:bg-red-50"
-                  >
-                    Удалить тренировку
-                  </button>
-                ) : null}
-              </>
-            )}
-          </WorkoutCardMenu>
-        ) : null}
+        <button
+          type="button"
+          role="checkbox"
+          aria-checked={selected}
+          aria-label={selected ? `Снять выбор ${workout.title}` : `Выбрать ${workout.title}`}
+          title={selected ? "Снять выбор" : "Выбрать тренировку"}
+          onPointerDown={(event) => event.stopPropagation()}
+          onClick={(event) => {
+            event.stopPropagation();
+            onToggleSelect(workout.draftId, weekWorkouts, { shiftKey: event.shiftKey });
+          }}
+          className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-xl border text-[11px] font-bold transition-all duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-300 ${
+            selected
+              ? "border-emerald-300 bg-emerald-500 text-white shadow-sm shadow-emerald-200"
+              : "border-slate-200 bg-white/80 text-transparent hover:border-slate-300 hover:bg-slate-100"
+          }`}
+        >
+          ✓
+        </button>
       </div>
 
       {isOpen ? (
@@ -910,11 +896,10 @@ export function LkProgramEditor({ program, exerciseLibrary }: Props) {
   const [editingId, setEditingId] = useState("");
   const [workoutDraftDirty, setWorkoutDraftDirty] = useState(false);
   const expandedCardRef = useRef<HTMLElement | null>(null);
-  const [openMenuWorkoutId, setOpenMenuWorkoutId] = useState("");
   const [selectedWorkoutIds, setSelectedWorkoutIds] = useState<string[]>([]);
   const lastSelectedWorkoutIdRef = useRef("");
-  const [copiedWorkouts, setCopiedWorkouts] = useState<DraftWorkout[]>([]);
-  const [clipboardMode, setClipboardMode] = useState<ClipboardMode>(null);
+  const copiedWorkout = useWorkoutClipboard();
+  const clipboardMode: ClipboardMode = copiedWorkout ? "copy" : null;
   const [recentlyAddedWorkoutIds, setRecentlyAddedWorkoutIds] = useState<string[]>([]);
   const recentlyAddedTimerRef = useRef<number | null>(null);
   const pendingRecentlyAddedIdsRef = useRef<string[]>([]);
@@ -922,7 +907,9 @@ export function LkProgramEditor({ program, exerciseLibrary }: Props) {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
+  const [clipboardNotification, setClipboardNotification] = useState("");
   const successTimerRef = useRef<number | null>(null);
+  const clipboardNotificationTimerRef = useRef<number | null>(null);
   const [activeWorkoutDragId, setActiveWorkoutDragId] = useState("");
   const [overWorkoutDragId, setOverWorkoutDragId] = useState("");
   const sensors = useSensors(
@@ -980,6 +967,7 @@ export function LkProgramEditor({ program, exerciseLibrary }: Props) {
     return () => {
       if (recentlyAddedTimerRef.current) window.clearTimeout(recentlyAddedTimerRef.current);
       if (successTimerRef.current) window.clearTimeout(successTimerRef.current);
+      if (clipboardNotificationTimerRef.current) window.clearTimeout(clipboardNotificationTimerRef.current);
     };
   }, []);
 
@@ -1002,13 +990,22 @@ export function LkProgramEditor({ program, exerciseLibrary }: Props) {
     setError("");
   }, [title, description, level, goal, tags, workouts, editingId]);
 
-  function showTemporarySuccess(message: string) {
+  function showTemporarySuccess(message: string, timeoutMs = 3000) {
     setSuccess(message);
     if (successTimerRef.current) window.clearTimeout(successTimerRef.current);
     successTimerRef.current = window.setTimeout(() => {
       setSuccess("");
       successTimerRef.current = null;
-    }, 3000);
+    }, timeoutMs);
+  }
+
+  function showClipboardNotification(message: string, timeoutMs = 2000) {
+    setClipboardNotification(message);
+    if (clipboardNotificationTimerRef.current) window.clearTimeout(clipboardNotificationTimerRef.current);
+    clipboardNotificationTimerRef.current = window.setTimeout(() => {
+      setClipboardNotification("");
+      clipboardNotificationTimerRef.current = null;
+    }, timeoutMs);
   }
 
   useEffect(() => {
@@ -1026,7 +1023,6 @@ export function LkProgramEditor({ program, exerciseLibrary }: Props) {
       if (!ok) return;
     }
     cleanupEmptyNewWorkouts();
-    setOpenMenuWorkoutId("");
     setEditingId(draftId);
     setWorkoutDraftDirty(false);
   }
@@ -1100,13 +1096,14 @@ export function LkProgramEditor({ program, exerciseLibrary }: Props) {
   }
 
   function copyWorkoutsToClipboard(items: DraftWorkout[], mode: Exclude<ClipboardMode, null>) {
-    setCopiedWorkouts(items.map((item, index) => cloneWorkout(item, index)));
-    setClipboardMode(mode);
+    const workout = items[0];
+    if (!workout || mode !== "copy") return;
+    copyWorkoutClipboard(draftWorkoutToClipboard(workout, "program"));
+    showClipboardNotification(`Тренировка «${workout.title}» скопирована`);
   }
 
   function clearClipboard() {
-    setCopiedWorkouts([]);
-    setClipboardMode(null);
+    clearWorkoutClipboard();
   }
 
   function markRecentlyAdded(ids: string[]) {
@@ -1173,7 +1170,6 @@ export function LkProgramEditor({ program, exerciseLibrary }: Props) {
     if (!sortedWorkouts.some((workout) => workout.draftId === activeId)) return;
     setActiveWorkoutDragId(activeId);
     setOverWorkoutDragId(activeId);
-    setOpenMenuWorkoutId("");
   }
 
   function handleWorkoutDragOver(event: DragOverEvent) {
@@ -1232,18 +1228,6 @@ export function LkProgramEditor({ program, exerciseLibrary }: Props) {
     });
   }
 
-  function duplicateWorkout(draftId: string) {
-    setWorkouts((current) => {
-      const index = current.findIndex((workout) => workout.draftId === draftId);
-      if (index < 0) return current;
-      const next = [...current];
-      const clone = cloneWorkout(current[index], index + 1);
-      pendingRecentlyAddedIdsRef.current = [clone.draftId];
-      next.splice(index + 1, 0, clone);
-      return normalizeTimeline(next);
-    });
-  }
-
   function duplicateWeek(weekNumber: number) {
     setWorkouts((current) => {
       const source = current.filter((workout) => workout.weekNumber === weekNumber);
@@ -1261,33 +1245,26 @@ export function LkProgramEditor({ program, exerciseLibrary }: Props) {
   }
 
   function pasteAfter(draftId: string) {
-    if (copiedWorkouts.length === 0) return;
+    if (!copiedWorkout) return;
+    const insertAfterIndex = sortedWorkouts.findIndex((workout) => workout.draftId === draftId);
+    if (insertAfterIndex < 0) return;
     setWorkouts((current) => {
       const index = current.findIndex((workout) => workout.draftId === draftId);
       if (index < 0) return current;
       const next = [...current];
-      const clones = copiedWorkouts.map((item, cloneIndex) => cloneWorkout(item, index + 1 + cloneIndex));
-      pendingRecentlyAddedIdsRef.current = clones.map((clone) => clone.draftId);
-      next.splice(index + 1, 0, ...clones);
+      const clone = clipboardToDraftWorkout(copiedWorkout, index + 1);
+      pendingRecentlyAddedIdsRef.current = [clone.draftId];
+      next.splice(index + 1, 0, clone);
       return normalizeTimeline(next);
     });
-    if (clipboardMode === "move") clearClipboard();
+    clearWorkoutClipboard();
+    showClipboardNotification("Тренировка вставлена");
   }
 
   function bulkCopySelected() {
     const selected = getSelectedWorkoutsInOrder();
     if (selected.length === 0) return;
     copyWorkoutsToClipboard(selected, "copy");
-  }
-
-  function moveSingleWorkout(draftId: string) {
-    const workout = sortedWorkouts.find((item) => item.draftId === draftId);
-    if (!workout) return;
-    copyWorkoutsToClipboard([workout], "move");
-    setWorkouts((current) => normalizeTimeline(current.filter((item) => item.draftId !== draftId)));
-    if (editingId === draftId) setEditingId("");
-    if (openMenuWorkoutId === draftId) setOpenMenuWorkoutId("");
-    setSelectedWorkoutIds((current) => current.filter((id) => id !== draftId));
   }
 
   function bulkDuplicateSelected() {
@@ -1314,15 +1291,7 @@ export function LkProgramEditor({ program, exerciseLibrary }: Props) {
     const selected = new Set(selectedWorkoutIds);
     setWorkouts((current) => normalizeTimeline(current.filter((workout) => !selected.has(workout.draftId))));
     if (selected.has(editingId)) setEditingId("");
-    setOpenMenuWorkoutId("");
     clearSelection();
-  }
-
-  function deleteWorkout(draftId: string) {
-    setWorkouts((current) => normalizeTimeline(current.filter((workout) => workout.draftId !== draftId)));
-    if (editingId === draftId) setEditingId("");
-    if (openMenuWorkoutId === draftId) setOpenMenuWorkoutId("");
-    setSelectedWorkoutIds((current) => current.filter((id) => id !== draftId));
   }
 
   async function saveProgram() {
@@ -1509,6 +1478,7 @@ export function LkProgramEditor({ program, exerciseLibrary }: Props) {
 
   return (
     <div className="space-y-5">
+      <ClipboardNotification message={clipboardNotification} />
       <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
         <div className="min-w-0 flex-1">
           <button
@@ -1570,13 +1540,15 @@ export function LkProgramEditor({ program, exerciseLibrary }: Props) {
           {!isReadOnly ? (
             <WorkoutSelectionBar
               count={selectedWorkoutIds.length}
-              clipboardCount={copiedWorkouts.length}
+              clipboardCount={copiedWorkout ? 1 : 0}
               clipboardMode={clipboardMode}
               onDelete={() => bulkDeleteSelected()}
               onCopy={bulkCopySelected}
               onDuplicate={bulkDuplicateSelected}
               onClear={clearSelection}
               onClearClipboard={clearClipboard}
+              copyDisabled={selectedWorkoutIds.length > 1}
+              copyDisabledReason={selectedWorkoutIds.length > 1 ? "Копирование нескольких тренировок будет добавлено отдельно" : ""}
             />
           ) : null}
           <div className="space-y-6 overflow-x-auto pb-2">
@@ -1614,20 +1586,12 @@ export function LkProgramEditor({ program, exerciseLibrary }: Props) {
                         isOpen={editingId === workout.draftId}
                         selected={selectedWorkoutIds.includes(workout.draftId)}
                         recentlyAdded={recentlyAddedWorkoutIds.includes(workout.draftId)}
-                        selectedActionCount={selectedWorkoutIds.length}
-                        menuOpen={openMenuWorkoutId === workout.draftId}
-                        onToggleMenu={() =>
-                          setOpenMenuWorkoutId((current) => (current === workout.draftId ? "" : workout.draftId))
-                        }
-                        onCloseMenu={() => setOpenMenuWorkoutId("")}
                         onOpen={() => requestOpenWorkout(workout.draftId)}
-                        onDuplicate={() => duplicateWorkout(workout.draftId)}
                         onInsertAfter={() => insertWorkoutAfter(workout.draftId)}
                         onCopy={() => copyWorkoutsToClipboard([workout], "copy")}
                         onPasteAfter={() => pasteAfter(workout.draftId)}
-                        onDelete={() => deleteWorkout(workout.draftId)}
                         onToggleSelect={toggleWorkoutSelection}
-                        canPaste={copiedWorkouts.length > 0}
+                        canPaste={Boolean(copiedWorkout)}
                         exerciseLibrary={exerciseLibrary}
                         onCollapse={collapseWorkoutEditor}
                         onApplyDay={(draftWorkout) => {
@@ -1909,6 +1873,12 @@ function SortableExerciseDraftRow({
   titleInputRefs: RefObject<Map<string, HTMLInputElement>>;
 }) {
   const isComboMember = Boolean(exercise.groupDraftId);
+  const [activeMetric, setActiveMetric] = useState<ActiveMetric>(null);
+  const metricRowRef = useRef<HTMLDivElement>(null);
+  const setsInputRef = useRef<HTMLInputElement>(null);
+  const repsTextareaRef = useRef<HTMLTextAreaElement>(null);
+  const restInputRef = useRef<HTMLInputElement>(null);
+  const startedEditingFromEmptyRef = useRef(false);
   const { attributes, listeners, setActivatorNodeRef, setNodeRef, transform, transition, isDragging } = useSortable({
     id: exercise.draftId,
     disabled: isComboMember,
@@ -1917,12 +1887,314 @@ function SortableExerciseDraftRow({
   const libraryExercise = exercise.exerciseId ? libraryItems.find((item) => item.id === exercise.exerciseId) : undefined;
   const inputTitle = exercise.exerciseTitle;
   const displayTitle = inputTitle.trim();
-  const titleQuery = normalizeSearchText(inputTitle);
-  const suggestions = titleQuery ? libraryItems.filter((item) => normalizeSearchText(item.title).includes(titleQuery)) : [];
-  const showSuggestions = focusedExerciseDraftId === exercise.draftId && suggestions.length > 0;
+  const showSuggestions = focusedExerciseDraftId === exercise.draftId;
   const videoUrl = libraryExercise?.videoUrl || "";
   const videoTitle = displayTitle || libraryExercise?.title || "";
   const hasVideo = Boolean(videoUrl);
+  const groupOwnsSharedMetrics = Boolean(group);
+
+  useEffect(() => {
+    if (groupOwnsSharedMetrics && (activeMetric === "sets" || activeMetric === "rest")) {
+      setActiveMetric(null);
+    }
+  }, [activeMetric, groupOwnsSharedMetrics]);
+
+  useEffect(() => {
+    if (!activeMetric) startedEditingFromEmptyRef.current = false;
+  }, [activeMetric]);
+
+  useEffect(() => {
+    if (!activeMetric) return;
+    const frameId = window.requestAnimationFrame(() => {
+      if (activeMetric === "sets") setsInputRef.current?.focus();
+      if (activeMetric === "reps") {
+        repsTextareaRef.current?.focus();
+        if (repsTextareaRef.current) syncRepsTextareaHeight(repsTextareaRef.current);
+      }
+      if (activeMetric === "rest") restInputRef.current?.focus();
+    });
+    return () => window.cancelAnimationFrame(frameId);
+  }, [activeMetric]);
+
+  useLayoutEffect(() => {
+    if (activeMetric !== "reps" || !repsTextareaRef.current) return;
+    syncRepsTextareaHeight(repsTextareaRef.current);
+  }, [activeMetric, exercise.reps]);
+
+  function canEditMetric(metric: Exclude<ActiveMetric, null>) {
+    return metric === "reps" || !groupOwnsSharedMetrics;
+  }
+
+  function isMetricDraftEmpty() {
+    return !exercise.sets.trim() && !exercise.reps.trim() && !exercise.rest.trim();
+  }
+
+  function activateMetric(metric: Exclude<ActiveMetric, null>) {
+    if (!canEditMetric(metric)) return;
+    if (!activeMetric && isMetricDraftEmpty()) {
+      startedEditingFromEmptyRef.current = true;
+    }
+    setActiveMetric(metric);
+  }
+
+  function scheduleMetricBlur() {
+    window.requestAnimationFrame(() => {
+      const activeElement = document.activeElement;
+      if (activeElement instanceof HTMLElement && metricRowRef.current?.contains(activeElement)) return;
+      setActiveMetric(null);
+    });
+  }
+
+  function focusMetricWithKeyboard(metric: Exclude<ActiveMetric, null>) {
+    if (!canEditMetric(metric)) return false;
+    setActiveMetric(metric);
+    return true;
+  }
+
+  function handleMetricKeyDown(
+    event: ReactKeyboardEvent<HTMLInputElement | HTMLTextAreaElement>,
+    metric: Exclude<ActiveMetric, null>
+  ) {
+    event.stopPropagation();
+    if (event.key === "Escape") {
+      event.currentTarget.blur();
+      setActiveMetric(null);
+      return;
+    }
+    if (event.key !== "Tab") return;
+
+    let nextMetric: Exclude<ActiveMetric, null> | null = null;
+    if (event.shiftKey) {
+      if (metric === "rest") nextMetric = "reps";
+      if (metric === "reps") nextMetric = "sets";
+    } else {
+      if (metric === "sets") nextMetric = "reps";
+      if (metric === "reps") nextMetric = "rest";
+    }
+
+    if (!nextMetric || !focusMetricWithKeyboard(nextMetric)) return;
+    event.preventDefault();
+  }
+
+  function syncRepsTextareaHeight(node: HTMLTextAreaElement) {
+    node.style.height = "auto";
+    node.style.height = `${Math.min(node.scrollHeight, REPS_METRIC_MAX_HEIGHT)}px`;
+  }
+
+  function metricInputWidth(value: string, minCh: number, maxCh: number) {
+    return `${Math.min(Math.max(value.length || minCh, minCh), maxCh)}ch`;
+  }
+
+  function metricSegmentClass(editable: boolean, extra = "") {
+    return `rounded px-1 py-0.5 -mx-1 transition-colors focus-within:bg-emerald-50 focus-within:ring-2 focus-within:ring-emerald-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-100 ${
+      editable ? "cursor-text hover:bg-slate-50" : "cursor-default"
+    } ${extra}`;
+  }
+
+  function renderSetsSegment() {
+    const editable = canEditMetric("sets");
+    const isActive = activeMetric === "sets" && editable;
+    if (isActive) {
+      return (
+        <label className={metricSegmentClass(true, "inline-flex shrink-0 items-baseline gap-1")}>
+          <input
+            ref={setsInputRef}
+            value={exercise.sets}
+            onChange={(e) => onUpdateExercise(index, { sets: e.target.value })}
+            onBlur={scheduleMetricBlur}
+            onKeyDown={(e) => handleMetricKeyDown(e, "sets")}
+            className={INLINE_METRIC_INPUT_CLASS}
+            placeholder="0"
+            style={{ width: metricInputWidth(exercise.sets, 3, 10) }}
+          />
+          <span className="text-slate-500">подх.</span>
+        </label>
+      );
+    }
+
+    if (!editable) {
+      return <span className={metricSegmentClass(false, "inline-flex shrink-0 text-slate-500")}>{exercise.sets} подх.</span>;
+    }
+
+    return (
+      <button
+        type="button"
+        onClick={() => activateMetric("sets")}
+        className={metricSegmentClass(true, "inline-flex shrink-0 text-left text-slate-700")}
+        aria-label="Редактировать подходы"
+      >
+        {exercise.sets} <span className="ml-1 text-slate-500">подх.</span>
+      </button>
+    );
+  }
+
+  function renderRepsSegment() {
+    const isActive = activeMetric === "reps";
+    if (isActive) {
+      return (
+        <label className={metricSegmentClass(true, "min-w-[8rem] flex-1")}>
+          <textarea
+            ref={repsTextareaRef}
+            value={exercise.reps}
+            onChange={(e) => {
+              onUpdateExercise(index, { reps: e.target.value });
+              syncRepsTextareaHeight(e.currentTarget);
+            }}
+            onBlur={scheduleMetricBlur}
+            onKeyDown={(e) => handleMetricKeyDown(e, "reps")}
+            className={INLINE_REPS_METRIC_CLASS}
+            placeholder="повторения"
+            rows={1}
+          />
+        </label>
+      );
+    }
+
+    return (
+      <button
+        type="button"
+        onClick={() => activateMetric("reps")}
+        className={metricSegmentClass(true, "min-w-[8rem] flex-1 whitespace-pre-wrap break-words text-left text-slate-700")}
+        aria-label="Редактировать повторения"
+      >
+        {exercise.reps}
+      </button>
+    );
+  }
+
+  function renderRestSegment() {
+    const editable = canEditMetric("rest");
+    const isActive = activeMetric === "rest" && editable;
+    return (
+      <div className="ml-1 border-l border-slate-200 pl-2 text-[11px] leading-5 text-slate-500">
+        <span className="mr-1 text-slate-400">отдых</span>
+        {isActive ? (
+          <label className={metricSegmentClass(true, "inline-flex max-w-full align-baseline")}>
+            <input
+              ref={restInputRef}
+              value={exercise.rest}
+              onChange={(e) => onUpdateExercise(index, { rest: e.target.value })}
+              onBlur={scheduleMetricBlur}
+              onKeyDown={(e) => handleMetricKeyDown(e, "rest")}
+              className={`${INLINE_METRIC_INPUT_CLASS} text-[11px] text-slate-500`}
+              placeholder="Добавить"
+              style={{ width: metricInputWidth(exercise.rest, 7, 18) }}
+            />
+          </label>
+        ) : editable ? (
+          <button
+            type="button"
+            onClick={() => activateMetric("rest")}
+            className={metricSegmentClass(true, "inline-block max-w-full whitespace-pre-wrap break-words text-left align-baseline text-slate-500")}
+            aria-label="Редактировать отдых"
+          >
+            {exercise.rest}
+          </button>
+        ) : (
+          <span className="inline-block max-w-full whitespace-pre-wrap break-words align-baseline text-slate-400">{exercise.rest}</span>
+        )}
+      </div>
+    );
+  }
+
+  function renderMetricAddAction(metric: Exclude<ActiveMetric, null>, label: string) {
+    if (!canEditMetric(metric)) return null;
+    return (
+      <button
+        type="button"
+        onClick={() => activateMetric(metric)}
+        className="rounded-full px-1.5 py-0.5 text-[10px] leading-none text-slate-400 transition-colors hover:bg-slate-50 hover:text-slate-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-100"
+      >
+        + {label}
+      </button>
+    );
+  }
+
+  function renderEmptyMetricEntry() {
+    return (
+      <div className="grid w-full min-w-0 grid-cols-[minmax(0,0.8fr)_minmax(0,1.8fr)_minmax(0,0.9fr)] gap-1.5">
+        {canEditMetric("sets") ? (
+          <label className={EMPTY_METRIC_FIELD_CLASS}>
+            <input
+              ref={setsInputRef}
+              value={exercise.sets}
+              onChange={(e) => onUpdateExercise(index, { sets: e.target.value })}
+              onFocus={() => activateMetric("sets")}
+              onBlur={scheduleMetricBlur}
+              onKeyDown={(e) => handleMetricKeyDown(e, "sets")}
+              className={EMPTY_METRIC_INPUT_CLASS}
+              placeholder="ПОДХОДЫ"
+            />
+          </label>
+        ) : (
+          <span className={`${EMPTY_METRIC_FIELD_CLASS} justify-center text-[11px] text-slate-300`}>—</span>
+        )}
+        <label className={EMPTY_METRIC_FIELD_CLASS}>
+          <textarea
+            ref={repsTextareaRef}
+            value={exercise.reps}
+            onChange={(e) => {
+              onUpdateExercise(index, { reps: e.target.value });
+              syncRepsTextareaHeight(e.currentTarget);
+            }}
+            onFocus={() => activateMetric("reps")}
+            onBlur={scheduleMetricBlur}
+            onKeyDown={(e) => handleMetricKeyDown(e, "reps")}
+            className={`${EMPTY_METRIC_INPUT_CLASS} max-h-20 resize-none overflow-y-auto whitespace-pre-wrap`}
+            placeholder="ПОВТОРЕНИЯ"
+            rows={1}
+          />
+        </label>
+        {canEditMetric("rest") ? (
+          <label className={EMPTY_METRIC_FIELD_CLASS}>
+            <input
+              ref={restInputRef}
+              value={exercise.rest}
+              onChange={(e) => onUpdateExercise(index, { rest: e.target.value })}
+              onFocus={() => activateMetric("rest")}
+              onBlur={scheduleMetricBlur}
+              onKeyDown={(e) => handleMetricKeyDown(e, "rest")}
+              className={EMPTY_METRIC_INPUT_CLASS}
+              placeholder="ОТДЫХ"
+            />
+          </label>
+        ) : (
+          <span className={`${EMPTY_METRIC_FIELD_CLASS} justify-center text-[11px] text-slate-300`}>—</span>
+        )}
+      </div>
+    );
+  }
+
+  function renderMetricSummary() {
+    const hasSets = Boolean(exercise.sets.trim());
+    const hasReps = Boolean(exercise.reps.trim());
+    const hasRest = Boolean(exercise.rest.trim());
+    const showSets = hasSets || activeMetric === "sets";
+    const showReps = hasReps || activeMetric === "reps";
+    const showRest = hasRest || activeMetric === "rest";
+    const allEmpty = !hasSets && !hasReps && !hasRest;
+    const keepEmptyEntryDuringEdit = Boolean(activeMetric && startedEditingFromEmptyRef.current);
+
+    if (allEmpty || keepEmptyEntryDuringEdit) return renderEmptyMetricEntry();
+
+    return (
+      <div className="space-y-1">
+        {(showSets || showReps) ? (
+          <div className="flex min-w-0 flex-wrap items-baseline gap-x-1.5 gap-y-0.5 text-[13px] leading-5 text-slate-700">
+            {showSets ? renderSetsSegment() : null}
+            {showSets && showReps ? <span className="shrink-0 text-slate-400">×</span> : null}
+            {showReps ? renderRepsSegment() : null}
+          </div>
+        ) : null}
+        {showRest ? renderRestSegment() : null}
+        <div className="flex flex-wrap gap-1">
+          {!hasSets && activeMetric !== "sets" ? renderMetricAddAction("sets", "подходы") : null}
+          {!hasReps && activeMetric !== "reps" ? renderMetricAddAction("reps", "повторения") : null}
+          {!hasRest && activeMetric !== "rest" ? renderMetricAddAction("rest", "отдых") : null}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div
@@ -1980,40 +2252,30 @@ function SortableExerciseDraftRow({
               {letter}
             </span>
             <div className="min-w-0 flex-1">
-              <div className="relative">
-                <input
-                  ref={(node) => {
-                    if (node) titleInputRefs.current.set(exercise.draftId, node);
-                    else titleInputRefs.current.delete(exercise.draftId);
-                  }}
-                  value={inputTitle}
-                  onChange={(e) => onUpdateTitle(index, e.target.value)}
-                  onFocus={() => onFocusExercise(exercise.draftId)}
-                  onBlur={onBlurExercise}
-                  onKeyDown={(e) => e.stopPropagation()}
-                  className={`w-full py-0.5 text-sm font-semibold text-slate-900 outline-none ${
-                    exercise.exerciseId
-                      ? "border-0 bg-transparent px-0 focus:ring-0"
-                      : "border-b border-transparent bg-transparent px-0 focus:border-slate-200"
-                  }`}
-                  placeholder="Название"
-                />
-                {showSuggestions ? (
-                  <div className="absolute left-0 right-0 top-full z-20 mt-1 max-h-40 overflow-y-auto rounded-lg border border-slate-200 bg-white shadow-xl">
-                    {suggestions.map((item) => (
-                      <button
-                        key={item.id}
-                        type="button"
-                        onMouseDown={(event) => event.preventDefault()}
-                        onClick={() => onSelectLibrary(index, item.id)}
-                        className="block w-full truncate px-2 py-1.5 text-left text-xs font-medium text-slate-800 hover:bg-slate-50"
-                      >
-                        {item.title}
-                      </button>
-                    ))}
-                  </div>
-                ) : null}
-              </div>
+              <ExerciseLibrarySearchInput
+                value={inputTitle}
+                selectedExerciseId={exercise.exerciseId}
+                items={libraryItems}
+                isOpen={showSuggestions}
+                showEmptyQueryResults={false}
+                getSearchText={normalizeSearchText}
+                placeholder="Название"
+                inputRef={(node) => {
+                  if (node) titleInputRefs.current.set(exercise.draftId, node);
+                  else titleInputRefs.current.delete(exercise.draftId);
+                }}
+                containerClassName="min-w-0"
+                inputClassName={`border-0 bg-transparent px-0 py-0.5 text-sm font-semibold text-slate-900 focus:border-transparent focus:ring-0 sm:text-sm ${
+                  exercise.exerciseId ? "" : "border-b border-transparent focus:border-slate-200"
+                }`}
+                dropdownWidthClassName="w-[min(35rem,calc(100vw-2rem))]"
+                dropdownClassName="max-h-64"
+                onQueryChange={(query) => onUpdateTitle(index, query)}
+                onSelect={(exerciseId) => onSelectLibrary(index, exerciseId)}
+                onFocus={() => onFocusExercise(exercise.draftId)}
+                onBlur={onBlurExercise}
+                onKeyDown={(event) => event.stopPropagation()}
+              />
             </div>
             <div className="flex shrink-0 items-center gap-0.5">
               {hasVideo ? (
@@ -2061,36 +2323,14 @@ function SortableExerciseDraftRow({
             </div>
           </div>
 
-          <div className="grid grid-cols-3 gap-1.5 pl-11">
-            <input
-              value={exercise.sets}
-              onChange={(e) => onUpdateExercise(index, { sets: e.target.value })}
-              onKeyDown={(e) => e.stopPropagation()}
-              className={METRIC_CELL_CLASS}
-              placeholder="подходы"
-              disabled={Boolean(group)}
-            />
-            <input
-              value={exercise.reps}
-              onChange={(e) => onUpdateExercise(index, { reps: e.target.value })}
-              onKeyDown={(e) => e.stopPropagation()}
-              className={METRIC_CELL_CLASS}
-              placeholder="разы"
-            />
-            <input
-              value={exercise.rest}
-              onChange={(e) => onUpdateExercise(index, { rest: e.target.value })}
-              onKeyDown={(e) => e.stopPropagation()}
-              className={METRIC_CELL_CLASS}
-              placeholder="отдых"
-              disabled={Boolean(group)}
-            />
+          <div ref={metricRowRef} className="space-y-1.5 pl-11">
+            {renderMetricSummary()}
           </div>
           <textarea
             value={exercise.notes}
             onChange={(e) => onUpdateExercise(index, { notes: e.target.value })}
             onKeyDown={(e) => e.stopPropagation()}
-            className="ml-11 mt-1 min-h-6 w-[calc(100%-2.75rem)] resize-none border-0 bg-transparent px-0 py-0 text-[10px] text-slate-500 outline-none focus:ring-0 placeholder:text-slate-400"
+            className="ml-11 mt-1 min-h-6 w-[calc(100%-2.75rem)] resize-none border-0 bg-transparent px-0 py-0 text-[13px] leading-5 text-slate-700 outline-none focus:ring-0 placeholder:text-slate-400"
             placeholder="Заметка"
           />
         </div>

@@ -12,6 +12,7 @@ export type CoachStudent = {
   prPrice?: string;
   spPrice?: string;
   futurePlan?: string;
+  firstFact?: string;
   tag?: string;
 };
 

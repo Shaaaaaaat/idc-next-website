@@ -43,6 +43,15 @@ function parseFuturePlanDate(value: string | undefined): number {
   return Date.UTC(year, month - 1, day);
 }
 
+function hasNonZeroFirstFact(value: string | undefined): boolean {
+  const raw = String(value || "").trim();
+  if (!raw || raw === "—") return false;
+  const normalized = raw.replace(/\s/g, "").replace(",", ".");
+  const numeric = Number(normalized);
+  if (Number.isFinite(numeric)) return numeric !== 0;
+  return true;
+}
+
 function isNewcomerGroupStart(students: CoachStudent[], index: number): boolean {
   if (index <= 0) return false;
   return String(students[index]?.tag || "").trim() !== String(students[index - 1]?.tag || "").trim();
@@ -67,6 +76,7 @@ export function LkAdminStudentsTable({ activeStudents, allStudents }: Props) {
       if (onlyNewcomers) {
         const futurePlan = String(s.futurePlan || "").trim();
         if (!futurePlan || futurePlan === "—") return false;
+        if (hasNonZeroFirstFact(s.firstFact)) return false;
       }
       return true;
     });

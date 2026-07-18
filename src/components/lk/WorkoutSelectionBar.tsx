@@ -9,6 +9,10 @@ type Props = {
   onDuplicate: () => void;
   onClear: () => void;
   onClearClipboard: () => void;
+  copyDisabled?: boolean;
+  copyDisabledReason?: string;
+  deleteDisabled?: boolean;
+  showDuplicate?: boolean;
 };
 
 function workoutPlural(count: number) {
@@ -30,6 +34,10 @@ export function WorkoutSelectionBar({
   onDuplicate,
   onClear,
   onClearClipboard,
+  copyDisabled = false,
+  copyDisabledReason = "",
+  deleteDisabled = false,
+  showDuplicate = true,
 }: Props) {
   if (count <= 0 && clipboardCount <= 0) return null;
 
@@ -63,21 +71,26 @@ export function WorkoutSelectionBar({
               <button
                 type="button"
                 onClick={onCopy}
-                className="rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-xs font-semibold text-emerald-700 hover:bg-emerald-100"
+                disabled={copyDisabled}
+                title={copyDisabled ? copyDisabledReason : undefined}
+                className="rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-xs font-semibold text-emerald-700 hover:bg-emerald-100 disabled:cursor-not-allowed disabled:border-slate-200 disabled:bg-slate-50 disabled:text-slate-400"
               >
                 Копировать
               </button>
-              <button
-                type="button"
-                onClick={onDuplicate}
-                className="rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"
-              >
-                Дублировать
-              </button>
+              {showDuplicate ? (
+                <button
+                  type="button"
+                  onClick={onDuplicate}
+                  className="rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+                >
+                  Дублировать
+                </button>
+              ) : null}
               <button
                 type="button"
                 onClick={onDelete}
-                className="rounded-full border border-red-200 bg-red-50 px-3 py-1.5 text-xs font-semibold text-red-600 hover:bg-red-100"
+                disabled={deleteDisabled}
+                className="rounded-full border border-red-200 bg-red-50 px-3 py-1.5 text-xs font-semibold text-red-600 hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-60"
               >
                 Удалить
               </button>
@@ -89,6 +102,11 @@ export function WorkoutSelectionBar({
                 Снять выбор
               </button>
             </>
+          ) : null}
+          {count > 1 && copyDisabled && copyDisabledReason ? (
+            <span className="basis-full px-1 text-xs text-slate-400 sm:basis-auto sm:self-center">
+              {copyDisabledReason}
+            </span>
           ) : null}
           {clipboardCount > 0 ? (
             <button
