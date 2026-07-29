@@ -27,6 +27,7 @@ type ClientRow = {
 type CoachProfile = {
   coach_name: string;
   display_name: string | null;
+  telegram_id?: string | number | null;
 };
 
 type ReplyMarkup = Record<string, unknown>;
@@ -327,12 +328,17 @@ async function getCoachProfile(coachHandle: string | null): Promise<CoachProfile
 
   const { data, error } = await supabase
     .from("coach_profiles")
-    .select("coach_name, display_name")
+    .select("coach_name, display_name, telegram_id")
     .eq("coach_name", coachHandle)
     .maybeSingle();
 
   if (error) throw error;
   return data as CoachProfile | null;
+}
+
+async function getCoachTelegramId(coachHandle: string) {
+  const coach = await getCoachProfile(coachHandle);
+  return asString(coach?.telegram_id).trim();
 }
 
 function resultFromTelegram(telegram: SendResult): HandleResult {
@@ -562,6 +568,44 @@ async function handleBalanceThresholdTrainer(event: NotificationEvent) {
   }));
 }
 
+async function handleSubscriptionPurchaseTrainer(event: NotificationEvent) {
+  const payload = event.payload ?? {};
+  const coachHandle = pickValue(payload, ["coach"]);
+
+  if (!coachHandle) {
+    return {
+      status: "skipped",
+      errorCode: "trainer_not_found",
+      errorMessage: "Trainer coach handle is missing",
+    };
+  }
+
+  const chatId = await getCoachTelegramId(coachHandle);
+
+  if (!chatId) {
+    return {
+      status: "skipped",
+      errorCode: "trainer_telegram_id_missing",
+      errorMessage: "Trainer telegram_id is missing",
+    };
+  }
+
+  const text = [
+    "🟢 Покупка нового абонемента",
+    "",
+    `👤 Имя: ${clientName(null, payload)}`,
+    `📚 Кол-во занятий: ${asString(payload.lessons).trim() || "—"}`,
+    `💰 Текущий баланс: ${formatBalance(payload.balance_after, payload.currency ?? "RUB")}`,
+  ].join("\n");
+
+  return resultFromTelegram(await sendTelegramWithRetry({
+    botToken: CLIENT_BOT_TOKEN,
+    chatId,
+    text,
+    target: "trainer:subscription_purchase_trainer",
+  }));
+}
+
 async function deliverEvent(event: NotificationEvent): Promise<HandleResult> {
   if (event.channel !== "telegram" && event.channel !== "admin_telegram") {
     return {
@@ -607,6 +651,8 @@ async function deliverEvent(event: NotificationEvent): Promise<HandleResult> {
       return await handleBalanceThresholdAdmin(event, client, coach);
     case "balance_threshold_trainer":
       return await handleBalanceThresholdTrainer(event);
+    case "subscription_purchase_trainer":
+      return await handleSubscriptionPurchaseTrainer(event);
     default:
       return {
         status: "skipped",

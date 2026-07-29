@@ -8,7 +8,10 @@ type RequestPayload = {
   action: "request";
   token: string;
   email: string;
+  client: MagicLinkClient;
 };
+
+export type MagicLinkClient = "trainer_web" | "student_mobile";
 
 type ConsumePayload = {
   action: "consume";
@@ -67,6 +70,15 @@ async function postAuth<TSuccess>(
     }
 
     const json = (await res.json().catch(() => null)) as TSuccess | null;
+
+    const authResponseMeta = json as { ok?: unknown; error?: unknown } | null;
+    console.log("[AUTH_CF]", {
+      status: res.status,
+      ok: authResponseMeta?.ok,
+      error: authResponseMeta?.error,
+    });
+
+
     if (!json || typeof json !== "object") {
       return { ok: false, reason: "bad_response" };
     }
@@ -77,11 +89,15 @@ async function postAuth<TSuccess>(
   }
 }
 
-export async function requestMagicLink(email: string): Promise<LkAuthResult<{ ok?: boolean }>> {
+export async function requestMagicLink(
+  email: string,
+  options: { client?: MagicLinkClient } = {}
+): Promise<LkAuthResult<{ ok?: boolean }>> {
   const payload: RequestPayload = {
     action: "request",
     token: String(AUTH_INTERNAL_TOKEN || ""),
     email: String(email || "").trim().toLowerCase(),
+    client: options.client || "trainer_web",
   };
   return postAuth(payload);
 }
