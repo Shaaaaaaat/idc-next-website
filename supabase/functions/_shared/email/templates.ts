@@ -26,15 +26,106 @@ function textValue(value: string, maxLength = 240) {
   return value.trim().replace(/\s+/g, " ").slice(0, maxLength);
 }
 
+function displayCourseName(value: string) {
+  const cleaned = textValue(value, 160);
+  const normalized = cleaned.toLowerCase().replace(/[^a-z0-9]+/g, "_");
+
+  if (normalized === "light" || normalized.endsWith("_light")) {
+    return "Calisthenics Light";
+  }
+  if (normalized === "classic" || normalized.endsWith("_classic")) {
+    return "Calisthenics Classic";
+  }
+  if (normalized === "pullups" || normalized.endsWith("_pullups")) {
+    return "Pull-Ups";
+  }
+  if (normalized === "handstand" || normalized.endsWith("_handstand")) {
+    return "Handstand";
+  }
+  if (normalized === "crossfit" || normalized.endsWith("_crossfit")) {
+    return "CrossFit";
+  }
+
+  return cleaned;
+}
+
+function isTechnicalTariffLabel(value: string) {
+  const normalized = value.trim().toLowerCase();
+  return normalized === "online_test" ||
+    normalized === "gift_certificate" ||
+    normalized.startsWith("package_") ||
+    normalized.startsWith("short") ||
+    normalized.startsWith("long");
+}
+
+function displayTariffOrCourse(tariffLabel: string, courseName: string) {
+  const tariff = textValue(tariffLabel, 160);
+  if (tariff && !isTechnicalTariffLabel(tariff)) {
+    return displayCourseName(tariff);
+  }
+
+  return displayCourseName(courseName || tariff);
+}
+
+function emailShell(content: string) {
+  return [
+    '<div style="margin:0;padding:24px 0;background:#f5f6fb;font-family:Arial,Helvetica,sans-serif;color:#1f2937;">',
+    '<div style="max-width:640px;margin:0 auto;padding:0 16px;">',
+    '<div style="background:#ffffff;border:1px solid #e5e7eb;border-radius:18px;padding:28px;box-shadow:0 8px 28px rgba(15,23,42,0.08);">',
+    content,
+    "</div>",
+    "</div>",
+    "</div>",
+  ].join("\n");
+}
+
 function paragraphHtml(lines: string[]) {
   return lines
-    .map((line) => `<p>${escapeHtml(line)}</p>`)
+    .map((line) =>
+      `<p style="margin:0 0 16px;font-size:16px;line-height:1.6;">${
+        escapeHtml(line)
+      }</p>`
+    )
     .join("\n");
 }
 
-function linkHtml(label: string, href: string) {
+function buttonHtml(label: string, href: string) {
   const safeHref = escapeHtml(href);
-  return `<p>${escapeHtml(label)}<br><a href="${safeHref}">${safeHref}</a></p>`;
+  return [
+    '<p style="margin:18px 0 24px;">',
+    `<a href="${safeHref}" style="display:inline-block;background:#111827;color:#ffffff;text-decoration:none;font-size:16px;font-weight:700;line-height:1.2;padding:14px 22px;border-radius:999px;">${
+      escapeHtml(label)
+    }</a>`,
+    "</p>",
+  ].join("");
+}
+
+function mutedCardHtml(content: string) {
+  return [
+    '<div style="background:#f9fafb;border:1px solid #e5e7eb;border-radius:14px;padding:18px 18px 4px;margin:0 0 16px;">',
+    content,
+    "</div>",
+  ].join("\n");
+}
+
+function importantCardHtml(content: string) {
+  return [
+    '<div style="background:#fff7ed;border:1px solid #fed7aa;border-radius:14px;padding:18px 18px 4px;margin:0 0 16px;">',
+    content,
+    "</div>",
+  ].join("\n");
+}
+
+function emphasizeImportantPrefix(line: string) {
+  if (!line.startsWith("Важно:")) return escapeHtml(line);
+
+  return `<strong>Важно:</strong>${escapeHtml(line.slice("Важно:".length))}`;
+}
+
+function instructionParagraphHtml(line: string) {
+  return `<p style="margin:0 0 16px;font-size:16px;line-height:1.65;">${
+    emphasizeImportantPrefix(line)
+  }</p>`;
 }
 
 export function weekPluralRu(value: number) {
@@ -51,8 +142,11 @@ export function weekPluralRu(value: number) {
 export function buildFirstOnlinePurchaseWelcomeEmail(
   input: WelcomeTemplateInput,
 ): Omit<EmailPayload, "to"> {
-  const courseName = textValue(input.courseName, 120);
-  const tariffLabel = textValue(input.tariffLabel || input.courseName, 160);
+  const courseName = displayCourseName(input.courseName || input.tariffLabel);
+  const tariffLabel = displayTariffOrCourse(
+    input.tariffLabel,
+    input.courseName,
+  );
   const clientName = textValue(input.clientName, 120);
   const greeting = clientName
     ? `Ура, ${clientName}, оплата прошла успешно! 🎉`
@@ -88,7 +182,7 @@ export function buildFirstOnlinePurchaseWelcomeEmail(
     "Пусть каждая тренировка приносит результат и удовольствие.",
   ].join("\n");
 
-  const html = [
+  const html = emailShell([
     paragraphHtml([
       greeting,
       durationLine,
@@ -96,17 +190,17 @@ export function buildFirstOnlinePurchaseWelcomeEmail(
       "После ее прохождения тренер свяжется с вами и предоставит подробную обратную связь.",
       "Перейдите в Telegram — там вы сможете быстро связаться с поддержкой и проверить свой баланс:",
     ]),
-    linkHtml("Telegram", input.telegramUrl),
+    buttonHtml("Перейти в Telegram", input.telegramUrl),
     paragraphHtml([
       "Для удобства рекомендуем скачать мобильную версию приложения 👇🏻",
     ]),
-    linkHtml("Ссылка для iOS:", TRUECOACH_IOS_URL),
-    linkHtml("Ссылка для Андроида:", TRUECOACH_ANDROID_URL),
+    buttonHtml("Скачать для iOS", TRUECOACH_IOS_URL),
+    buttonHtml("Скачать для Android", TRUECOACH_ANDROID_URL),
     paragraphHtml([
       "Также мы отправим отдельным письмом короткую инструкцию по выполнению теста силы.",
       "Пусть каждая тренировка приносит результат и удовольствие.",
     ]),
-  ].join("\n");
+  ].join("\n"));
 
   return { subject, html, text };
 }
@@ -121,9 +215,16 @@ export function buildStrengthTestInstructionEmail(): Omit<EmailPayload, "to"> {
     "Например, по подтягиваниям: с нами можно заниматься с любого уровня, мы на этом и специализируемся 🙂 И любые результаты подойдут — даже просто показать, как вы висите на турнике и делаете попытки подтянуться (или ответ — что и повисеть не удалось — это тоже нормально!). Нам надо зафиксировать стартовый уровень, чтобы потом можно было сравнить ДО и ПОСЛЕ. Вы однозначно почувствуете изменения с нами, даже не сомневайтесь. Мышцы станут крепче, самочувствие лучше. Главное — стабильно тренироваться и акцентировать внимание на том, что есть результат 🤍",
   ];
 
+  const html = emailShell([
+    mutedCardHtml(instructionParagraphHtml(paragraphs[0])),
+    importantCardHtml(instructionParagraphHtml(paragraphs[1])),
+    importantCardHtml(instructionParagraphHtml(paragraphs[2])),
+    mutedCardHtml(instructionParagraphHtml(paragraphs[3])),
+  ].join("\n"));
+
   return {
     subject,
-    html: paragraphHtml(paragraphs),
+    html,
     text: paragraphs.join("\n\n"),
   };
 }
