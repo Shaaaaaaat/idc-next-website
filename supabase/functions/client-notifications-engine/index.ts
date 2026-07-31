@@ -1,5 +1,15 @@
-import "jsr:@supabase/functions-js/edge-runtime.d.ts";
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import "@supabase/functions-js/edge-runtime.d.ts";
+import { createClient } from "@supabase/supabase-js";
+import {
+  normalizeEmailAddress,
+  resolveSenderProfile,
+  sendResendEmail,
+  validateSenderProfileCurrency,
+} from "../_shared/email/resend.ts";
+import {
+  buildFirstOnlinePurchaseWelcomeEmail,
+  buildStrengthTestInstructionEmail,
+} from "../_shared/email/templates.ts";
 
 type NotificationEvent = {
   id: string;
@@ -13,12 +23,14 @@ type NotificationEvent = {
   created_at?: string | null;
   updated_at?: string | null;
   last_attempt_at?: string | null;
+  next_attempt_at?: string | null;
   last_alerted_at?: string | null;
 };
 
 type ClientRow = {
   id: string;
   fio: string | null;
+  email: string | null;
   tgid: string | number | null;
   coach: string | null;
   balance: number | null;
@@ -38,15 +50,23 @@ type SendResult = {
   attempts: number;
   errorCode?: string;
   errorMessage?: string;
+  providerMessageId?: string;
 };
 
 type HandleResult =
-  | { status: "sent"; telegram?: SendResult }
+  | { status: "sent"; telegram?: SendResult; email?: SendResult }
   | { status: "skipped"; errorCode: string; errorMessage: string }
-  | { status: "failed"; errorCode: string; errorMessage: string; telegram?: SendResult };
+  | {
+    status: "failed";
+    errorCode: string;
+    errorMessage: string;
+    telegram?: SendResult;
+    email?: SendResult;
+  };
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
-const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
+const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ??
+  "";
 const INTERNAL_SECRET = Deno.env.get("NOTIFICATIONS_INTERNAL_SECRET") ?? "";
 const CLIENT_BOT_TOKEN = Deno.env.get("IDCMAIN_BOT_TOKEN") ?? "";
 const ADMIN_BOT_TOKEN = Deno.env.get("LOWMAOWS_BOT_TOKEN") ?? "";
@@ -57,6 +77,8 @@ const IDC_ERRORS_CHAT_ID = Deno.env.get("IDC_ERRORS_CHAT_ID") ?? "";
 const TELEGRAM_TIMEOUT_MS = 20_000;
 const TELEGRAM_MAX_ATTEMPTS = 2;
 const TELEGRAM_RETRY_DELAY_MS = 1_500;
+const EMAIL_INSTRUCTION_DELAY_MS = 2 * 60 * 1000;
+const MAX_NOT_READY_WAIT_MS = EMAIL_INSTRUCTION_DELAY_MS + 5_000;
 const STALE_THRESHOLD_MS = 3 * 60 * 1000;
 const STALE_ALERT_THROTTLE_MS = 30 * 60 * 1000;
 const FINAL_STATUSES = new Set(["sent", "skipped", "failed"]);
@@ -68,6 +90,15 @@ const SKIPPED_CODES = new Set([
   "unsupported_recipient_type",
   "client_not_found",
   "trainer_not_found",
+]);
+const EMAIL_NON_RETRYABLE_CODES = new Set([
+  "client_email_missing",
+  "template_data_missing",
+  "missing_sender_profile",
+  "unsupported_sender_profile",
+  "sender_profile_currency_mismatch",
+  "resend_request_rejected",
+  "resend_response_missing_id",
 ]);
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
@@ -87,7 +118,10 @@ function asString(value: unknown) {
   return "";
 }
 
-function pickValue(row: Record<string, unknown> | null | undefined, keys: string[]) {
+function pickValue(
+  row: Record<string, unknown> | null | undefined,
+  keys: string[],
+) {
   if (!row) return "";
 
   for (const key of keys) {
@@ -121,14 +155,20 @@ function formatBalanceChange(
   const beforeText = asString(before).trim();
 
   if (before !== null && before !== undefined && beforeText) {
-    return `${formatBalance(before, currency)} → ${formatBalance(after, currency)}`;
+    return `${formatBalance(before, currency)} → ${
+      formatBalance(after, currency)
+    }`;
   }
 
   return formatBalance(after, currency);
 }
 
-function clientName(client: ClientRow | null, payload?: Record<string, unknown>) {
-  return pickValue(payload, ["client_name", "fio", "name", "full_name"]) || client?.fio || "Клиент";
+function clientName(
+  client: ClientRow | null,
+  payload?: Record<string, unknown>,
+) {
+  return pickValue(payload, ["client_name", "fio", "name", "full_name"]) ||
+    client?.fio || "Клиент";
 }
 
 function trainerName(
@@ -136,7 +176,12 @@ function trainerName(
   payload?: Record<string, unknown>,
   coach?: CoachProfile | null,
 ) {
-  return pickValue(payload, ["trainer_name", "coach_name", "coach", "trainer"]) ||
+  return pickValue(payload, [
+    "trainer_name",
+    "coach_name",
+    "coach",
+    "trainer",
+  ]) ||
     client?.coach ||
     coach?.coach_name ||
     coach?.display_name ||
@@ -225,9 +270,10 @@ async function sendTelegramWithRetry(params: {
         telegramOk: payload?.ok === true,
       });
     } catch (error) {
-      lastErrorCode = error instanceof DOMException && error.name === "AbortError"
-        ? "telegram_timeout"
-        : "telegram_fetch_error";
+      lastErrorCode =
+        error instanceof DOMException && error.name === "AbortError"
+          ? "telegram_timeout"
+          : "telegram_fetch_error";
       lastErrorMessage = safeErrorMessage(error);
       console.warn("telegram_send_exception", {
         target: params.target,
@@ -301,9 +347,15 @@ function alertText(params: {
     params.client?.id ? `client_id: ${params.client.id}` : null,
     params.client?.fio ? `client_name: ${params.client.fio}` : null,
     params.errorCode ? `error_code: ${params.errorCode}` : null,
-    params.errorMessage ? `error_message: ${params.errorMessage.slice(0, 500)}` : null,
-    typeof params.attemptCount === "number" ? `attempt_count: ${params.attemptCount}` : null,
-    typeof params.staleCount === "number" ? `stale_count: ${params.staleCount}` : null,
+    params.errorMessage
+      ? `error_message: ${params.errorMessage.slice(0, 500)}`
+      : null,
+    typeof params.attemptCount === "number"
+      ? `attempt_count: ${params.attemptCount}`
+      : null,
+    typeof params.staleCount === "number"
+      ? `stale_count: ${params.staleCount}`
+      : null,
     params.staleIds?.length ? `event_ids: ${params.staleIds.join(", ")}` : null,
   ].filter(Boolean);
 
@@ -315,7 +367,7 @@ async function getClient(clientId: string | null): Promise<ClientRow | null> {
 
   const { data, error } = await supabase
     .from("clients")
-    .select("id, fio, tgid, coach, balance")
+    .select("id, fio, email, tgid, coach, balance")
     .eq("id", clientId)
     .maybeSingle();
 
@@ -323,7 +375,9 @@ async function getClient(clientId: string | null): Promise<ClientRow | null> {
   return data as ClientRow | null;
 }
 
-async function getCoachProfile(coachHandle: string | null): Promise<CoachProfile | null> {
+async function getCoachProfile(
+  coachHandle: string | null,
+): Promise<CoachProfile | null> {
   if (!coachHandle) return null;
 
   const { data, error } = await supabase
@@ -349,6 +403,108 @@ function resultFromTelegram(telegram: SendResult): HandleResult {
     errorCode: telegram.errorCode ?? "telegram_send_failed",
     errorMessage: telegram.errorMessage ?? "Telegram send failed",
     telegram,
+  };
+}
+
+function resultFromEmail(email: SendResult): HandleResult {
+  if (email.ok) return { status: "sent", email };
+
+  const errorCode = email.errorCode ?? "resend_send_failed";
+  const status = EMAIL_NON_RETRYABLE_CODES.has(errorCode) ||
+      (email.status >= 400 && email.status < 500 && email.status !== 401 &&
+        email.status !== 403 && email.status !== 429)
+    ? "skipped"
+    : "failed";
+
+  return {
+    status,
+    errorCode,
+    errorMessage: email.errorMessage ?? "Resend send failed",
+    email,
+  };
+}
+
+function skipped(errorCode: string, errorMessage: string): HandleResult {
+  return { status: "skipped", errorCode, errorMessage };
+}
+
+function templateVersion(payload: Record<string, unknown>) {
+  const value = payload.template_version;
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  const text = asString(value).trim();
+  if (!text) return 0;
+  return Number(text);
+}
+
+function numericValue(value: unknown) {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  const text = asString(value).trim();
+  if (!text) return 0;
+  const parsed = Number(text);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function defaultTelegramUrl(payload: Record<string, unknown>) {
+  const explicit = pickValue(payload, ["telegram_url"]);
+  if (explicit) return explicit;
+
+  const token = pickValue(payload, ["tg_link_token"]);
+  if (token) {
+    return `https://t.me/IDCMAIN_bot?start=${encodeURIComponent(token)}`;
+  }
+
+  return "https://t.me/IDCMAIN_bot";
+}
+
+function resolveEmailContext(event: NotificationEvent, client: ClientRow) {
+  const payload = event.payload ?? {};
+  const recipientEmail = normalizeEmailAddress(
+    pickValue(payload, ["recipient_email"]) || asString(client.email),
+  );
+
+  if (!recipientEmail) {
+    return {
+      ok: false as const,
+      result: skipped("client_email_missing", "Client email is missing"),
+    };
+  }
+
+  if (templateVersion(payload) !== 1) {
+    return {
+      ok: false as const,
+      result: skipped(
+        "template_data_missing",
+        "Template version is missing or unsupported",
+      ),
+    };
+  }
+
+  const senderProfile = resolveSenderProfile(payload.sender_profile);
+
+  if (!senderProfile.ok) {
+    return {
+      ok: false as const,
+      result: skipped(senderProfile.errorCode, senderProfile.errorMessage),
+    };
+  }
+
+  const currencyProfile = validateSenderProfileCurrency(
+    payload.currency,
+    senderProfile.profile,
+  );
+
+  if (!currencyProfile.ok) {
+    return {
+      ok: false as const,
+      result: skipped(currencyProfile.errorCode, currencyProfile.errorMessage),
+    };
+  }
+
+  return {
+    ok: true as const,
+    payload,
+    recipientEmail,
+    senderProfile: senderProfile.profile,
   };
 }
 
@@ -410,11 +566,14 @@ async function handleFirstLesson(event: NotificationEvent, client: ClientRow) {
   const chatId = asString(client.tgid);
 
   if (!chatId) {
-    const result = await sendAdminText([
-      "Не удалось связаться с клиентом после первого пробного занятия.",
-      `Имя: ${clientName(client, event.payload ?? {})}`,
-      "Причина: нет Telegram / email",
-    ].join("\n"), "admin:first_lesson_followup_missing_client_contact");
+    const result = await sendAdminText(
+      [
+        "Не удалось связаться с клиентом после первого пробного занятия.",
+        `Имя: ${clientName(client, event.payload ?? {})}`,
+        "Причина: нет Telegram / email",
+      ].join("\n"),
+      "admin:first_lesson_followup_missing_client_contact",
+    );
 
     return resultFromTelegram(result);
   }
@@ -442,10 +601,16 @@ async function handleFirstLesson(event: NotificationEvent, client: ClientRow) {
   return resultFromTelegram(second);
 }
 
-async function handleAttendanceBalance(event: NotificationEvent, client: ClientRow) {
+async function handleAttendanceBalance(
+  event: NotificationEvent,
+  client: ClientRow,
+) {
   const payload = event.payload ?? {};
-  const trainingFormat = (asString(payload.training_format) || asString(payload.format)).toLowerCase();
-  const trainingDate = asString(payload.training_date) || asString(payload.workout_date) || asString(payload.date);
+  const trainingFormat =
+    (asString(payload.training_format) || asString(payload.format))
+      .toLowerCase();
+  const trainingDate = asString(payload.training_date) ||
+    asString(payload.workout_date) || asString(payload.date);
   const balance = payload.balance_after ?? client.balance ?? "";
   const currency = payload.currency ?? "RUB";
   let text: string;
@@ -467,7 +632,9 @@ async function handleAttendanceBalance(event: NotificationEvent, client: ClientR
     ].join("\n");
   }
 
-  return resultFromTelegram(await sendClientText(client, text, "client:attendance_balance_client"));
+  return resultFromTelegram(
+    await sendClientText(client, text, "client:attendance_balance_client"),
+  );
 }
 
 async function handleBalanceZero(event: NotificationEvent, client: ClientRow) {
@@ -476,25 +643,36 @@ async function handleBalanceZero(event: NotificationEvent, client: ClientRow) {
     "Хочешь продолжить? Просто нажми «Купить тренировки» и пополни баланс — и ты снова в деле! 💪",
   ].join("\n");
 
-  return resultFromTelegram(await sendClientText(client, text, `client:${event.event_type}`));
+  return resultFromTelegram(
+    await sendClientText(client, text, `client:${event.event_type}`),
+  );
 }
 
-async function handleBalanceNegative(event: NotificationEvent, client: ClientRow) {
+async function handleBalanceNegative(
+  event: NotificationEvent,
+  client: ClientRow,
+) {
   const text = [
     "Небольшое напоминание 💬",
     "У тебя отрицательный баланс, необходимо его пополнить ❤️",
     "Просто нажми «Купить тренировки» и пополни баланс — и ты снова в деле! 💪",
   ].join("\n");
 
-  return resultFromTelegram(await sendClientText(client, text, `client:${event.event_type}`));
+  return resultFromTelegram(
+    await sendClientText(client, text, `client:${event.event_type}`),
+  );
 }
 
-async function handleWrOffClient(event: NotificationEvent, client: ClientRow) {
-  const first = await sendClientText(client, [
-    "Привет!",
-    "Твой абонемент закончился 💔",
-    "Как тебе наши тренировки? Мы будем рады видеть тебя снова!",
-  ].join("\n"), "client:subscription_wr_off_client:first");
+async function handleWrOffClient(_event: NotificationEvent, client: ClientRow) {
+  const first = await sendClientText(
+    client,
+    [
+      "Привет!",
+      "Твой абонемент закончился 💔",
+      "Как тебе наши тренировки? Мы будем рады видеть тебя снова!",
+    ].join("\n"),
+    "client:subscription_wr_off_client:first",
+  );
 
   if (!first.ok) return resultFromTelegram(first);
 
@@ -521,7 +699,9 @@ async function handleBalanceThresholdAdmin(
     `Тренер: ${trainerName(client, payload, coach)}`,
   ].join("\n");
 
-  return resultFromTelegram(await sendAdminText(text, "admin:balance_threshold_admin"));
+  return resultFromTelegram(
+    await sendAdminText(text, "admin:balance_threshold_admin"),
+  );
 }
 
 async function handleWrOffAdmin(
@@ -538,10 +718,14 @@ async function handleWrOffAdmin(
     "Событие: wr_off",
   ].join("\n");
 
-  return resultFromTelegram(await sendAdminText(text, "admin:subscription_wr_off_admin"));
+  return resultFromTelegram(
+    await sendAdminText(text, "admin:subscription_wr_off_admin"),
+  );
 }
 
-async function handleBalanceThresholdTrainer(event: NotificationEvent) {
+async function handleBalanceThresholdTrainer(
+  event: NotificationEvent,
+): Promise<HandleResult> {
   const payload = event.payload ?? {};
   const chatId = trainerTelegramId(payload);
 
@@ -560,15 +744,19 @@ async function handleBalanceThresholdTrainer(event: NotificationEvent) {
     `Тренер: ${trainerName(null, payload)}`,
   ].join("\n");
 
-  return resultFromTelegram(await sendTelegramWithRetry({
-    botToken: CLIENT_BOT_TOKEN,
-    chatId,
-    text,
-    target: "trainer:balance_threshold_trainer",
-  }));
+  return resultFromTelegram(
+    await sendTelegramWithRetry({
+      botToken: CLIENT_BOT_TOKEN,
+      chatId,
+      text,
+      target: "trainer:balance_threshold_trainer",
+    }),
+  );
 }
 
-async function handleSubscriptionPurchaseTrainer(event: NotificationEvent) {
+async function handleSubscriptionPurchaseTrainer(
+  event: NotificationEvent,
+): Promise<HandleResult> {
   const payload = event.payload ?? {};
   const coachHandle = pickValue(payload, ["coach"]);
 
@@ -595,19 +783,90 @@ async function handleSubscriptionPurchaseTrainer(event: NotificationEvent) {
     "",
     `👤 Имя: ${clientName(null, payload)}`,
     `📚 Кол-во занятий: ${asString(payload.lessons).trim() || "—"}`,
-    `💰 Текущий баланс: ${formatBalance(payload.balance_after, payload.currency ?? "RUB")}`,
+    `💰 Текущий баланс: ${
+      formatBalance(payload.balance_after, payload.currency ?? "RUB")
+    }`,
   ].join("\n");
 
-  return resultFromTelegram(await sendTelegramWithRetry({
-    botToken: CLIENT_BOT_TOKEN,
-    chatId,
-    text,
-    target: "trainer:subscription_purchase_trainer",
-  }));
+  return resultFromTelegram(
+    await sendTelegramWithRetry({
+      botToken: CLIENT_BOT_TOKEN,
+      chatId,
+      text,
+      target: "trainer:subscription_purchase_trainer",
+    }),
+  );
+}
+
+async function handleFirstOnlinePurchaseWelcomeEmail(
+  event: NotificationEvent,
+  client: ClientRow,
+) {
+  const context = resolveEmailContext(event, client);
+  if (!context.ok) return context.result;
+
+  const courseName = pickValue(context.payload, ["course_name"]);
+  const tariffLabel = pickValue(context.payload, ["tariff_label"]) ||
+    courseName;
+  const validWeeks = numericValue(context.payload.valid_weeks);
+
+  if (!courseName && !tariffLabel) {
+    return skipped(
+      "template_data_missing",
+      "Course or tariff label is missing",
+    );
+  }
+
+  if (!validWeeks || validWeeks <= 0) {
+    return skipped("duration_mapping_missing", "Valid weeks is missing");
+  }
+
+  const email = buildFirstOnlinePurchaseWelcomeEmail({
+    clientName: clientName(client, context.payload),
+    courseName: courseName || tariffLabel,
+    tariffLabel,
+    validWeeks,
+    telegramUrl: defaultTelegramUrl(context.payload),
+  });
+
+  return resultFromEmail(
+    await sendResendEmail({
+      profile: context.senderProfile,
+      idempotencyKey: `client-notification-event/${event.id}`,
+      email: {
+        ...email,
+        to: context.recipientEmail,
+      },
+    }),
+  );
+}
+
+async function handleStrengthTestInstructionEmail(
+  event: NotificationEvent,
+  client: ClientRow,
+) {
+  const context = resolveEmailContext(event, client);
+  if (!context.ok) return context.result;
+
+  const template = buildStrengthTestInstructionEmail();
+
+  return resultFromEmail(
+    await sendResendEmail({
+      profile: context.senderProfile,
+      idempotencyKey: `client-notification-event/${event.id}`,
+      email: {
+        ...template,
+        to: context.recipientEmail,
+      },
+    }),
+  );
 }
 
 async function deliverEvent(event: NotificationEvent): Promise<HandleResult> {
-  if (event.channel !== "telegram" && event.channel !== "admin_telegram") {
+  if (
+    event.channel !== "telegram" && event.channel !== "admin_telegram" &&
+    event.channel !== "email"
+  ) {
     return {
       status: "skipped",
       errorCode: "unsupported_channel",
@@ -626,7 +885,10 @@ async function deliverEvent(event: NotificationEvent): Promise<HandleResult> {
 
   const coach = await getCoachProfile(client.coach);
 
-  if (event.recipient_type !== "client" && event.recipient_type !== "trainer" && event.recipient_type !== "coach" && event.recipient_type !== "admin") {
+  if (
+    event.recipient_type !== "client" && event.recipient_type !== "trainer" &&
+    event.recipient_type !== "coach" && event.recipient_type !== "admin"
+  ) {
     return {
       status: "skipped",
       errorCode: "unsupported_recipient_type",
@@ -634,7 +896,34 @@ async function deliverEvent(event: NotificationEvent): Promise<HandleResult> {
     };
   }
 
+  if (
+    event.channel === "email" &&
+    event.event_type !== "first_online_purchase_welcome_email" &&
+    event.event_type !== "strength_test_instruction_email"
+  ) {
+    return skipped(
+      "unsupported_event_type",
+      `Unsupported email event_type: ${event.event_type}`,
+    );
+  }
+
   switch (event.event_type) {
+    case "first_online_purchase_welcome_email":
+      if (event.channel !== "email") {
+        return skipped(
+          "unsupported_channel",
+          `Unsupported channel for ${event.event_type}: ${event.channel}`,
+        );
+      }
+      return await handleFirstOnlinePurchaseWelcomeEmail(event, client);
+    case "strength_test_instruction_email":
+      if (event.channel !== "email") {
+        return skipped(
+          "unsupported_channel",
+          `Unsupported channel for ${event.event_type}: ${event.channel}`,
+        );
+      }
+      return await handleStrengthTestInstructionEmail(event, client);
     case "first_lesson_followup":
       return await handleFirstLesson(event, client);
     case "attendance_balance_client":
@@ -673,6 +962,11 @@ async function updateEventFinal(eventId: string, result: HandleResult) {
     patch.sent_at = new Date().toISOString();
     patch.error_code = null;
     patch.error_message = null;
+
+    if (result.email?.providerMessageId) {
+      patch.provider = "resend";
+      patch.provider_message_id = result.email.providerMessageId;
+    }
   } else {
     patch.error_code = result.errorCode;
     patch.error_message = result.errorMessage.slice(0, 500);
@@ -705,6 +999,23 @@ async function processEvent(eventId: string) {
       status: event.status,
     });
     return { ok: true, status: event.status, reason: "already_finalized" };
+  }
+
+  if (event.next_attempt_at) {
+    const waitMs = new Date(event.next_attempt_at).getTime() - Date.now();
+
+    if (waitMs > MAX_NOT_READY_WAIT_MS) {
+      return {
+        ok: true,
+        status: event.status,
+        reason: "not_ready",
+        nextAttemptAt: event.next_attempt_at,
+      };
+    }
+
+    if (waitMs > 0) {
+      await sleep(waitMs);
+    }
   }
 
   if (event.status === "processing") {
@@ -768,7 +1079,12 @@ async function processEvent(eventId: string) {
       attemptCount: (processingEvent.attempt_count ?? 0),
     }));
 
-    return { ok: false, status: "failed", errorCode: failure.errorCode, errorMessage };
+    return {
+      ok: false,
+      status: "failed",
+      errorCode: failure.errorCode,
+      errorMessage,
+    };
   }
 }
 
@@ -783,7 +1099,8 @@ function isStale(event: NotificationEvent) {
 
 function isAlertThrottleOpen(event: NotificationEvent) {
   if (!event.last_alerted_at) return true;
-  return Date.now() - new Date(event.last_alerted_at).getTime() >= STALE_ALERT_THROTTLE_MS;
+  return Date.now() - new Date(event.last_alerted_at).getTime() >=
+    STALE_ALERT_THROTTLE_MS;
 }
 
 async function finalizeStaleEvents() {
@@ -817,7 +1134,8 @@ async function finalizeStaleEvents() {
       .update({
         status: "failed",
         error_code: code,
-        error_message: "Notification event became stale without confirmed Edge Function completion",
+        error_message:
+          "Notification event became stale without confirmed Edge Function completion",
         updated_at: now,
         next_attempt_at: null,
       })
@@ -832,7 +1150,8 @@ async function finalizeStaleEvents() {
     staleCount: ids.length,
     staleIds: ids,
     errorCode: "stale_notification_events_finalized",
-    errorMessage: "Pending/processing notification events were marked failed without sending client notifications",
+    errorMessage:
+      "Pending/processing notification events were marked failed without sending client notifications",
   }));
 
   if (alertSent) {
@@ -878,12 +1197,17 @@ Deno.serve(async (req) => {
     return jsonResponse(result);
   } catch (error) {
     const errorMessage = safeErrorMessage(error);
-    console.error("client_notifications_engine_unhandled_error", { errorMessage });
+    console.error("client_notifications_engine_unhandled_error", {
+      errorMessage,
+    });
     await sendErrorAlert([
       "IDC notification engine unhandled error",
       `error_message: ${errorMessage.slice(0, 500)}`,
     ].join("\n"));
 
-    return jsonResponse({ ok: false, error: "internal_error", errorMessage }, 500);
+    return jsonResponse(
+      { ok: false, error: "internal_error", errorMessage },
+      500,
+    );
   }
 });
