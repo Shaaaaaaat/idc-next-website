@@ -15,6 +15,8 @@ export type CoachWorkoutExercise = {
   tempo?: string;
   notes?: string;
   sortOrder?: number;
+  videoUrl?: string;
+  thumbnailUrl?: string;
 };
 
 export type CoachWorkoutExerciseGroup = {
@@ -32,6 +34,7 @@ export type CoachWorkout = {
   clientId: string;
   date: string;
   title: string;
+  status?: string;
   exercises: CoachWorkoutExercise[];
   groups?: CoachWorkoutExerciseGroup[];
   coachComment?: string;
@@ -124,6 +127,23 @@ type ProgramExerciseGroupRow = {
   sort_order?: number | null;
 };
 
+type ExerciseMediaRow = {
+  id?: string | null;
+  video_url?: string | null;
+  thumbnail_url?: string | null;
+};
+
+type ReadWorkoutsForStudentParams = {
+  studentId: string;
+  fromDate?: string;
+  toDate?: string;
+  workoutId?: string;
+};
+
+type ReadWorkoutsForStudentOptions = {
+  strict?: boolean;
+};
+
 function firstString(...values: unknown[]): string {
   for (const value of values) {
     const raw = String(value || "").trim();
@@ -161,18 +181,23 @@ function exerciseDetails(row: ProgramExerciseRow): string {
     .join(" · ");
 }
 
-function groupExercisesByWorkout(rows: ProgramExerciseRow[]): Map<string, CoachWorkoutExercise[]> {
+function groupExercisesByWorkout(
+  rows: ProgramExerciseRow[],
+  mediaByExerciseId: Map<string, ExerciseMediaRow> = new Map()
+): Map<string, CoachWorkoutExercise[]> {
   const map = new Map<string, CoachWorkoutExercise[]>();
   for (const row of rows) {
     const workoutId = String(row.client_program_workout_id || "").trim();
     const title = String(row.exercise_title || "").trim();
     if (!workoutId || !title) continue;
 
+    const exerciseId = cleanOptional(row.exercise_id) || undefined;
+    const media = exerciseId ? mediaByExerciseId.get(exerciseId) : undefined;
     const list = map.get(workoutId) || [];
     list.push({
       id: cleanOptional(row.id) || undefined,
       groupId: row.exercise_group_id || undefined,
-      exerciseId: row.exercise_id || undefined,
+      exerciseId,
       title,
       details: exerciseDetails(row) || undefined,
       sets: row.sets || undefined,
@@ -181,6 +206,8 @@ function groupExercisesByWorkout(rows: ProgramExerciseRow[]): Map<string, CoachW
       tempo: row.tempo || undefined,
       notes: row.notes || undefined,
       sortOrder: row.sort_order ?? undefined,
+      videoUrl: cleanOptional(media?.video_url) || undefined,
+      thumbnailUrl: cleanOptional(media?.thumbnail_url) || undefined,
     });
     map.set(workoutId, list);
   }
@@ -253,11 +280,108 @@ function normalizeWorkout(
     clientId,
     date,
     title: firstString(row.title, "Тренировка"),
+    status: firstString(row.status) || undefined,
     exercises: orderedExercises,
     groups,
     coachComment: firstString(row.coach_comment) || undefined,
     updatedAt: cleanOptional(row.updated_at) || undefined,
   };
+}
+
+async function readWorkoutsForStudent(
+  params: ReadWorkoutsForStudentParams,
+  options: ReadWorkoutsForStudentOptions = {}
+): Promise<CoachWorkout[]> {
+  if (!isSupabaseEnabled("read_coach_lk")) return [];
+  const sb = getSupabaseAdmin();
+  if (!sb) return [];
+
+  const studentId = String(params.studentId || "").trim();
+  const workoutId = String(params.workoutId || "").trim();
+  if (!studentId) return [];
+
+  let workoutsQuery = sb
+    .from("client_program_workouts")
+    .select("id, client_id, workout_date, title, coach_comment, status, updated_at")
+    .eq("client_id", studentId);
+
+  if (workoutId) {
+    workoutsQuery = workoutsQuery.eq("id", workoutId);
+  } else {
+    workoutsQuery = workoutsQuery
+      .gte("workout_date", String(params.fromDate || ""))
+      .lte("workout_date", String(params.toDate || ""));
+  }
+
+  const { data: workouts, error: workoutsErr } = await workoutsQuery
+    .order("workout_date", { ascending: true });
+
+  if (workoutsErr) throw workoutsErr;
+
+  const workoutRows = (Array.isArray(workouts) ? workouts : []) as ProgramWorkoutRow[];
+  const workoutIds = workoutRows.map((workout) => workout.id).filter(Boolean);
+  if (workoutIds.length === 0) return [];
+
+  const { data: exercises, error: exercisesErr } = await sb
+    .from("client_program_exercises")
+    .select("id, client_program_workout_id, exercise_group_id, exercise_id, exercise_title, sets, reps, rest, tempo, notes, sort_order")
+    .in("client_program_workout_id", workoutIds)
+    .order("sort_order", { ascending: true });
+
+  if (exercisesErr) {
+    if (options.strict) throw exercisesErr;
+    console.warn("[supabase/coachWorkouts] client_program_exercises query failed", exercisesErr.message);
+  }
+
+  const exerciseRows = (!exercisesErr && Array.isArray(exercises) ? exercises : []) as ProgramExerciseRow[];
+  const exerciseIds = Array.from(
+    new Set(
+      exerciseRows
+        .map((exercise) => cleanOptional(exercise.exercise_id))
+        .filter((exerciseId): exerciseId is string => Boolean(exerciseId))
+    )
+  );
+  const mediaByExerciseId = new Map<string, ExerciseMediaRow>();
+
+  if (exerciseIds.length > 0) {
+    const { data: mediaRows, error: mediaErr } = await sb
+      .from("exercise_library")
+      .select("id, video_url, thumbnail_url")
+      .in("id", exerciseIds);
+
+    if (mediaErr) {
+      if (options.strict) throw mediaErr;
+      console.warn("[supabase/coachWorkouts] exercise_library media query failed", mediaErr.message);
+    }
+
+    for (const row of (!mediaErr && Array.isArray(mediaRows) ? mediaRows : []) as ExerciseMediaRow[]) {
+      const id = cleanOptional(row.id);
+      if (id) mediaByExerciseId.set(id, row);
+    }
+  }
+
+  const exercisesByWorkout = groupExercisesByWorkout(exerciseRows, mediaByExerciseId);
+
+  const { data: groups, error: groupsErr } = await sb
+    .from("client_program_exercise_groups")
+    .select("id, client_program_workout_id, title, sets, rest, notes, sort_order")
+    .in("client_program_workout_id", workoutIds)
+    .order("sort_order", { ascending: true });
+
+  if (groupsErr) {
+    if (options.strict) throw groupsErr;
+    console.warn("[supabase/coachWorkouts] client_program_exercise_groups query failed", groupsErr.message);
+  }
+
+  const groupsByWorkout = groupExerciseGroupsByWorkout(
+    (!groupsErr && Array.isArray(groups) ? groups : []) as ProgramExerciseGroupRow[],
+    exercisesByWorkout
+  );
+
+  return workoutRows
+    .map((workout) => normalizeWorkout(workout, exercisesByWorkout, groupsByWorkout))
+    .filter((workout): workout is CoachWorkout => Boolean(workout))
+    .sort((a, b) => a.date.localeCompare(b.date) || a.title.localeCompare(b.title, "ru"));
 }
 
 async function assertCoachOwnsStudent(coachEmail: string, studentId: string) {
@@ -425,65 +549,44 @@ export async function getCoachWorkoutsForStudent(params: {
   fromDate: string;
   toDate: string;
 }): Promise<CoachWorkout[]> {
-  if (!isSupabaseEnabled("read_coach_lk")) return [];
-  const sb = getSupabaseAdmin();
-  if (!sb) return [];
-
-  const studentId = String(params.studentId || "").trim();
-  if (!studentId) return [];
-
   try {
-    const { data: workouts, error: workoutsErr } = await sb
-      .from("client_program_workouts")
-      .select("id, client_id, workout_date, title, coach_comment, status, updated_at")
-      .eq("client_id", studentId)
-      .gte("workout_date", params.fromDate)
-      .lte("workout_date", params.toDate)
-      .order("workout_date", { ascending: true });
-
-    if (workoutsErr) {
-      console.warn("[supabase/coachWorkouts] client_program_workouts query failed", workoutsErr.message);
-      return [];
-    }
-
-    const workoutRows = (Array.isArray(workouts) ? workouts : []) as ProgramWorkoutRow[];
-    const workoutIds = workoutRows.map((workout) => workout.id).filter(Boolean);
-    if (workoutIds.length === 0) return [];
-
-    const { data: exercises, error: exercisesErr } = await sb
-      .from("client_program_exercises")
-      .select("id, client_program_workout_id, exercise_group_id, exercise_id, exercise_title, sets, reps, rest, tempo, notes, sort_order")
-      .in("client_program_workout_id", workoutIds)
-      .order("sort_order", { ascending: true });
-
-    if (exercisesErr) {
-      console.warn("[supabase/coachWorkouts] client_program_exercises query failed", exercisesErr.message);
-    }
-
-    const exercisesByWorkout = groupExercisesByWorkout((Array.isArray(exercises) ? exercises : []) as ProgramExerciseRow[]);
-
-    const { data: groups, error: groupsErr } = await sb
-      .from("client_program_exercise_groups")
-      .select("id, client_program_workout_id, title, sets, rest, notes, sort_order")
-      .in("client_program_workout_id", workoutIds)
-      .order("sort_order", { ascending: true });
-
-    if (groupsErr) {
-      console.warn("[supabase/coachWorkouts] client_program_exercise_groups query failed", groupsErr.message);
-    }
-
-    const groupsByWorkout = groupExerciseGroupsByWorkout(
-      (Array.isArray(groups) ? groups : []) as ProgramExerciseGroupRow[],
-      exercisesByWorkout
-    );
-
-    return workoutRows
-      .map((workout) => normalizeWorkout(workout, exercisesByWorkout, groupsByWorkout))
-      .filter((workout): workout is CoachWorkout => Boolean(workout))
-      .sort((a, b) => a.date.localeCompare(b.date) || a.title.localeCompare(b.title, "ru"));
+    return await readWorkoutsForStudent(params);
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     console.warn("[supabase/coachWorkouts] getCoachWorkoutsForStudent crashed", msg);
     return [];
   }
+}
+
+export async function getStudentWorkoutsReadOnly(params: {
+  studentId: string;
+  fromDate: string;
+  toDate: string;
+}): Promise<CoachWorkout[]> {
+  return await readWorkoutsForStudent(params, { strict: true });
+}
+
+export async function getCoachWorkoutForStudentById(params: {
+  studentId: string;
+  workoutId: string;
+}): Promise<CoachWorkout | null> {
+  const workouts = await readWorkoutsForStudent({
+    studentId: params.studentId,
+    workoutId: params.workoutId,
+  });
+  return workouts[0] ?? null;
+}
+
+export async function getStudentWorkoutReadOnlyById(params: {
+  studentId: string;
+  workoutId: string;
+}): Promise<CoachWorkout | null> {
+  const workouts = await readWorkoutsForStudent(
+    {
+      studentId: params.studentId,
+      workoutId: params.workoutId,
+    },
+    { strict: true }
+  );
+  return workouts[0] ?? null;
 }

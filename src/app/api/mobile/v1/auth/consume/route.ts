@@ -1,13 +1,27 @@
-import { consumeMagicLink, revokeSession, validateSession } from "@/lib/auth/lkAuth";
+import { consumeMagicLink, revokeSession } from "@/lib/auth/lkAuth";
 import { getActiveStudentIdentityByEmail } from "@/lib/supabase/studentAccess";
 import { mobileError, mobileJson } from "@/app/api/mobile/v1/_lib/responses";
 
 export const runtime = "nodejs";
 
-function isSessionTokenPayload(data: unknown): data is { ok: true; session_token: string } {
+function isSessionTokenPayload(
+  data: unknown
+): data is {
+  ok: true;
+  session_token: string;
+  email: string;
+} {
   if (!data || typeof data !== "object") return false;
+
   const rec = data as Record<string, unknown>;
-  return rec.ok === true && typeof rec.session_token === "string" && rec.session_token.length > 0;
+
+  return (
+    rec.ok === true &&
+    typeof rec.session_token === "string" &&
+    rec.session_token.length > 0 &&
+    typeof rec.email === "string" &&
+    rec.email.length > 0
+  );
 }
 
 async function revokeBestEffort(sessionToken: string) {
@@ -26,18 +40,15 @@ export async function POST(req: Request) {
   }
 
   const consumed = await consumeMagicLink(token);
+
   if (!consumed.ok || !isSessionTokenPayload(consumed.data)) {
     return mobileError("UNAUTHORIZED", 401, "Invalid or expired token");
   }
 
   const sessionToken = consumed.data.session_token;
-  const validated = await validateSession(sessionToken);
-  if (!validated.ok || !validated.data?.email) {
-    await revokeBestEffort(sessionToken);
-    return mobileError("UNAUTHORIZED", 401, "Invalid session");
-  }
+  const email = consumed.data.email;
+  const student = await getActiveStudentIdentityByEmail(email);
 
-  const student = await getActiveStudentIdentityByEmail(validated.data.email);
   if (!student.ok) {
     await revokeBestEffort(sessionToken);
     if (student.reason === "disabled" || student.reason === "db_error") {
@@ -47,7 +58,7 @@ export async function POST(req: Request) {
   }
 
   return mobileJson({
-    sessionToken,
+    session_token: sessionToken,
     user: {
       email: student.student.email,
       clientId: student.student.clientId,

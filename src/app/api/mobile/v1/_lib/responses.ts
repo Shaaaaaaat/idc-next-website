@@ -5,6 +5,7 @@ export type MobileErrorCode =
   | "UNAUTHORIZED"
   | "FORBIDDEN"
   | "INVALID_INPUT"
+  | "NOT_FOUND"
   | "INTERNAL_ERROR";
 
 const MESSAGE_BY_CODE: Record<MobileErrorCode, string> = {
@@ -12,6 +13,7 @@ const MESSAGE_BY_CODE: Record<MobileErrorCode, string> = {
   UNAUTHORIZED: "Authentication required",
   FORBIDDEN: "Access denied",
   INVALID_INPUT: "Invalid input",
+  NOT_FOUND: "Not found",
   INTERNAL_ERROR: "Internal server error",
 };
 
