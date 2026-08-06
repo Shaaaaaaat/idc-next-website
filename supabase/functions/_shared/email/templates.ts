@@ -4,6 +4,7 @@ const TRUECOACH_IOS_URL =
   "https://apps.apple.com/am/app/truecoach-for-clients/id1439127794";
 const TRUECOACH_ANDROID_URL =
   "https://play.google.com/store/apps/details?id=co.truecoach.client";
+const MANAGER_TELEGRAM_URL = "http://t.me/idc_manager";
 
 export type WelcomeTemplateInput = {
   clientName: string;
@@ -220,6 +221,74 @@ export function buildStrengthTestInstructionEmail(): Omit<EmailPayload, "to"> {
     importantCardHtml(instructionParagraphHtml(paragraphs[1])),
     importantCardHtml(instructionParagraphHtml(paragraphs[2])),
     mutedCardHtml(instructionParagraphHtml(paragraphs[3])),
+  ].join("\n"));
+
+  return {
+    subject,
+    html,
+    text: paragraphs.join("\n\n"),
+  };
+}
+
+export function buildFirstLessonFollowupEmail(): Omit<EmailPayload, "to"> {
+  const subject = "🎉 Поздравляем с первой тренировкой!";
+  const paragraphs = [
+    "Ура! Начало пути в калистенике положено 🎉",
+    "Надеемся, тебе всё понравилось 😊",
+    "Если ты хочешь продолжить тренировки, выбери удобный вариант:",
+    "1. Свяжись с нашим менеджером Никитой — он ответит на вопросы и поможет подобрать подходящий формат занятий:",
+    MANAGER_TELEGRAM_URL,
+    "2. Или сразу приобрети новый тариф на нашем сайте.",
+    "Будем рады видеть тебя снова на тренировках! 💪",
+  ];
+
+  const html = emailShell([
+    paragraphHtml([
+      paragraphs[0],
+      paragraphs[1],
+      paragraphs[2],
+    ]),
+    mutedCardHtml(paragraphHtml([
+      "Свяжись с нашим менеджером Никитой — он ответит на вопросы и поможет подобрать подходящий формат занятий.",
+    ])),
+    buttonHtml("Связаться с Никитой", MANAGER_TELEGRAM_URL),
+    paragraphHtml([
+      paragraphs[5],
+      paragraphs[6],
+    ]),
+  ].join("\n"));
+
+  return {
+    subject,
+    html,
+    text: paragraphs.join("\n\n"),
+  };
+}
+
+export function buildSubscriptionWrOffClientEmail(): Omit<EmailPayload, "to"> {
+  const subject = "💙 Ждём тебя снова на тренировках";
+  const paragraphs = [
+    "Привет!",
+    "Твой абонемент закончился 💔",
+    "Спасибо, что тренировался вместе с нами! Надеемся, занятия были полезными и помогли приблизиться к твоим целям.",
+    "Если у тебя остался положительный баланс или ты хочешь продолжить тренировки, свяжись, пожалуйста, с нашим менеджером Никитой:",
+    MANAGER_TELEGRAM_URL,
+    "Он поможет проверить баланс, подобрать подходящий формат занятий и ответит на вопросы.",
+    "Будем рады видеть тебя снова! 💪",
+  ];
+
+  const html = emailShell([
+    paragraphHtml([
+      paragraphs[0],
+      paragraphs[1],
+      paragraphs[2],
+      paragraphs[3],
+    ]),
+    buttonHtml("Связаться с Никитой", MANAGER_TELEGRAM_URL),
+    paragraphHtml([
+      paragraphs[5],
+      paragraphs[6],
+    ]),
   ].join("\n"));
 
   return {

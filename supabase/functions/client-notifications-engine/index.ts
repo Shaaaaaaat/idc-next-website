@@ -1,15 +1,19 @@
 import "@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "@supabase/supabase-js";
 import {
+  expectedSenderProfileForCurrency,
   normalizeEmailAddress,
   resolveSenderProfile,
   sendResendEmail,
   validateSenderProfileCurrency,
 } from "../_shared/email/resend.ts";
 import {
+  buildFirstLessonFollowupEmail,
   buildFirstOnlinePurchaseWelcomeEmail,
   buildStrengthTestInstructionEmail,
+  buildSubscriptionWrOffClientEmail,
 } from "../_shared/email/templates.ts";
+import type { EmailPayload } from "../_shared/email/types.ts";
 
 type NotificationEvent = {
   id: string;
@@ -428,6 +432,13 @@ function skipped(errorCode: string, errorMessage: string): HandleResult {
   return { status: "skipped", errorCode, errorMessage };
 }
 
+function unsupportedChannel(event: NotificationEvent): HandleResult {
+  return skipped(
+    "unsupported_channel",
+    `Unsupported channel for ${event.event_type}: ${event.channel}`,
+  );
+}
+
 function templateVersion(payload: Record<string, unknown>) {
   const value = payload.template_version;
   if (typeof value === "number" && Number.isFinite(value)) return value;
@@ -508,6 +519,74 @@ function resolveEmailContext(event: NotificationEvent, client: ClientRow) {
   };
 }
 
+function resolveLifecycleEmailContext(
+  event: NotificationEvent,
+  client: ClientRow,
+) {
+  const payload = event.payload ?? {};
+  const recipientEmail = normalizeEmailAddress(asString(client.email));
+
+  if (!recipientEmail) {
+    return {
+      ok: false as const,
+      result: skipped("client_email_missing", "Client email is missing"),
+    };
+  }
+
+  const profile = expectedSenderProfileForCurrency(payload.currency) || "rub";
+  const senderProfile = resolveSenderProfile(profile);
+
+  if (!senderProfile.ok) {
+    return {
+      ok: false as const,
+      result: {
+        status: "failed" as const,
+        errorCode: senderProfile.errorCode,
+        errorMessage: senderProfile.errorMessage,
+      },
+    };
+  }
+
+  const currencyProfile = validateSenderProfileCurrency(
+    payload.currency,
+    senderProfile.profile,
+  );
+
+  if (!currencyProfile.ok) {
+    return {
+      ok: false as const,
+      result: skipped(currencyProfile.errorCode, currencyProfile.errorMessage),
+    };
+  }
+
+  return {
+    ok: true as const,
+    payload,
+    recipientEmail,
+    senderProfile: senderProfile.profile,
+  };
+}
+
+async function sendLifecycleEmail(params: {
+  event: NotificationEvent;
+  client: ClientRow;
+  template: Omit<EmailPayload, "to">;
+}) {
+  const context = resolveLifecycleEmailContext(params.event, params.client);
+  if (!context.ok) return context.result;
+
+  return resultFromEmail(
+    await sendResendEmail({
+      profile: context.senderProfile,
+      idempotencyKey: `client-notification-event/${params.event.id}`,
+      email: {
+        ...params.template,
+        to: context.recipientEmail,
+      },
+    }),
+  );
+}
+
 function yesNoKeyboard(): ReplyMarkup {
   return {
     inline_keyboard: [
@@ -562,7 +641,10 @@ async function sendAdminText(text: string, target: string) {
   });
 }
 
-async function handleFirstLesson(event: NotificationEvent, client: ClientRow) {
+async function handleFirstLessonTelegram(
+  event: NotificationEvent,
+  client: ClientRow,
+) {
   const chatId = asString(client.tgid);
 
   if (!chatId) {
@@ -575,7 +657,16 @@ async function handleFirstLesson(event: NotificationEvent, client: ClientRow) {
       "admin:first_lesson_followup_missing_client_contact",
     );
 
-    return resultFromTelegram(result);
+    if (!result.ok) {
+      console.warn("first_lesson_admin_fallback_failed", {
+        eventId: event.id,
+        clientId: client.id,
+        errorCode: result.errorCode,
+        errorMessage: result.errorMessage,
+      });
+    }
+
+    return skipped("client_telegram_missing", "Client tgid is missing");
   }
 
   const first = await sendTelegramWithRetry({
@@ -599,6 +690,17 @@ async function handleFirstLesson(event: NotificationEvent, client: ClientRow) {
   });
 
   return resultFromTelegram(second);
+}
+
+async function handleFirstLessonEmail(
+  event: NotificationEvent,
+  client: ClientRow,
+) {
+  return await sendLifecycleEmail({
+    event,
+    client,
+    template: buildFirstLessonFollowupEmail(),
+  });
 }
 
 async function handleAttendanceBalance(
@@ -663,7 +765,10 @@ async function handleBalanceNegative(
   );
 }
 
-async function handleWrOffClient(_event: NotificationEvent, client: ClientRow) {
+async function handleWrOffClientTelegram(
+  _event: NotificationEvent,
+  client: ClientRow,
+) {
   const first = await sendClientText(
     client,
     [
@@ -684,6 +789,17 @@ async function handleWrOffClient(_event: NotificationEvent, client: ClientRow) {
   );
 
   return resultFromTelegram(second);
+}
+
+async function handleWrOffClientEmail(
+  event: NotificationEvent,
+  client: ClientRow,
+) {
+  return await sendLifecycleEmail({
+    event,
+    client,
+    template: buildSubscriptionWrOffClientEmail(),
+  });
 }
 
 async function handleBalanceThresholdAdmin(
@@ -896,51 +1012,53 @@ async function deliverEvent(event: NotificationEvent): Promise<HandleResult> {
     };
   }
 
-  if (
-    event.channel === "email" &&
-    event.event_type !== "first_online_purchase_welcome_email" &&
-    event.event_type !== "strength_test_instruction_email"
-  ) {
-    return skipped(
-      "unsupported_event_type",
-      `Unsupported email event_type: ${event.event_type}`,
-    );
-  }
-
   switch (event.event_type) {
     case "first_online_purchase_welcome_email":
       if (event.channel !== "email") {
-        return skipped(
-          "unsupported_channel",
-          `Unsupported channel for ${event.event_type}: ${event.channel}`,
-        );
+        return unsupportedChannel(event);
       }
       return await handleFirstOnlinePurchaseWelcomeEmail(event, client);
     case "strength_test_instruction_email":
       if (event.channel !== "email") {
-        return skipped(
-          "unsupported_channel",
-          `Unsupported channel for ${event.event_type}: ${event.channel}`,
-        );
+        return unsupportedChannel(event);
       }
       return await handleStrengthTestInstructionEmail(event, client);
     case "first_lesson_followup":
-      return await handleFirstLesson(event, client);
+      if (event.channel === "telegram") {
+        return await handleFirstLessonTelegram(event, client);
+      }
+      if (event.channel === "email") {
+        return await handleFirstLessonEmail(event, client);
+      }
+      return unsupportedChannel(event);
     case "attendance_balance_client":
+      if (event.channel !== "telegram") return unsupportedChannel(event);
       return await handleAttendanceBalance(event, client);
     case "balance_zero_client":
+      if (event.channel !== "telegram") return unsupportedChannel(event);
       return await handleBalanceZero(event, client);
     case "balance_negative_client":
+      if (event.channel !== "telegram") return unsupportedChannel(event);
       return await handleBalanceNegative(event, client);
     case "subscription_wr_off_client":
-      return await handleWrOffClient(event, client);
+      if (event.channel === "telegram") {
+        return await handleWrOffClientTelegram(event, client);
+      }
+      if (event.channel === "email") {
+        return await handleWrOffClientEmail(event, client);
+      }
+      return unsupportedChannel(event);
     case "subscription_wr_off_admin":
+      if (event.channel !== "admin_telegram") return unsupportedChannel(event);
       return await handleWrOffAdmin(event, client, coach);
     case "balance_threshold_admin":
+      if (event.channel !== "admin_telegram") return unsupportedChannel(event);
       return await handleBalanceThresholdAdmin(event, client, coach);
     case "balance_threshold_trainer":
+      if (event.channel !== "telegram") return unsupportedChannel(event);
       return await handleBalanceThresholdTrainer(event);
     case "subscription_purchase_trainer":
+      if (event.channel !== "telegram") return unsupportedChannel(event);
       return await handleSubscriptionPurchaseTrainer(event);
     default:
       return {
