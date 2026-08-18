@@ -11,38 +11,16 @@ import {
   getProductionCalendarOverride,
   getStudioDateTimesOverride,
 } from "@/data/productionCalendar";
+import {
+  getActiveScheduleExceptionsForRange,
+  type ScheduleExceptionRow,
+} from "@/lib/supabase/scheduleExceptions";
 
-type Rule = {
-  id: string;
-  studio_id?: string;
-  weekday?: number; // 0..6 (0 = Sunday)
-  start_time_local?: string; // "HH:mm"
-  active?: boolean;
-  product_scope?: string;
-};
+type Exception = ScheduleExceptionRow;
 
-type Exception = {
-  id: string;
-  type?: string; // "trainer_vacation" | "studio_closed" | ...
-  studio_id?: string;
-  product_scope?: string; // e.g. 'trial'
-  start_date?: string; // "YYYY-MM-DD"
-  end_date?: string; // "YYYY-MM-DD"
-  slot_id?: string; // optional, if exception targets a specific slot
-  message?: string;
-  status?: string; // "active" | "archived"
-};
-
-const AIRTABLE_API = "https://api.airtable.com/v0";
-const AIRTABLE_KEY = process.env.AIRTABLE_API_KEY!;
-const AIRTABLE_BASE_ID = process.env.AIRTABLE_BASE_ID!;
-const EXCEPTIONS_TABLE_ID = process.env.AIRTABLE_EXCEPTIONS_TABLE_ID!;
-
-if (!AIRTABLE_KEY || !AIRTABLE_BASE_ID) {
-  console.warn(
-    "[schedule] Missing AIRTABLE_API_KEY or AIRTABLE_BASE_ID in environment"
-  );
-}
+const DAY_MS = 24 * 60 * 60 * 1000;
+const MAX_EXTEND_DAYS = 7;
+const MSK_OFFSET_MIN = 180;
 
 function toTwo(n: number) {
   return String(n).padStart(2, "0");
@@ -52,28 +30,8 @@ function buildSlotId(studioId: string, y: number, m: number, d: number, hh: numb
   return `${studioId}-${y}-${toTwo(m)}-${toTwo(d)}-${toTwo(hh)}${toTwo(mm)}`;
 }
 
-function* iterateDays(startLocal: Date, days: number) {
-  const cur = new Date(startLocal.getTime());
-  for (let i = 0; i < days; i++) {
-    yield new Date(cur.getTime());
-    cur.setDate(cur.getDate() + 1);
-  }
-}
-
-async function fetchAirtableTable(tableId: string, revalidateSec = 60) {
-  const url = `${AIRTABLE_API}/${encodeURIComponent(AIRTABLE_BASE_ID)}/${encodeURIComponent(
-    tableId
-  )}?pageSize=100`;
-  const resp = await fetch(url, {
-    headers: { Authorization: `Bearer ${AIRTABLE_KEY}` },
-    next: { revalidate: revalidateSec },
-  });
-  if (!resp.ok) {
-    const text = await resp.text();
-    throw new Error(`Airtable fetch failed: ${resp.status} ${text}`);
-  }
-  const data = await resp.json();
-  return (data.records as any[]).map((r) => ({ id: r.id, ...(r.fields || {}) }));
+function dateKeyFromUtcDate(date: Date) {
+  return `${date.getUTCFullYear()}-${toTwo(date.getUTCMonth() + 1)}-${toTwo(date.getUTCDate())}`;
 }
 
 export async function GET(req: NextRequest) {
@@ -85,12 +43,6 @@ export async function GET(req: NextRequest) {
 
     if (!studioId) {
       return NextResponse.json({ error: "studioId is required" }, { status: 400 });
-    }
-    if (!AIRTABLE_KEY || !AIRTABLE_BASE_ID) {
-      return NextResponse.json(
-        { error: "Server is missing Airtable configuration (env vars)" },
-        { status: 500 }
-      );
     }
 
     // Type guard for known studio ids
@@ -106,29 +58,7 @@ export async function GET(req: NextRequest) {
     }
     const studioKey: StudioId = studioId;
 
-    // Load exceptions (optional)
-    let exceptions: Exception[] = [];
-    if (!EXCEPTIONS_TABLEID_MISSING_GUARD()) {
-      try {
-        const allEx = (await fetchAirtableTable(EXCEPTIONS_TABLE_ID, 60)) as any as Exception[];
-        exceptions = allEx.filter(
-          (e) =>
-            (e.status || "active") !== "archived" &&
-            (!e.studio_id || e.studio_id === studioKey) &&
-            (!e.product_scope || String(e.product_scope).toLowerCase() === product)
-        );
-      } catch (e) {
-        console.warn("[schedule] fetching exceptions failed, continuing without exceptions", e);
-      }
-    }
-
-    // Notices list (messages from exceptions)
-    const notices: string[] = [];
-
-    const resultSlots: { id: string; studioId: string; startAtLocal: string; startAtISO: string }[] = [];
-
     // compute base "today" in Moscow time (+03:00) and iterate from there
-    const MSK_OFFSET_MIN = 180;
     const nowUtc = new Date();
     const nowMsk = new Date(nowUtc.getTime() + MSK_OFFSET_MIN * 60 * 1000);
     const startOfTodayMskUtc = Date.UTC(
@@ -140,6 +70,39 @@ export async function GET(req: NextRequest) {
       0,
       0
     );
+    const rangeStart = dateKeyFromUtcDate(new Date(startOfTodayMskUtc));
+    const rangeEnd = dateKeyFromUtcDate(
+      new Date(startOfTodayMskUtc + (days + MAX_EXTEND_DAYS) * DAY_MS)
+    );
+
+    const exceptionsResult = await getActiveScheduleExceptionsForRange({
+      rangeStart,
+      rangeEnd,
+    });
+    if (!exceptionsResult.ok) {
+      console.warn("[schedule] schedule_exceptions query failed", exceptionsResult);
+      return NextResponse.json(
+        {
+          slots: [],
+          notices: ["Расписание временно недоступно. Попробуйте позже."],
+        },
+        { status: 503 }
+      );
+    }
+
+    const exceptions: Exception[] = exceptionsResult.exceptions.filter((e) => {
+      const exceptionStudio = String(e.studio_id || "").trim();
+      const exceptionProduct = String(e.product_scope || "").trim().toLowerCase();
+      return (
+        (!exceptionStudio || exceptionStudio === studioKey) &&
+        (!exceptionProduct || exceptionProduct === product)
+      );
+    });
+
+    // Notices list (messages from exceptions)
+    const notices: string[] = [];
+
+    const resultSlots: { id: string; studioId: string; startAtLocal: string; startAtISO: string }[] = [];
 
     const hd = new Holidays("RU");
     // Planned weekdays for this studio (0..6)
@@ -148,7 +111,7 @@ export async function GET(req: NextRequest) {
       .filter((n) => Number.isFinite(n)) as Weekday[];
     const coveredWeekdays = new Set<number>();
     for (let di = 0; di < days; di++) {
-      const dayMskUtc = new Date(startOfTodayMskUtc + di * 24 * 60 * 60 * 1000); // UTC date representing MSK midnight
+      const dayMskUtc = new Date(startOfTodayMskUtc + di * DAY_MS); // UTC date representing MSK midnight
       const originalWeekday: Weekday = dayMskUtc.getUTCDay() as Weekday; // 0..6 (0=Sun)
       let weekdayMsk: Weekday = originalWeekday; // may adjust below
 
@@ -158,14 +121,14 @@ export async function GET(req: NextRequest) {
       const day = dayMskUtc.getUTCDate();
       const dateKey = `${y}-${toTwo(m)}-${toTwo(day)}`;
       const dayHasBlock = exceptions.some((e) => {
-        if (!e.start_date) return false;
+        if (!e.start_date || !e.end_date) return false;
         const start = e.start_date!;
-        const end = e.end_date || e.start_date;
+        const end = e.end_date;
         return dateKey >= start && dateKey <= end;
       });
       if (dayHasBlock) {
         const msgs = exceptions
-          .filter((e) => e.start_date && dateKey >= e.start_date! && (!e.end_date || dateKey <= e.end_date!))
+          .filter((e) => e.start_date && e.end_date && dateKey >= e.start_date && dateKey <= e.end_date)
           .map((e) => e.message)
           .filter(Boolean) as string[];
         if (msgs.length) {
@@ -232,13 +195,12 @@ export async function GET(req: NextRequest) {
 
     // If some planned weekdays were not covered in the base window, try to add the next such day
     if (plannedWeekdays.length > 0) {
-      const windowEndUtcMs = startOfTodayMskUtc + days * 24 * 60 * 60 * 1000;
-      const maxExtendDays = 7; // extend at most +7 days
+      const windowEndUtcMs = startOfTodayMskUtc + days * DAY_MS;
       for (const w of plannedWeekdays) {
         if (coveredWeekdays.has(w)) continue;
         // Find first date within (days, days+7] that matches weekday w
-        for (let extra = 0; extra <= maxExtendDays; extra++) {
-          const candUtc = new Date(windowEndUtcMs + extra * 24 * 60 * 60 * 1000);
+        for (let extra = 0; extra <= MAX_EXTEND_DAYS; extra++) {
+          const candUtc = new Date(windowEndUtcMs + extra * DAY_MS);
           if (candUtc.getUTCDay() !== w) continue;
           const y = candUtc.getUTCFullYear();
           const m = candUtc.getUTCMonth() + 1;
@@ -246,9 +208,9 @@ export async function GET(req: NextRequest) {
           const dateKey = `${y}-${toTwo(m)}-${toTwo(day)}`;
           // Skip if blocked by exceptions
           const isBlocked = exceptions.some((e) => {
-            if (!e.start_date) return false;
+            if (!e.start_date || !e.end_date) return false;
             const start = e.start_date!;
-            const end = e.end_date || e.start_date;
+            const end = e.end_date;
             return dateKey >= start && dateKey <= end;
           });
           if (isBlocked) continue;
@@ -306,14 +268,6 @@ export async function GET(req: NextRequest) {
     console.error("[/api/schedule] error", e);
     return NextResponse.json({ error: e?.message || "Internal error" }, { status: 500 });
   }
-}
-
-function EXCEPTIONS_TABLEID_MISSING_GUARD() {
-  if (!EXCEPTIONS_TABLE_ID) {
-    console.warn("[schedule] Missing AIRTABLE_EXCEPTIONS_TABLE_ID (optional)");
-    return true;
-  }
-  return false;
 }
 
 // Utility to add i days to a base date and keep midnight
