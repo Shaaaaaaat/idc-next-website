@@ -20,7 +20,7 @@ export const studioRules: Record<StudioId, Partial<Record<Weekday, string[]>>> =
   spb_spirit: {
     2: ["21:00"], // Tue
     4: ["21:00"], // Thu
-    6: ["14:00"], // Sat
+    6: ["13:00"], // Sat
   },
   spb_hkc: {
     1: ["20:30"], // Mon

@@ -1,6 +1,6 @@
 // src/app/api/robokassa/result/route.ts
 import crypto from "crypto";
-import { NextRequest, NextResponse } from "next/server";
+import { after, NextRequest, NextResponse } from "next/server";
 import { markPurchasePaidAndProcess } from "@/lib/supabase/purchases";
 import { sendTelegramWithRetry } from "@/lib/telegram/sendTelegramWithRetry";
 
@@ -588,22 +588,23 @@ async function handle(params: URLSearchParams) {
     });
   }
 
-  let text = "";
-  if (foundSource === "purchases") {
-    const purchaseTagForAdmin = pickFirstStringField(purchasesFields, ["Tag", "tag"]) || "—";
+  const sendPaidTelegramNotifications = async () => {
+    let text = "";
+    if (foundSource === "purchases") {
+      const purchaseTagForAdmin = pickFirstStringField(purchasesFields, ["Tag", "tag"]) || "—";
 
-    text =
-      `<b>✅ Оплата подтверждена (bot)</b>\n` +
-      `InvId: <code>${escapeTgHtml(String(invId))}</code>\n` +
-      `Дата: ${escapeTgHtml(formatMoscow(now))}\n` +
-      `Имя: ${escapeTgHtml(fio || "—")}\n` +
-      `${telegramPhoneLineOptional(phone) ? telegramPhoneLineOptional(phone) + "\n" : ""}` +
-      `Почта: ${escapeTgHtml(email || "—")}\n` +
-      `Сумма: ${escapeTgHtml(String(sumNum || Number(outSum) || 0))} ₽\n` +
-      `Курс: ${escapeTgHtml(purchaseTagForAdmin)}\n` +
-      `Тариф: ${escapeTgHtml(tariffLabel || "—")}`;
-    await sendTelegramMessage(text, { target: "admin", invId: String(invId), source: "purchases", email });
-    if (isPurchaseGymTrial && Number.isFinite(purchaseTgId) && trialMeta) {
+      text =
+        `<b>✅ Оплата подтверждена (bot)</b>\n` +
+        `InvId: <code>${escapeTgHtml(String(invId))}</code>\n` +
+        `Дата: ${escapeTgHtml(formatMoscow(now))}\n` +
+        `Имя: ${escapeTgHtml(fio || "—")}\n` +
+        `${telegramPhoneLineOptional(phone) ? telegramPhoneLineOptional(phone) + "\n" : ""}` +
+        `Почта: ${escapeTgHtml(email || "—")}\n` +
+        `Сумма: ${escapeTgHtml(String(sumNum || Number(outSum) || 0))} ₽\n` +
+        `Курс: ${escapeTgHtml(purchaseTagForAdmin)}\n` +
+        `Тариф: ${escapeTgHtml(tariffLabel || "—")}`;
+      await sendTelegramMessage(text, { target: "admin", invId: String(invId), source: "purchases", email });
+      if (isPurchaseGymTrial && Number.isFinite(purchaseTgId) && trialMeta) {
       const trialDateLabel = normalizeTrialDateLabel(purchaseDateRaw);
       const msg1 =
         `Отлично, запись подтверждена!\n\n` +
@@ -736,20 +737,20 @@ async function handle(params: URLSearchParams) {
     } else {
       logTelegramSkip({ target: "user", invId: String(invId), source: "purchases", email: purchaseEmail }, "user_chat_id_missing");
     }
-  } else if (isOnline) {
-    text =
-      `<b>✅ Новая покупка ${escapeTgHtml(courseName)}</b>\n` +
-      `${escapeTgHtml(tariffLabel)}\n` +
-      `Дата: ${escapeTgHtml(formatMoscow(now))}\n` +
-      `Имя: ${escapeTgHtml(fio)}\n` +
-      `${phoneLine}\n` +
-      `Email: ${escapeTgHtml(email)}\n` +
-      `Сумма: ${escapeTgHtml(String(sumNum))} ₽\n` +
-      `Кол-во тренировок: ${escapeTgHtml(String(lessons))}\n` +
-      `Стоимость за тренировку: ${escapeTgHtml(String(pricePerLesson))} ₽`;
-    // admin chat
-    await sendTelegramMessage(text, { target: "admin", invId: String(invId), source: "website", email });
-  } else if (isGymTrial) {
+    } else if (isOnline) {
+      text =
+        `<b>✅ Новая покупка ${escapeTgHtml(courseName)}</b>\n` +
+        `${escapeTgHtml(tariffLabel)}\n` +
+        `Дата: ${escapeTgHtml(formatMoscow(now))}\n` +
+        `Имя: ${escapeTgHtml(fio)}\n` +
+        `${phoneLine}\n` +
+        `Email: ${escapeTgHtml(email)}\n` +
+        `Сумма: ${escapeTgHtml(String(sumNum))} ₽\n` +
+        `Кол-во тренировок: ${escapeTgHtml(String(lessons))}\n` +
+        `Стоимость за тренировку: ${escapeTgHtml(String(pricePerLesson))} ₽`;
+      // admin chat
+      await sendTelegramMessage(text, { target: "admin", invId: String(invId), source: "website", email });
+    } else if (isGymTrial) {
     const city = cityFromStudioId(studioId);
     const header =
       `<b>🟡 Новая запись в ${escapeTgHtml(studioName)}${city ? " (" + escapeTgHtml(city) + ")" : ""}</b>\n`;
@@ -782,7 +783,7 @@ async function handle(params: URLSearchParams) {
       ],
       { invId: String(invId), source: "website", emailHash: email ? hashLogValue(email) : undefined, studioId }
     );
-  } else if (isGym && (courseName.includes("_personal_") || courseName.includes("_split_"))) {
+    } else if (isGym && (courseName.includes("_personal_") || courseName.includes("_split_"))) {
     const city = cityFromStudioId(studioId);
     const header =
       `<b>🔵 Новая запись в ${escapeTgHtml(studioName)}${city ? " (" + escapeTgHtml(city) + ")" : ""}</b>\n`;
@@ -798,24 +799,39 @@ async function handle(params: URLSearchParams) {
       `Тэг: ${escapeTgHtml(courseName)}`;
     // admin chat only
     await sendTelegramMessage(textAdmin, { target: "admin", invId: String(invId), source: "website", email, studioId });
-  } else if (isGym) {
-    text =
-      `<b>✅ Новая покупка ${escapeTgHtml(courseName)}</b>\n` +
-      `Когда: ${escapeTgHtml(formatMoscow(now))}\n` +
-      `Имя: ${escapeTgHtml(fio)}\n` +
-      `${phoneLine}\n` +
-      `Почта: ${escapeTgHtml(email)}\n` +
-      `Сумма: ${escapeTgHtml(String(sumNum))} ₽`;
-    await sendTelegramMessage(text, { target: "admin", invId: String(invId), source: "website", email, studioId });
-  } else {
-    // Fallback minimal
-    await sendTelegramMessage(
-      `<b>✅ Оплата успешна</b>\n` +
-        `<b>InvId:</b> <code>${escapeTgHtml(String(invId))}</code>\n` +
-        `<b>OutSum:</b> ${escapeTgHtml(outSum)}`,
-      { target: "admin", invId: String(invId), source: foundSource, email }
-    );
-  }
+    } else if (isGym) {
+      text =
+        `<b>✅ Новая покупка ${escapeTgHtml(courseName)}</b>\n` +
+        `Когда: ${escapeTgHtml(formatMoscow(now))}\n` +
+        `Имя: ${escapeTgHtml(fio)}\n` +
+        `${phoneLine}\n` +
+        `Почта: ${escapeTgHtml(email)}\n` +
+        `Сумма: ${escapeTgHtml(String(sumNum))} ₽`;
+      await sendTelegramMessage(text, { target: "admin", invId: String(invId), source: "website", email, studioId });
+    } else {
+      // Fallback minimal
+      await sendTelegramMessage(
+        `<b>✅ Оплата успешна</b>\n` +
+          `<b>InvId:</b> <code>${escapeTgHtml(String(invId))}</code>\n` +
+          `<b>OutSum:</b> ${escapeTgHtml(outSum)}`,
+        { target: "admin", invId: String(invId), source: foundSource, email }
+      );
+    }
+  };
+
+  after(async () => {
+    try {
+      await sendPaidTelegramNotifications();
+    } catch (error) {
+      logRobokassaResult("telegram_post_response_failed", {
+        invId: String(invId),
+        source: foundSource,
+        emailHash: email ? hashLogValue(email) : undefined,
+        studioId,
+        message: error instanceof Error ? error.message : String(error),
+      });
+    }
+  });
 
   return new NextResponse(okText(String(invId)), {
     status: 200,
