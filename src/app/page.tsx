@@ -195,6 +195,7 @@ export default function HomePage() {
   const [buyAgreedError, setBuyAgreedError] = useState<string | null>(null);
   const [buyCourse, setBuyCourse] = useState<string>("");
   const [buyCourseError, setBuyCourseError] = useState<string | null>(null);
+  const [buySubmitError, setBuySubmitError] = useState<string | null>(null);
   const [buyAgreed, setBuyAgreed] = useState(false);
   const [isBuySubmitting, setIsBuySubmitting] = useState(false);
   const [isPricesPopoverOpen, setIsPricesPopoverOpen] = useState(false);
@@ -243,6 +244,7 @@ export default function HomePage() {
 
   function openPurchaseModal(options: PurchaseOptions) {
     setPurchaseOptions(options);
+    setBuySubmitError(null);
     setIsPurchaseModalOpen(true);
   }
 
@@ -256,6 +258,7 @@ export default function HomePage() {
   async function handlePurchaseSubmit(e: FormEvent) {
     e.preventDefault();
     if (!purchaseOptions || isBuySubmitting) return;
+    setBuySubmitError(null);
 
     let hasError = false;
     if (!buyFullName.trim()) {
@@ -323,17 +326,28 @@ export default function HomePage() {
       });
 
       if (!res.ok) {
-        console.error("Ошибка создания оплаты", await res.text());
+        const text = await res.text();
+        console.error("Ошибка создания оплаты", text);
+        let message = "Не удалось создать оплату. Попробуйте ещё раз.";
+        try {
+          const parsed = JSON.parse(text);
+          if (typeof parsed?.error === "string" && parsed.error.trim()) {
+            message = parsed.error;
+          }
+        } catch {}
+        setBuySubmitError(message);
       } else {
         const data = await res.json();
         if (data.paymentUrl) {
           window.location.href = data.paymentUrl;
         } else {
           console.error("paymentUrl не получен из API");
+          setBuySubmitError("Не удалось получить ссылку на оплату. Попробуйте ещё раз.");
         }
       }
     } catch (err) {
       console.error("Ошибка запроса (покупка тарифа)", err);
+      setBuySubmitError("Ошибка сети. Проверьте интернет и попробуйте ещё раз.");
     } finally {
       setIsBuySubmitting(false);
     }
@@ -1225,12 +1239,20 @@ export default function HomePage() {
                 disabled={isBuySubmitting}
                 className="mt-2 inline-flex w-full items-center justify-center rounded-full bg-brand-primary px-4 py-2.5 text-sm font-semibold disabled:opacity-60 disabled:pointer-events-none hover:bg-brand-primary/90 transition-colors"
               >
-                {isBuySubmitting
-                  ? "Переходим к оплате..."
-                  : `Оплатить ${purchaseOptions.amount.toLocaleString("ru-RU")} ${
+                {isBuySubmitting ? (
+                  <span className="inline-flex items-center gap-2">
+                    <span className="h-3.5 w-3.5 rounded-full border-2 border-white/40 border-t-white animate-spin" aria-hidden="true" />
+                    <span>Формируем ссылку...</span>
+                  </span>
+                ) : (
+                  `Оплатить ${purchaseOptions.amount.toLocaleString("ru-RU")} ${
                       purchaseOptions.currency === "RUB" ? "₽" : "€"
-                    }`}
+                    }`
+                )}
               </button>
+              {buySubmitError && (
+                <p className="text-[12px] text-red-400">{buySubmitError}</p>
+              )}
             </form>
           </div>
         </div>

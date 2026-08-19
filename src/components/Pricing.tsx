@@ -75,6 +75,7 @@ export function Pricing({
   const [certEmailError, setCertEmailError] = useState<string | null>(null);
   const [certAmountError, setCertAmountError] = useState<string | null>(null);
   const [certAgreedError, setCertAgreedError] = useState<string | null>(null);
+  const [certSubmitError, setCertSubmitError] = useState<string | null>(null);
 
   // Телефон: +7 маска, иначе интернац. формат
   function formatPhoneInput(raw: string): string {
@@ -161,6 +162,7 @@ export function Pricing({
     if (hasError) return;
 
     setIsCertSubmitting(true);
+    setCertSubmitError(null);
     trackGoal("signup_submit", {
       product_type: "online",
       product_name: "Подарочный сертификат",
@@ -183,15 +185,27 @@ export function Pricing({
         }),
       });
       if (!res.ok) {
-        console.error("Ошибка создания оплаты сертификата", await res.text());
+        const text = await res.text();
+        console.error("Ошибка создания оплаты сертификата", text);
+        let message = "Не удалось создать оплату. Попробуйте ещё раз.";
+        try {
+          const parsed = JSON.parse(text);
+          if (typeof parsed?.error === "string" && parsed.error.trim()) {
+            message = parsed.error;
+          }
+        } catch {}
+        setCertSubmitError(message);
         return;
       }
       const data = await res.json();
       if (data.paymentUrl) {
         window.location.href = data.paymentUrl;
+      } else {
+        setCertSubmitError("Не удалось получить ссылку на оплату. Попробуйте ещё раз.");
       }
     } catch (err) {
       console.error("Ошибка запроса (сертификат)", err);
+      setCertSubmitError("Ошибка сети. Проверьте интернет и попробуйте ещё раз.");
     } finally {
       setIsCertSubmitting(false);
     }
@@ -446,6 +460,7 @@ export function Pricing({
                   product_name: "Подарочный сертификат",
                   source: "scroll",
                 });
+                setCertSubmitError(null);
                 setIsCertOpen(true);
               }}
               className="text-white underline decoration-dotted hover:opacity-90"
@@ -626,8 +641,18 @@ export function Pricing({
                   disabled={isCertSubmitting}
                   className="mt-2 inline-flex w-full items-center justify-center rounded-full bg-brand-primary px-4 py-2.5 text-sm font-semibold disabled:opacity-60 disabled:pointer-events-none hover:bg-brand-primary/90 transition-colors"
                 >
-                  {isCertSubmitting ? "Переходим к оплате..." : "Оплатить сертификат"}
+                  {isCertSubmitting ? (
+                    <span className="inline-flex items-center gap-2">
+                      <span className="h-3.5 w-3.5 rounded-full border-2 border-white/40 border-t-white animate-spin" aria-hidden="true" />
+                      <span>Формируем ссылку...</span>
+                    </span>
+                  ) : (
+                    "Оплатить сертификат"
+                  )}
                 </button>
+                {certSubmitError && (
+                  <p className="text-[12px] text-red-400">{certSubmitError}</p>
+                )}
               </form>
             </div>
           </div>

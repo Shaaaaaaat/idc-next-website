@@ -530,7 +530,14 @@ export default function PullupsLandingClient() {
                   disabled={isSubmitting}
                   className="inline-flex w-full items-center justify-center rounded-full bg-brand-primary px-6 py-3 text-sm sm:text-base font-semibold text-white shadow-soft hover:bg-brand-primary/90 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
                 >
-                  {isSubmitting ? "Создаем оплату..." : "Начать тренировки"}
+                  {isSubmitting ? (
+                    <span className="inline-flex items-center gap-2">
+                      <span className="h-3.5 w-3.5 rounded-full border-2 border-white/40 border-t-white animate-spin" aria-hidden="true" />
+                      <span>Формируем ссылку...</span>
+                    </span>
+                  ) : (
+                    "Начать тренировки"
+                  )}
                 </button>
               </div>
             </form>
