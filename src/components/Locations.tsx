@@ -105,6 +105,8 @@ export function Locations({ onOpenPurchaseModal }: LocationsProps) {
   const [leadAgreed, setLeadAgreed] = useState(false);
   const [leadAgreeError, setLeadAgreeError] = useState<string | null>(null);
   const [leadLoading, setLeadLoading] = useState(false);
+  const [paymentLoading, setPaymentLoading] = useState(false);
+  const [paymentError, setPaymentError] = useState<string | null>(null);
   const [slotsLoading, setSlotsLoading] = useState(false);
   const [slotsError, setSlotsError] = useState<string | null>(null);
   const [slotSelectionError, setSlotSelectionError] = useState<string | null>(null);
@@ -112,6 +114,7 @@ export function Locations({ onOpenPurchaseModal }: LocationsProps) {
     { id: string; studioId: string; startAtLocal: string; startAtISO: string }[]
   >([]);
   const [notices, setNotices] = useState<string[]>([]);
+  const [loadedSlotsStudioId, setLoadedSlotsStudioId] = useState<string | null>(null);
   const [selectedSlotId, setSelectedSlotId] = useState<string | null>(null);
 
   const activeCity =
@@ -234,8 +237,11 @@ export function Locations({ onOpenPurchaseModal }: LocationsProps) {
     setSelectedSlotId(null);
     setNotices([]);
     setSlots([]);
+    setLoadedSlotsStudioId(null);
     setSlotsError(null);
     setSlotSelectionError(null);
+    setPaymentError(null);
+    setPaymentLoading(false);
     setLeadPhoneError(null);
     setLeadEmailError(null);
     setLeadNameError(null);
@@ -256,6 +262,7 @@ export function Locations({ onOpenPurchaseModal }: LocationsProps) {
           const data = await rs.json();
           setSlots(Array.isArray(data?.slots) ? data.slots : []);
           setNotices(Array.isArray(data?.notices) ? data.notices : []);
+          setLoadedSlotsStudioId(studioId);
         }
       } catch {}
       finally {
@@ -282,6 +289,7 @@ export function Locations({ onOpenPurchaseModal }: LocationsProps) {
 
   async function submitLead() {
     if (!trialContext) return;
+    if (leadLoading) return;
     // validate phone
     if (!isValidIntlPhone(leadPhone)) {
       setLeadPhoneError("Проверьте номер телефона: нужно 11 цифр, формат +7 (XXX) XXX-XX-XX");
@@ -306,6 +314,7 @@ export function Locations({ onOpenPurchaseModal }: LocationsProps) {
       return;
     }
     setLeadAgreeError(null);
+    setSlotsError(null);
     setLeadLoading(true);
     try {
       const r = await fetch("/api/leads/create", {
@@ -325,8 +334,10 @@ export function Locations({ onOpenPurchaseModal }: LocationsProps) {
       }
       // proceed to Step 2: fetch schedule
       setTrialStep(2);
-      setSlotsLoading(true);
       setSlotsError(null);
+      if (loadedSlotsStudioId === trialContext.studioId) return;
+
+      setSlotsLoading(true);
       const qs = new URLSearchParams({
         studioId: trialContext.studioId,
         days: "7",
@@ -340,6 +351,7 @@ export function Locations({ onOpenPurchaseModal }: LocationsProps) {
       const data = await rs.json();
       setSlots(Array.isArray(data?.slots) ? data.slots : []);
       setNotices(Array.isArray(data?.notices) ? data.notices : []);
+      setLoadedSlotsStudioId(trialContext.studioId);
     } catch (e: any) {
       setSlotsError(e?.message || "Ошибка при создании лида");
     } finally {
@@ -350,11 +362,13 @@ export function Locations({ onOpenPurchaseModal }: LocationsProps) {
 
   async function payForTrial() {
     if (!trialContext) return;
+    if (paymentLoading) return;
     if (!selectedSlotId) {
       setSlotSelectionError("Выберите время");
       return;
     }
     setSlotSelectionError(null);
+    setPaymentError(null);
     const slot = slots.find((s) => s.id === selectedSlotId);
     if (!slot) return;
     trackGoal("signup_submit", {
@@ -362,6 +376,7 @@ export function Locations({ onOpenPurchaseModal }: LocationsProps) {
       product_name: trialContext.studioName,
       source: "scroll",
     });
+    setPaymentLoading(true);
     try {
       const resp = await fetch("/api/create-payment", {
         method: "POST",
@@ -380,13 +395,19 @@ export function Locations({ onOpenPurchaseModal }: LocationsProps) {
           phone: leadPhone,
         }),
       });
-      const json = await resp.json();
+      let json: any = null;
+      try {
+        json = await resp.json();
+      } catch {
+        json = null;
+      }
       if (!resp.ok || !json?.paymentUrl) {
         throw new Error(json?.error || "Не удалось создать оплату");
       }
       window.location.href = json.paymentUrl;
     } catch (e) {
-      alert("Ошибка: не удалось перейти к оплате");
+      setPaymentLoading(false);
+      setPaymentError(e instanceof Error ? e.message : "Не удалось перейти к оплате");
     }
   }
 
@@ -914,8 +935,18 @@ export function Locations({ onOpenPurchaseModal }: LocationsProps) {
                   disabled={leadLoading}
                   className="mt-2 inline-flex w-full items-center justify-center rounded-full bg-brand-primary px-4 py-2.5 text-sm font-semibold hover:bg-brand-primary/90 transition-colors disabled:opacity-60"
                 >
-                  {leadLoading ? "Отправляем..." : "Выбрать день"}
+                  {leadLoading ? (
+                    <span className="inline-flex items-center gap-2">
+                      <span className="h-3.5 w-3.5 rounded-full border-2 border-white/40 border-t-white animate-spin" aria-hidden="true" />
+                      <span>Сохраняем...</span>
+                    </span>
+                  ) : (
+                    "Выбрать день"
+                  )}
                 </button>
+                {slotsError && (
+                  <p className="text-[12px] text-red-400">{slotsError}</p>
+                )}
               </div>
             )}
 
@@ -963,6 +994,7 @@ export function Locations({ onOpenPurchaseModal }: LocationsProps) {
                             onClick={() => {
                               setSelectedSlotId(s.id);
                               setSlotSelectionError(null);
+                              setPaymentError(null);
                             }}
                             className={[
                               "w-full text-left rounded-xl border px-3 py-2 text-sm transition-colors",
@@ -983,16 +1015,28 @@ export function Locations({ onOpenPurchaseModal }: LocationsProps) {
                     <button
                       type="button"
                       onClick={payForTrial}
-                      className="mt-2 inline-flex w-full items-center justify-center rounded-full bg-brand-primary px-4 py-2.5 text-sm font-semibold hover:bg-brand-primary/90 transition-colors"
+                      disabled={paymentLoading}
+                      className="mt-2 inline-flex w-full items-center justify-center rounded-full bg-brand-primary px-4 py-2.5 text-sm font-semibold hover:bg-brand-primary/90 transition-colors disabled:opacity-60"
                     >
-                      Оплатить 1 100 ₽
+                      {paymentLoading ? (
+                        <span className="inline-flex items-center gap-2">
+                          <span className="h-3.5 w-3.5 rounded-full border-2 border-white/40 border-t-white animate-spin" aria-hidden="true" />
+                          <span>Формируем ссылку...</span>
+                        </span>
+                      ) : (
+                        "Оплатить 1 100 ₽"
+                      )}
                     </button>
+                    {paymentError && (
+                      <p className="text-[12px] text-red-400">{paymentError}</p>
+                    )}
                     <button
                       type="button"
                       onClick={() => {
-                      setTrialStep(1);
-                      setSlotSelectionError(null);
-                    }}
+                        setTrialStep(1);
+                        setSlotSelectionError(null);
+                        setPaymentError(null);
+                      }}
                       className="mt-2 inline-flex w-full items-center justify-center rounded-full border border-white/20 px-4 py-2 text-sm font-semibold text-white hover:bg-white/10 transition-colors"
                     >
                       Назад

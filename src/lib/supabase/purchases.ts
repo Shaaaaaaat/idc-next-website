@@ -37,8 +37,8 @@ function isTerminalPurchaseStatus(status: string): boolean {
 }
 
 export type UpsertPurchaseCreatedResult =
-  | { ok: true; skipped?: false }
-  | { ok: true; skipped: true; reason: string };
+  | { ok: true; persisted: true }
+  | { ok: false; persisted: false; reason: string; message?: string };
 
 export async function upsertPurchaseCreated(input: UpsertPurchaseCreatedInput): Promise<UpsertPurchaseCreatedResult> {
   const idPayment = normalizeIdPayment(input.id_payment);
@@ -51,7 +51,7 @@ export async function upsertPurchaseCreated(input: UpsertPurchaseCreatedInput): 
       reason: "write_purchases_disabled",
       env: diag,
     });
-    return { ok: true, skipped: true, reason: "write_purchases_disabled" };
+    return { ok: false, persisted: false, reason: "write_purchases_disabled" };
   }
   const sb = getSupabaseAdmin();
   if (!sb) {
@@ -61,7 +61,7 @@ export async function upsertPurchaseCreated(input: UpsertPurchaseCreatedInput): 
       reason: "no_supabase_client",
       env: diag,
     });
-    return { ok: true, skipped: true, reason: "no_supabase_client" };
+    return { ok: false, persisted: false, reason: "no_supabase_client" };
   }
 
   logLine("upsert_created_start", {
@@ -83,6 +83,7 @@ export async function upsertPurchaseCreated(input: UpsertPurchaseCreatedInput): 
         id_payment: idPayment,
         error: formatPostgrestError(readErr),
       });
+      return { ok: false, persisted: false, reason: "read_existing_error", message: readErr.message };
     } else if (existing && isTerminalPurchaseStatus(String((existing as { status?: string }).status || ""))) {
       logLine("upsert_created_skipped", {
         step: "terminal_status",
@@ -90,7 +91,7 @@ export async function upsertPurchaseCreated(input: UpsertPurchaseCreatedInput): 
         existingStatus: String((existing as { status?: string }).status || ""),
         reason: "terminal_status",
       });
-      return { ok: true, skipped: true, reason: "terminal_status" };
+      return { ok: false, persisted: false, reason: "terminal_status" };
     }
 
     const createdTime = (() => {
@@ -136,14 +137,14 @@ export async function upsertPurchaseCreated(input: UpsertPurchaseCreatedInput): 
         id_payment: idPayment,
         error: formatPostgrestError(error),
       });
-      return { ok: true, skipped: true, reason: "upsert_error" };
+      return { ok: false, persisted: false, reason: "upsert_error", message: error.message };
     }
     logLine("upsert_created_ok", { id_payment: idPayment });
-    return { ok: true };
+    return { ok: true, persisted: true };
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     logLine("upsert_created_exception", { id_payment: idPayment, message: msg });
-    return { ok: true, skipped: true, reason: "exception" };
+    return { ok: false, persisted: false, reason: "exception", message: msg };
   }
 }
 

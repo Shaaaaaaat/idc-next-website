@@ -1,5 +1,5 @@
 // src/app/api/create-payment/route.ts
-import { NextResponse } from "next/server";
+import { after, NextResponse } from "next/server";
 import crypto from "crypto";
 import { upsertPurchaseCreated } from "@/lib/supabase/purchases";
 import { sendTelegramWithRetry } from "@/lib/telegram/sendTelegramWithRetry";
@@ -502,8 +502,7 @@ export async function POST(req: Request) {
       ? computeValidWeeksGym(isTrialGym, tariffLabel, tariffId)
       : computeValidWeeksOnline(tariffLabel, tariffId, courseName);
 
-    // RU-first: Cloud Function (lead with id_payment) — перед записью в Airtable
-    const cfRes = await postToYdbCF({
+    const ydbPaymentPayload = {
       name: fullName,
       phone: phoneNorm,
       email: emailNorm,
@@ -518,9 +517,9 @@ export async function POST(req: Request) {
       amount: Number(amount),
       tg_link_token: tgToken,
       valid_weeks: validWeeks,
-    });
+    };
 
-    const createRes = await airtableCreateRecord({
+    const airtablePaymentFields: Record<string, any> = {
       id_payment: String(paymentId),
       Status: "created",
       email: emailNorm,
@@ -536,24 +535,16 @@ export async function POST(req: Request) {
       slot_start_at: slotStartAt ?? "",
       Lessons: lessons,
       GiftRecipient: giftRecipient ?? "",
-      // RU-first flags
-      ru_first_ok: (cfRes as any)?.ok === true,
       format: formatField,
       tg_link_token: tgToken,
-    });
-    if (!(createRes as any)?.ok) {
-      console.warn("⚠️ Airtable create failed or disabled", createRes);
-    }
+    };
 
-    // Уведомление в TG о создании счета (необязательно)
-    await sendTelegramMessage(
+    const telegramInvoiceText =
       `<b>🧾 Создан счёт</b>\n` +
         `<b>InvId:</b> <code>${escapeTgHtml(String(paymentId))}</code>\n` +
         `<b>Плательщик:</b> ${escapeTgHtml(fullName)}\n` +
         `<b>Сумма:</b> ${escapeTgHtml(Number(amount).toFixed(2))} ${currency}\n` +
-        `<b>Тариф:</b> ${escapeTgHtml(tariffLabel)}`,
-      String(paymentId)
-    ).catch(() => {});
+        `<b>Тариф:</b> ${escapeTgHtml(tariffLabel)}`;
 
     const pricePerLesson =
       lessons > 0 && Number.isFinite(Number(amount))
@@ -595,6 +586,62 @@ export async function POST(req: Request) {
     } catch {
       /* ignore */
     }
+
+    if (!purchaseSbRes.ok || !purchaseSbRes.persisted) {
+      console.warn("[/api/create-payment] supabase purchase write failed", purchaseSbRes);
+      return NextResponse.json(
+        { error: "Не удалось создать оплату. Попробуйте ещё раз." },
+        { status: 502 }
+      );
+    }
+
+    after(async () => {
+      let paymentYdbOk = false;
+
+      try {
+        const cfRes = await postToYdbCF(ydbPaymentPayload);
+        paymentYdbOk = cfRes.ok === true;
+        if (!cfRes.ok) {
+          console.warn("[/api/create-payment] ydb payment mirror failed", {
+            paymentId: String(paymentId),
+            reason: cfRes.reason,
+            status: "status" in cfRes ? cfRes.status : undefined,
+          });
+        }
+      } catch (e) {
+        console.warn("[/api/create-payment] ydb payment mirror crashed", {
+          paymentId: String(paymentId),
+          message: e instanceof Error ? e.message : String(e),
+        });
+      }
+
+      try {
+        const createRes = await airtableCreateRecord({
+          ...airtablePaymentFields,
+          ru_first_ok: paymentYdbOk,
+        });
+        if (!createRes.ok) {
+          console.warn("[/api/create-payment] airtable payment mirror failed", {
+            paymentId: String(paymentId),
+            result: createRes,
+          });
+        }
+      } catch (e) {
+        console.warn("[/api/create-payment] airtable payment mirror crashed", {
+          paymentId: String(paymentId),
+          message: e instanceof Error ? e.message : String(e),
+        });
+      }
+
+      try {
+        await sendTelegramMessage(telegramInvoiceText, String(paymentId));
+      } catch (e) {
+        console.warn("[/api/create-payment] telegram invoice notification failed", {
+          paymentId: String(paymentId),
+          message: e instanceof Error ? e.message : String(e),
+        });
+      }
+    });
 
     return NextResponse.json({ paymentUrl });
   } catch (error) {

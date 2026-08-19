@@ -1,5 +1,5 @@
 // src/app/api/leads/create/route.ts
-import { NextResponse } from "next/server";
+import { after, NextResponse } from "next/server";
 import { createLeadInSupabase } from "@/lib/supabase/leads";
 
 type LeadBody = {
@@ -110,16 +110,17 @@ export async function POST(req: Request) {
       course_name: "Пробная тренировка",
       lessons: 1,
     });
-
-    const env = airtableEnv();
-    if (!env.ok) {
+    if (!cfRes.ok) {
+      console.warn("[/api/leads/create] ydb lead write failed", {
+        reason: cfRes.reason,
+        status: "status" in cfRes ? cfRes.status : undefined,
+      });
       return NextResponse.json(
-        { error: "Airtable env is not configured" },
-        { status: 500 }
+        { error: "Не удалось сохранить заявку. Попробуйте ещё раз." },
+        { status: 502 }
       );
     }
 
-    const url = airtableTableUrl(env.baseId, env.leadsTableId);
     const fields: Record<string, any> = {
       FIO: fullName,
       Phone: phone,
@@ -133,30 +134,7 @@ export async function POST(req: Request) {
     };
     if (email) fields.email = email;
 
-    const r = await fetch(url, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${env.apiKey}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({ fields }),
-      cache: "no-store",
-    });
-    const text = await r.text();
-    if (!r.ok) {
-      return NextResponse.json(
-        { error: "Failed to create lead", status: r.status, text },
-        { status: 502 }
-      );
-    }
-    let record: any = null;
-    try {
-      record = JSON.parse(text);
-    } catch {
-      record = text;
-    }
-
-    await createLeadInSupabase({
+    const supabaseLeadRes = await createLeadInSupabase({
       fio: fullName,
       phone,
       email: email || undefined,
@@ -166,8 +144,45 @@ export async function POST(req: Request) {
       source: "site",
       raw_payload: body,
     });
+    if (!supabaseLeadRes.ok) {
+      console.warn("[/api/leads/create] supabase lead write failed", supabaseLeadRes);
+      return NextResponse.json(
+        { error: "Не удалось сохранить заявку. Попробуйте ещё раз." },
+        { status: 502 }
+      );
+    }
 
-    return NextResponse.json({ ok: true, leadId: record?.id ?? null });
+    after(async () => {
+      const env = airtableEnv();
+      if (!env.ok) {
+        console.warn("[/api/leads/create] airtable lead mirror skipped", { reason: "env_missing" });
+        return;
+      }
+
+      try {
+        const url = airtableTableUrl(env.baseId, env.leadsTableId);
+        const r = await fetch(url, {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${env.apiKey}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ fields }),
+          cache: "no-store",
+        });
+        const text = await r.text();
+        if (!r.ok) {
+          console.warn("[/api/leads/create] airtable lead mirror failed", {
+            status: r.status,
+            text,
+          });
+        }
+      } catch (e) {
+        console.warn("[/api/leads/create] airtable lead mirror crashed", e instanceof Error ? e.message : String(e));
+      }
+    });
+
+    return NextResponse.json({ ok: true });
   } catch (e) {
     console.error("[/api/leads/create] error", e);
     return NextResponse.json({ error: "Internal error" }, { status: 500 });
