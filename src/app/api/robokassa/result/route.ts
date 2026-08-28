@@ -1,6 +1,6 @@
 // src/app/api/robokassa/result/route.ts
 import crypto from "crypto";
-import { after, NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { markPurchasePaidAndProcess } from "@/lib/supabase/purchases";
 import { sendTelegramWithRetry } from "@/lib/telegram/sendTelegramWithRetry";
 
@@ -819,18 +819,12 @@ async function handle(params: URLSearchParams) {
     }
   };
 
-  after(async () => {
-    try {
-      await sendPaidTelegramNotifications();
-    } catch (error) {
-      logRobokassaResult("telegram_post_response_failed", {
-        invId: String(invId),
-        source: foundSource,
-        emailHash: email ? hashLogValue(email) : undefined,
-        studioId,
-        message: error instanceof Error ? error.message : String(error),
-      });
-    }
+  void sendPaidTelegramNotifications;
+  logRobokassaResult("telegram_direct_send_disabled", {
+    invId: String(invId),
+    source: foundSource,
+    emailHash: email ? hashLogValue(email) : undefined,
+    studioId,
   });
 
   return new NextResponse(okText(String(invId)), {

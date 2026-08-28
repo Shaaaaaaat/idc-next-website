@@ -55,11 +55,25 @@ type SendResult = {
   errorCode?: string;
   errorMessage?: string;
   providerMessageId?: string;
+  retryAfterSeconds?: number;
 };
 
 type HandleResult =
   | { status: "sent"; telegram?: SendResult; email?: SendResult }
-  | { status: "skipped"; errorCode: string; errorMessage: string }
+  | {
+    status: "skipped";
+    errorCode: string;
+    errorMessage: string;
+    telegram?: SendResult;
+    email?: SendResult;
+  }
+  | {
+    status: "retry";
+    errorCode: string;
+    errorMessage: string;
+    nextAttemptAt: string;
+    telegram?: SendResult;
+  }
   | {
     status: "failed";
     errorCode: string;
@@ -75,20 +89,41 @@ const INTERNAL_SECRET = Deno.env.get("NOTIFICATIONS_INTERNAL_SECRET") ?? "";
 const CLIENT_BOT_TOKEN = Deno.env.get("IDCMAIN_BOT_TOKEN") ?? "";
 const ADMIN_BOT_TOKEN = Deno.env.get("LOWMAOWS_BOT_TOKEN") ?? "";
 const ADMIN_CHAT_ID = Deno.env.get("LOWMAOWS_ADMIN_CHAT_ID") ?? "";
+const PAYMENT_ADMIN_CHAT_ID = Deno.env.get("TELEGRAM_CHAT_ID") ?? "";
 const IDC_ERRORS_BOT_TOKEN = Deno.env.get("IDC_ERRORS_BOT_TOKEN") ?? "";
 const IDC_ERRORS_CHAT_ID = Deno.env.get("IDC_ERRORS_CHAT_ID") ?? "";
+const TELEGRAM_COACH_CHAT_ID_MSK =
+  Deno.env.get("TELEGRAM_COACH_CHAT_ID_MSK") ?? "";
+const TELEGRAM_COACH_CHAT_ID_SPB_SPIRIT =
+  Deno.env.get("TELEGRAM_COACH_CHAT_ID_SPB_SPIRIT") ?? "";
+const TELEGRAM_COACH_CHAT_ID_SPB_HKC =
+  Deno.env.get("TELEGRAM_COACH_CHAT_ID_SPB_HKC") ?? "";
 
 const TELEGRAM_TIMEOUT_MS = 20_000;
 const TELEGRAM_MAX_ATTEMPTS = 2;
 const TELEGRAM_RETRY_DELAY_MS = 1_500;
+const PURCHASE_MAX_DURABLE_ATTEMPTS = 5;
+const PURCHASE_RETRY_DELAYS_MS = [
+  60 * 1000,
+  5 * 60 * 1000,
+  15 * 60 * 1000,
+  60 * 60 * 1000,
+];
 const EMAIL_INSTRUCTION_DELAY_MS = 60 * 1000;
 const MAX_NOT_READY_WAIT_MS = EMAIL_INSTRUCTION_DELAY_MS + 5_000;
 const STALE_THRESHOLD_MS = 3 * 60 * 1000;
 const STALE_ALERT_THROTTLE_MS = 30 * 60 * 1000;
 const FINAL_STATUSES = new Set(["sent", "skipped", "failed"]);
+const PURCHASE_PAID_EVENT_TYPES = new Set([
+  "purchase_paid_admin",
+  "purchase_paid_client",
+  "purchase_paid_coach",
+]);
 const SKIPPED_CODES = new Set([
   "client_telegram_missing",
   "trainer_telegram_missing",
+  "studio_meta_missing",
+  "telegram_config_missing",
   "admin_chat_missing",
   "unsupported_channel",
   "unsupported_recipient_type",
@@ -239,6 +274,7 @@ async function sendTelegramWithRetry(params: {
   let lastStatus = 0;
   let lastErrorCode = "telegram_send_failed";
   let lastErrorMessage = "telegram_send_failed";
+  let lastRetryAfterSeconds: number | undefined;
 
   for (let attempt = 1; attempt <= TELEGRAM_MAX_ATTEMPTS; attempt += 1) {
     const controller = new AbortController();
@@ -260,18 +296,25 @@ async function sendTelegramWithRetry(params: {
 
       lastStatus = response.status;
       const payload = await response.json().catch(() => ({}));
+      const retryAfter = Number(payload?.parameters?.retry_after);
+      lastRetryAfterSeconds = Number.isFinite(retryAfter) && retryAfter > 0
+        ? retryAfter
+        : undefined;
 
       if (response.ok && payload?.ok !== false) {
         return { ok: true, status: response.status, attempts: attempt };
       }
 
-      lastErrorCode = "telegram_api_error";
+      lastErrorCode = response.status === 429 || payload?.error_code === 429
+        ? "telegram_rate_limited"
+        : "telegram_api_error";
       lastErrorMessage = `Telegram API returned status ${response.status}`;
       console.warn("telegram_send_failed", {
         target: params.target,
         attempt,
         status: response.status,
         telegramOk: payload?.ok === true,
+        retryAfterSeconds: lastRetryAfterSeconds,
       });
     } catch (error) {
       lastErrorCode =
@@ -300,6 +343,7 @@ async function sendTelegramWithRetry(params: {
     attempts: TELEGRAM_MAX_ATTEMPTS,
     errorCode: lastErrorCode,
     errorMessage: lastErrorMessage,
+    retryAfterSeconds: lastRetryAfterSeconds,
   };
 }
 
@@ -406,6 +450,67 @@ function resultFromTelegram(telegram: SendResult): HandleResult {
     status: SKIPPED_CODES.has(telegram.errorCode ?? "") ? "skipped" : "failed",
     errorCode: telegram.errorCode ?? "telegram_send_failed",
     errorMessage: telegram.errorMessage ?? "Telegram send failed",
+    telegram,
+  };
+}
+
+function isTransientTelegramFailure(telegram: SendResult) {
+  const code = telegram.errorCode ?? "";
+  if (code === "telegram_timeout" || code === "telegram_fetch_error") {
+    return true;
+  }
+  if (code === "telegram_rate_limited") return true;
+  if (telegram.status === 0 && !SKIPPED_CODES.has(code)) return true;
+  if (telegram.status === 429) return true;
+  return telegram.status >= 500;
+}
+
+function durableRetryDelayMs(attemptCount: number) {
+  return PURCHASE_RETRY_DELAYS_MS[
+    Math.min(
+      Math.max(attemptCount - 1, 0),
+      PURCHASE_RETRY_DELAYS_MS.length - 1,
+    )
+  ];
+}
+
+function resultFromPurchaseTelegram(
+  event: NotificationEvent,
+  telegram: SendResult,
+): HandleResult {
+  if (!PURCHASE_PAID_EVENT_TYPES.has(event.event_type)) {
+    return resultFromTelegram(telegram);
+  }
+
+  if (telegram.ok) return { status: "sent", telegram };
+
+  const errorCode = telegram.errorCode ?? "telegram_send_failed";
+  const errorMessage = telegram.errorMessage ?? "Telegram send failed";
+
+  if (SKIPPED_CODES.has(errorCode)) {
+    return { status: "skipped", errorCode, errorMessage, telegram };
+  }
+
+  const attemptCount = event.attempt_count ?? 0;
+  if (
+    isTransientTelegramFailure(telegram) &&
+    attemptCount < PURCHASE_MAX_DURABLE_ATTEMPTS
+  ) {
+    return {
+      status: "retry",
+      errorCode,
+      errorMessage,
+      nextAttemptAt: new Date(
+        Date.now() + durableRetryDelayMs(attemptCount),
+      ).toISOString(),
+      telegram,
+    };
+  }
+
+  return {
+    status: "failed",
+    errorCode,
+    errorMessage,
     telegram,
   };
 }
@@ -639,6 +744,180 @@ async function sendAdminText(text: string, target: string) {
     text,
     target,
   });
+}
+
+function escapeTgHtml(s: unknown) {
+  return String(s ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+}
+
+function normalizePhoneForTelegram(input?: unknown) {
+  const raw = String(input || "").trim();
+  if (!raw) return "";
+  let digits = raw.replace(/\D/g, "");
+  if (!digits) return "";
+  if (digits.length === 11 && digits.startsWith("8")) {
+    digits = `7${digits.slice(1)}`;
+  }
+  if (digits.length === 11 && digits.startsWith("7")) return `+${digits}`;
+  if (digits.length >= 8 && digits.length <= 15) return `+${digits}`;
+  return raw;
+}
+
+function telegramPhoneLine(input?: unknown) {
+  const normalized = normalizePhoneForTelegram(input);
+  if (!normalized) return "Тел: —";
+  const safePhone = escapeTgHtml(normalized);
+  return `Тел: <a href="tel:${safePhone}">${safePhone}</a>`;
+}
+
+function telegramPhoneLineOptional(input?: unknown) {
+  const normalized = normalizePhoneForTelegram(input);
+  if (!normalized) return "";
+  const safePhone = escapeTgHtml(normalized);
+  return `Тел: <a href="tel:${safePhone}">${safePhone}</a>`;
+}
+
+function formatMoscow(input?: string | null, withTime = true) {
+  const date = input ? new Date(input) : new Date();
+  const value = Number.isNaN(date.getTime()) ? new Date() : date;
+  return new Intl.DateTimeFormat("ru-RU", {
+    timeZone: "Europe/Moscow",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    ...(withTime ? { hour: "2-digit", minute: "2-digit" } : {}),
+  }).format(value).replace(",", "");
+}
+
+function formatDdMmTime(input?: unknown) {
+  const raw = asString(input).trim();
+  if (!raw) return "";
+  const date = new Date(raw);
+  if (Number.isNaN(date.getTime())) return raw;
+  const ddmm = new Intl.DateTimeFormat("ru-RU", {
+    timeZone: "Europe/Moscow",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(date);
+  const hm = new Intl.DateTimeFormat("ru-RU", {
+    timeZone: "Europe/Moscow",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(date).replace(",", "");
+  return `${ddmm} в ${hm}`;
+}
+
+function normalizeTrialDateLabel(input: string) {
+  const raw = String(input || "").trim();
+  if (!raw) return "";
+  if (/\sв\s/i.test(raw)) return raw;
+  const withDot = raw.match(/^(\d{1,2}\.\d{1,2})\s+(\d{1,2}:\d{2})$/);
+  if (withDot) return `${withDot[1]} в ${withDot[2]}`;
+  const withSlash = raw.match(/^(\d{1,2}\/\d{1,2})\s+(\d{1,2}:\d{2})$/);
+  if (withSlash) return `${withSlash[1]} в ${withSlash[2]}`;
+  return raw;
+}
+
+type TrialStudioMeta = {
+  gymName: string;
+  address: string;
+  coach: string;
+  directionsUrl?: string;
+  chatUrl?: string;
+};
+
+const TRIAL_STUDIO_META: Record<string, TrialStudioMeta> = {
+  msk_youcan: {
+    gymName: "You Can",
+    address: "м. Улица 1905 года",
+    coach: "Женя",
+    directionsUrl: "https://storage.yandexcloud.net/idc-website-app/ycg.jpeg",
+    chatUrl: "https://t.me/+ofJDca2V3y9kNDVi",
+  },
+  msk_elfit: {
+    gymName: "El-Fit",
+    address: "Калужская площадь, 1к2, 3 этаж",
+    coach: "Женя",
+    directionsUrl: "https://storage.yandexcloud.net/idc-website-app/elfit.MP4",
+    chatUrl: "https://t.me/+lk7Pdjp3AP81NmNi",
+  },
+  spb_hkc: {
+    gymName: "Hells Kitchen",
+    address: "м. Выборгская, Малый Сампсониевский пр., дом 2",
+    coach: "Дима",
+    chatUrl: "https://t.me/+dXJCxBPP9whkZjEy",
+  },
+  spb_spirit: {
+    gymName: "Spirit",
+    address: "м. Московские Ворота, ул. Заставская, 33П",
+    coach: "Иван",
+    directionsUrl: "https://storage.yandexcloud.net/idc-website-app/spirit.jpg",
+    chatUrl: "https://t.me/+R9feJDYgxJtJCSbI",
+  },
+};
+
+function paymentSource(payload: Record<string, unknown>) {
+  return asString(payload.source_channel).trim().toLowerCase() === "website"
+    ? "website"
+    : "purchases";
+}
+
+function studioSlug(payload: Record<string, unknown>) {
+  return pickValue(payload, ["studio_slug", "studio_id", "studio"]);
+}
+
+function studioDisplayName(slug: string) {
+  return TRIAL_STUDIO_META[slug]?.gymName || slug || "—";
+}
+
+function cityFromStudioId(id: string) {
+  if (id.startsWith("msk")) return "Москва";
+  if (id.startsWith("spb")) return "Санкт-Петербург";
+  return "";
+}
+
+function coachChatForStudio(id: string) {
+  if (id === "msk_youcan" || id === "msk_elfit") {
+    return TELEGRAM_COACH_CHAT_ID_MSK;
+  }
+  if (id === "spb_spirit") return TELEGRAM_COACH_CHAT_ID_SPB_SPIRIT;
+  if (id === "spb_hkc") return TELEGRAM_COACH_CHAT_ID_SPB_HKC;
+  return "";
+}
+
+function purchaseInvId(payload: Record<string, unknown>) {
+  return pickValue(payload, ["transaction_id", "id_payment", "purchase_id"]) ||
+    "—";
+}
+
+function purchaseMoney(payload: Record<string, unknown>) {
+  return asString(payload.sum).trim() || "0";
+}
+
+function purchaseIsGymTrial(payload: Record<string, unknown>) {
+  const format = asString(payload.format).trim().toLowerCase();
+  const tariffLabel = asString(payload.tariff_label).trim().toLowerCase();
+  return format === "gym" &&
+    (tariffLabel === "trial" || Boolean(asString(payload.slot_start_at).trim()));
+}
+
+async function sendPurchaseTelegram(
+  event: NotificationEvent,
+  params: {
+    botToken: string;
+    chatId: string | number;
+    text: string;
+    replyMarkup?: ReplyMarkup;
+    target: string;
+  },
+) {
+  return resultFromPurchaseTelegram(
+    event,
+    await sendTelegramWithRetry(params),
+  );
 }
 
 async function handleFirstLessonTelegram(
@@ -914,6 +1193,328 @@ async function handleSubscriptionPurchaseTrainer(
   );
 }
 
+async function handleStudentWorkoutSubmittedTrainer(
+  event: NotificationEvent,
+): Promise<HandleResult> {
+  const payload = event.payload ?? {};
+  const chatId = trainerTelegramId(payload);
+
+  if (!chatId) {
+    return {
+      status: "skipped",
+      errorCode: "trainer_telegram_missing",
+      errorMessage: "Trainer telegram_id is missing",
+    };
+  }
+
+  const workoutTitle = pickValue(payload, ["workout_title"]) || "Тренировка";
+  const workoutDate = pickValue(payload, ["workout_date"]);
+  const exerciseResultCount = pickValue(payload, ["exercise_result_count"]);
+  const videoCount = pickValue(payload, ["video_count"]);
+  const resultLine = exerciseResultCount || videoCount
+    ? `Результаты: ${exerciseResultCount || "0"} упражнений, ${videoCount || "0"} видео.`
+    : null;
+
+  const text = [
+    `${clientName(null, payload)} завершил тренировку.`,
+    `Тренировка: ${workoutTitle}${workoutDate ? ` (${workoutDate})` : ""}`,
+    resultLine,
+  ].filter(Boolean).join("\n");
+
+  return resultFromTelegram(
+    await sendTelegramWithRetry({
+      botToken: CLIENT_BOT_TOKEN,
+      chatId,
+      text,
+      target: "trainer:student_workout_submitted",
+    }),
+  );
+}
+
+async function handlePurchasePaidAdmin(
+  event: NotificationEvent,
+  client: ClientRow,
+): Promise<HandleResult> {
+  const payload = event.payload ?? {};
+  const source = paymentSource(payload);
+  const format = asString(payload.format).trim().toLowerCase();
+  const courseName = pickValue(payload, ["course_name", "tag"]);
+  const purchaseTag = pickValue(payload, ["tag", "course_name"]);
+  const tariffLabel = pickValue(payload, ["tariff_label"]);
+  const slug = studioSlug(payload);
+  const displayStudio = studioDisplayName(slug);
+  const invId = purchaseInvId(payload);
+  const fio = clientName(client, payload);
+  const phone = payload.phone;
+  const phoneLine = telegramPhoneLine(phone);
+  const phoneOptional = telegramPhoneLineOptional(phone);
+  const email = pickValue(payload, ["email"]) || asString(client.email);
+  const sum = purchaseMoney(payload);
+  const lessons = numericValue(payload.lessons);
+  const pricePerLesson = lessons > 0
+    ? Math.round(numericValue(payload.sum) / lessons)
+    : numericValue(payload.price_per_lesson);
+  const paidAt = formatMoscow(event.created_at);
+  let text = "";
+
+  if (source === "purchases") {
+    text =
+      `<b>✅ Оплата подтверждена (bot)</b>\n` +
+      `InvId: <code>${escapeTgHtml(invId)}</code>\n` +
+      `Дата: ${escapeTgHtml(paidAt)}\n` +
+      `Имя: ${escapeTgHtml(fio || "—")}\n` +
+      `${phoneOptional ? `${phoneOptional}\n` : ""}` +
+      `Почта: ${escapeTgHtml(email || "—")}\n` +
+      `Сумма: ${escapeTgHtml(sum)} ₽\n` +
+      `Курс: ${escapeTgHtml(purchaseTag || "—")}\n` +
+      `Тариф: ${escapeTgHtml(tariffLabel || "—")}`;
+  } else if (format === "ds") {
+    text =
+      `<b>✅ Новая покупка ${escapeTgHtml(courseName)}</b>\n` +
+      `${escapeTgHtml(tariffLabel)}\n` +
+      `Дата: ${escapeTgHtml(paidAt)}\n` +
+      `Имя: ${escapeTgHtml(fio)}\n` +
+      `${phoneLine}\n` +
+      `Email: ${escapeTgHtml(email)}\n` +
+      `Сумма: ${escapeTgHtml(sum)} ₽\n` +
+      `Кол-во тренировок: ${escapeTgHtml(String(lessons || 0))}\n` +
+      `Стоимость за тренировку: ${escapeTgHtml(String(pricePerLesson || 0))} ₽`;
+  } else if (purchaseIsGymTrial(payload)) {
+    const city = cityFromStudioId(slug);
+    const header =
+      `<b>🟡 Новая запись в ${escapeTgHtml(displayStudio)}${
+        city ? ` (${escapeTgHtml(city)})` : ""
+      }</b>\n`;
+    text =
+      header +
+      `Формат: пробная тренировка\n` +
+      `Когда: ${escapeTgHtml(formatDdMmTime(payload.slot_start_at))}\n` +
+      `Имя: ${escapeTgHtml(fio)}\n` +
+      `${phoneLine}\n` +
+      `Почта: ${escapeTgHtml(email)}\n` +
+      `Сумма: ${escapeTgHtml(sum)} ₽\n\n` +
+      `Оплата: ${escapeTgHtml(paidAt)}\n` +
+      `Тэг: ${escapeTgHtml(courseName)}`;
+  } else if (
+    format === "gym" &&
+    (courseName.includes("_personal_") || courseName.includes("_split_"))
+  ) {
+    const city = cityFromStudioId(slug);
+    const header =
+      `<b>🔵 Новая запись в ${escapeTgHtml(displayStudio)}${
+        city ? ` (${escapeTgHtml(city)})` : ""
+      }</b>\n`;
+    const formatLabel = courseName.includes("_split_") ? "сплит" : "персоналка";
+    text =
+      header +
+      `Формат: ${escapeTgHtml(formatLabel)}\n` +
+      `Имя: ${escapeTgHtml(fio)}\n` +
+      `${phoneLine}\n` +
+      `Почта: ${escapeTgHtml(email)}\n` +
+      `Сумма: ${escapeTgHtml(sum)} ₽\n\n` +
+      `Оплата: ${escapeTgHtml(paidAt)}\n` +
+      `Тэг: ${escapeTgHtml(courseName)}`;
+  } else if (format === "gym") {
+    text =
+      `<b>✅ Новая покупка ${escapeTgHtml(courseName)}</b>\n` +
+      `Когда: ${escapeTgHtml(paidAt)}\n` +
+      `Имя: ${escapeTgHtml(fio)}\n` +
+      `${phoneLine}\n` +
+      `Почта: ${escapeTgHtml(email)}\n` +
+      `Сумма: ${escapeTgHtml(sum)} ₽`;
+  } else {
+    text =
+      `<b>✅ Оплата успешна</b>\n` +
+      `<b>InvId:</b> <code>${escapeTgHtml(invId)}</code>\n` +
+      `<b>OutSum:</b> ${escapeTgHtml(sum)}`;
+  }
+
+  return await sendPurchaseTelegram(event, {
+    botToken: CLIENT_BOT_TOKEN,
+    chatId: PAYMENT_ADMIN_CHAT_ID,
+    text,
+    target: "admin:purchase_paid_admin",
+  });
+}
+
+async function handlePurchasePaidCoach(
+  event: NotificationEvent,
+  client: ClientRow,
+): Promise<HandleResult> {
+  const payload = event.payload ?? {};
+  const slug = studioSlug(payload);
+  const trialMeta = TRIAL_STUDIO_META[slug];
+
+  if (!purchaseIsGymTrial(payload)) {
+    return skipped("unsupported_event_type", "Purchase is not a gym trial");
+  }
+  if (!trialMeta) {
+    return skipped("studio_meta_missing", "Studio routing metadata is missing");
+  }
+
+  const chatId = coachChatForStudio(slug);
+  if (!chatId) {
+    return skipped("trainer_telegram_missing", "Coach Telegram chat id is missing");
+  }
+
+  const city = cityFromStudioId(slug);
+  const trialDateLabel = normalizeTrialDateLabel(
+    formatDdMmTime(payload.slot_start_at) || asString(payload.slot_start_at),
+  );
+  const email = pickValue(payload, ["email"]) || asString(client.email);
+  const phoneOptional = telegramPhoneLineOptional(payload.phone);
+  const header =
+    `<b>🟡 Новая запись в ${escapeTgHtml(trialMeta.gymName)}${
+      city ? ` (${escapeTgHtml(city)})` : ""
+    }</b>\n`;
+  const text =
+    header +
+    `Когда: ${escapeTgHtml(trialDateLabel || "—")}\n` +
+    `Имя: ${escapeTgHtml(clientName(client, payload) || "—")}\n` +
+    `${phoneOptional ? `${phoneOptional}\n` : ""}` +
+    `Почта: ${escapeTgHtml(email || "—")}`;
+
+  return await sendPurchaseTelegram(event, {
+    botToken: CLIENT_BOT_TOKEN,
+    chatId,
+    text,
+    target: "coach:purchase_paid_coach",
+  });
+}
+
+async function handlePurchasePaidClient(
+  event: NotificationEvent,
+  client: ClientRow,
+): Promise<HandleResult> {
+  const payload = event.payload ?? {};
+  const chatId = asString(client.tgid);
+
+  if (!chatId) {
+    return skipped("client_telegram_missing", "Client tgid is missing");
+  }
+
+  const format = asString(payload.format).trim().toLowerCase();
+  const tariffLabel = asString(payload.tariff_label).trim().toLowerCase();
+  const slug = studioSlug(payload);
+  const trialMeta = TRIAL_STUDIO_META[slug];
+  const sum = purchaseMoney(payload);
+
+  if (purchaseIsGymTrial(payload)) {
+    if (!trialMeta) {
+      return skipped("studio_meta_missing", "Studio routing metadata is missing");
+    }
+
+    const trialDateLabel = normalizeTrialDateLabel(
+      formatDdMmTime(payload.slot_start_at) || asString(payload.slot_start_at),
+    );
+    const first = await sendPurchaseTelegram(event, {
+      botToken: CLIENT_BOT_TOKEN,
+      chatId,
+      text:
+        `Отлично, запись подтверждена!\n\n` +
+        `Дата и время: ${escapeTgHtml(trialDateLabel || "—")}\n` +
+        `Зал: ${escapeTgHtml(trialMeta.gymName)}\n` +
+        `Адрес: ${escapeTgHtml(trialMeta.address)}\n` +
+        `Тренер: ${escapeTgHtml(trialMeta.coach)}`,
+      target: "client:purchase_paid_client:gym_trial_details",
+    });
+
+    if (first.status !== "sent") return first;
+
+    const second = await sendPurchaseTelegram(event, {
+      botToken: CLIENT_BOT_TOKEN,
+      chatId,
+      text:
+        `Важно:\n` +
+        `- Если нужно перенести тренировку, используй команду /reschedule.\n` +
+        `- Абонемент активен 4 недели с даты первой тренировки.`,
+      target: "client:purchase_paid_client:gym_trial_notes",
+    });
+
+    if (second.status !== "sent") return second;
+
+    const inlineButtons: Array<{ text: string; url: string }> = [];
+    if (trialMeta.directionsUrl) {
+      inlineButtons.push({ text: "📍 Как добраться", url: trialMeta.directionsUrl });
+    }
+    if (trialMeta.chatUrl) {
+      inlineButtons.push({ text: "💬 Присоединиться к чату", url: trialMeta.chatUrl });
+    }
+
+    if (!inlineButtons.length) return second;
+
+    return await sendPurchaseTelegram(event, {
+      botToken: CLIENT_BOT_TOKEN,
+      chatId,
+      text: "Полезные ссылки:",
+      replyMarkup: {
+        inline_keyboard: [
+          inlineButtons.map((button) => ({
+            text: button.text,
+            url: button.url,
+          })),
+        ],
+      },
+      target: "client:purchase_paid_client:gym_trial_links",
+    });
+  }
+
+  if (format === "ds" && tariffLabel === "online_test") {
+    const first = await sendPurchaseTelegram(event, {
+      botToken: CLIENT_BOT_TOKEN,
+      chatId,
+      text:
+        `Ура, оплата прошла успешно!\n` +
+        `Вскоре на вашу почту придет письмо с темой [TrueCoach] Invitation, содержащее приглашение для доступа к нашему приложению, где будет стоять первая тренировка.\n` +
+        `После прохождения первой тренировки наш тренер свяжется с вами и предоставит подробную обратную связь. Для удобства рекомендуем скачать мобильную версию приложения 👇🏻`,
+      target: "client:purchase_paid_client:online_test_intro",
+    });
+
+    if (first.status !== "sent") return first;
+
+    const second = await sendPurchaseTelegram(event, {
+      botToken: CLIENT_BOT_TOKEN,
+      chatId,
+      text: "Ссылки для установки приложения:",
+      replyMarkup: {
+        inline_keyboard: [[
+          {
+            text: "🍎 Скачать для iOS",
+            url: "https://apps.apple.com/am/app/truecoach-for-clients/id1439127794",
+          },
+          {
+            text: "🤖 Скачать для Android",
+            url: "https://play.google.com/store/apps/details?id=co.truecoach.client",
+          },
+        ]],
+      },
+      target: "client:purchase_paid_client:online_test_links",
+    });
+
+    if (second.status !== "sent") return second;
+
+    return await sendPurchaseTelegram(event, {
+      botToken: CLIENT_BOT_TOKEN,
+      chatId,
+      text:
+        `<b>Краткая инструкция как выполнять тест силы от I Do Calisthenics:</b>\n` +
+        `Всего 5-7 упражнений (в зависимости от выбранного курса). Для каждого упражнения в приложении указано возможное количество вариаций (от 1 до 3): вам надо выбрать и выполнить только одну вариацию и один подход в каждом упражнении — ту, которая для вас не самая простая, но с которой вы уверенно справитесь.\n` +
+        `Важно: все упражнения необходимо снять на видео и загрузить в приложение — это поможет нам определить ваш текущий уровень и составить последующие тренировки эффективно.`,
+      target: "client:purchase_paid_client:online_test_instruction",
+    });
+  }
+
+  return await sendPurchaseTelegram(event, {
+    botToken: CLIENT_BOT_TOKEN,
+    chatId,
+    text:
+      `Ура! Оплата прошла успешно ✅\n` +
+      `Ваш баланс пополнен на: ${escapeTgHtml(sum)} ₽.\n\n` +
+      `Дата окончания вашего тарифа обновлена. Посмотреть её можно, нажав кнопку «Дата окончания».`,
+    target: "client:purchase_paid_client:balance",
+  });
+}
+
 async function handleFirstOnlinePurchaseWelcomeEmail(
   event: NotificationEvent,
   client: ClientRow,
@@ -1060,6 +1661,18 @@ async function deliverEvent(event: NotificationEvent): Promise<HandleResult> {
     case "subscription_purchase_trainer":
       if (event.channel !== "telegram") return unsupportedChannel(event);
       return await handleSubscriptionPurchaseTrainer(event);
+    case "student_workout_submitted":
+      if (event.channel !== "telegram") return unsupportedChannel(event);
+      return await handleStudentWorkoutSubmittedTrainer(event);
+    case "purchase_paid_admin":
+      if (event.channel !== "admin_telegram") return unsupportedChannel(event);
+      return await handlePurchasePaidAdmin(event, client);
+    case "purchase_paid_client":
+      if (event.channel !== "telegram") return unsupportedChannel(event);
+      return await handlePurchasePaidClient(event, client);
+    case "purchase_paid_coach":
+      if (event.channel !== "telegram") return unsupportedChannel(event);
+      return await handlePurchasePaidCoach(event, client);
     default:
       return {
         status: "skipped",
@@ -1070,14 +1683,23 @@ async function deliverEvent(event: NotificationEvent): Promise<HandleResult> {
 }
 
 async function updateEventFinal(eventId: string, result: HandleResult) {
-  const patch: Record<string, unknown> = {
-    status: result.status,
-    updated_at: new Date().toISOString(),
-    next_attempt_at: null,
-  };
+  const now = new Date().toISOString();
+  const patch: Record<string, unknown> = result.status === "retry"
+    ? {
+      status: "pending",
+      updated_at: now,
+      next_attempt_at: result.nextAttemptAt,
+      error_code: result.errorCode,
+      error_message: result.errorMessage.slice(0, 500),
+    }
+    : {
+      status: result.status,
+      updated_at: now,
+      next_attempt_at: null,
+    };
 
   if (result.status === "sent") {
-    patch.sent_at = new Date().toISOString();
+    patch.sent_at = now;
     patch.error_code = null;
     patch.error_message = null;
 
@@ -1085,7 +1707,7 @@ async function updateEventFinal(eventId: string, result: HandleResult) {
       patch.provider = "resend";
       patch.provider_message_id = result.email.providerMessageId;
     }
-  } else {
+  } else if (result.status !== "retry") {
     patch.error_code = result.errorCode;
     patch.error_message = result.errorMessage.slice(0, 500);
   }
@@ -1209,6 +1831,8 @@ async function processEvent(eventId: string) {
 function isStale(event: NotificationEvent) {
   const timestamp = event.status === "processing"
     ? event.updated_at ?? event.last_attempt_at ?? event.created_at
+    : PURCHASE_PAID_EVENT_TYPES.has(event.event_type)
+    ? event.next_attempt_at ?? event.created_at
     : event.created_at;
 
   if (!timestamp) return false;
