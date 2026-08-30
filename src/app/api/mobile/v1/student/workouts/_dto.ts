@@ -1,4 +1,5 @@
 import type { CoachWorkout } from "@/lib/supabase/coachWorkouts";
+import { buildCloudflareHlsManifestUrl, isCloudflareStreamUid } from "@/lib/cloudflare/stream";
 
 const MOBILE_WORKOUT_STATUSES = new Set([
   "planned",
@@ -18,6 +19,33 @@ function mobileStatus(value: unknown): string {
   return status && MOBILE_WORKOUT_STATUSES.has(status) ? status : "planned";
 }
 
+function mobileExerciseVideoUrl(exercise: CoachWorkout["exercises"][number]): string | null {
+  const videoAssetId = nullableString(exercise.videoAssetId);
+  if (videoAssetId && isCloudflareStreamUid(videoAssetId)) {
+    return buildCloudflareHlsManifestUrl(videoAssetId);
+  }
+  return nullableString(exercise.videoUrl);
+}
+
+function mobileExerciseResult(exercise: CoachWorkout["exercises"][number]) {
+  if (!exercise.result) return null;
+
+  return {
+    comment: nullableString(exercise.result.comment),
+    videos: exercise.result.videos
+      .slice()
+      .sort((a, b) => a.sortOrder - b.sortOrder)
+      .map((video) => ({
+        video_id: video.videoAssetId,
+        video_url: buildCloudflareHlsManifestUrl(video.videoAssetId),
+        thumbnail_url: nullableString(video.thumbnailUrl),
+        sort_order: video.sortOrder,
+      })),
+    status: nullableString(exercise.result.status) || "submitted",
+    submitted_at: nullableString(exercise.result.submittedAt) || "",
+  };
+}
+
 export function mobileWorkoutSummary(workout: CoachWorkout) {
   return {
     id: workout.id,
@@ -27,6 +55,7 @@ export function mobileWorkoutSummary(workout: CoachWorkout) {
     coach_comment: nullableString(workout.coachComment),
     exercise_count: workout.exercises.length,
     completed_exercise_count: 0,
+    submitted_at: nullableString(workout.submittedAt),
     updated_at: nullableString(workout.updatedAt),
   };
 }
@@ -50,8 +79,9 @@ export function mobileWorkoutDetail(workout: CoachWorkout) {
       tempo: nullableString(exercise.tempo),
       notes: nullableString(exercise.notes),
       sort_order: exercise.sortOrder ?? 0,
-      video_url: nullableString(exercise.videoUrl),
+      video_url: mobileExerciseVideoUrl(exercise),
       thumbnail_url: nullableString(exercise.thumbnailUrl),
+      result: mobileExerciseResult(exercise),
     })),
   };
 }

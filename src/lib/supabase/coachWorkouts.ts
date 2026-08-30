@@ -2,6 +2,10 @@ import "server-only";
 
 import { getSupabaseAdmin, isSupabaseEnabled } from "@/lib/supabase/server";
 import { getCoachByEmail } from "@/lib/supabase/coachStudents";
+import {
+  getStudentExerciseResultsForExerciseIds,
+  type StudentExerciseResult,
+} from "@/lib/supabase/studentExerciseResults";
 
 export type CoachWorkoutExercise = {
   id?: string;
@@ -15,8 +19,10 @@ export type CoachWorkoutExercise = {
   tempo?: string;
   notes?: string;
   sortOrder?: number;
+  videoAssetId?: string;
   videoUrl?: string;
   thumbnailUrl?: string;
+  result?: StudentExerciseResult | null;
 };
 
 export type CoachWorkoutExerciseGroup = {
@@ -35,6 +41,7 @@ export type CoachWorkout = {
   date: string;
   title: string;
   status?: string;
+  submittedAt?: string;
   exercises: CoachWorkoutExercise[];
   groups?: CoachWorkoutExerciseGroup[];
   coachComment?: string;
@@ -100,6 +107,7 @@ type ProgramWorkoutRow = {
   title?: string | null;
   coach_comment?: string | null;
   status?: string | null;
+  submitted_at?: string | null;
   updated_at?: string | null;
 };
 
@@ -129,6 +137,7 @@ type ProgramExerciseGroupRow = {
 
 type ExerciseMediaRow = {
   id?: string | null;
+  video_asset_id?: string | null;
   video_url?: string | null;
   thumbnail_url?: string | null;
 };
@@ -142,6 +151,7 @@ type ReadWorkoutsForStudentParams = {
 
 type ReadWorkoutsForStudentOptions = {
   strict?: boolean;
+  includeResults?: boolean;
 };
 
 function firstString(...values: unknown[]): string {
@@ -183,7 +193,8 @@ function exerciseDetails(row: ProgramExerciseRow): string {
 
 function groupExercisesByWorkout(
   rows: ProgramExerciseRow[],
-  mediaByExerciseId: Map<string, ExerciseMediaRow> = new Map()
+  mediaByExerciseId: Map<string, ExerciseMediaRow> = new Map(),
+  resultsByExerciseInstanceId: Map<string, StudentExerciseResult> = new Map()
 ): Map<string, CoachWorkoutExercise[]> {
   const map = new Map<string, CoachWorkoutExercise[]>();
   for (const row of rows) {
@@ -191,11 +202,12 @@ function groupExercisesByWorkout(
     const title = String(row.exercise_title || "").trim();
     if (!workoutId || !title) continue;
 
+    const exerciseInstanceId = cleanOptional(row.id) || undefined;
     const exerciseId = cleanOptional(row.exercise_id) || undefined;
     const media = exerciseId ? mediaByExerciseId.get(exerciseId) : undefined;
     const list = map.get(workoutId) || [];
     list.push({
-      id: cleanOptional(row.id) || undefined,
+      id: exerciseInstanceId,
       groupId: row.exercise_group_id || undefined,
       exerciseId,
       title,
@@ -206,8 +218,10 @@ function groupExercisesByWorkout(
       tempo: row.tempo || undefined,
       notes: row.notes || undefined,
       sortOrder: row.sort_order ?? undefined,
+      videoAssetId: cleanOptional(media?.video_asset_id) || undefined,
       videoUrl: cleanOptional(media?.video_url) || undefined,
       thumbnailUrl: cleanOptional(media?.thumbnail_url) || undefined,
+      result: exerciseInstanceId ? resultsByExerciseInstanceId.get(exerciseInstanceId) || null : null,
     });
     map.set(workoutId, list);
   }
@@ -281,6 +295,7 @@ function normalizeWorkout(
     date,
     title: firstString(row.title, "Тренировка"),
     status: firstString(row.status) || undefined,
+    submittedAt: cleanOptional(row.submitted_at) || undefined,
     exercises: orderedExercises,
     groups,
     coachComment: firstString(row.coach_comment) || undefined,
@@ -302,7 +317,7 @@ async function readWorkoutsForStudent(
 
   let workoutsQuery = sb
     .from("client_program_workouts")
-    .select("id, client_id, workout_date, title, coach_comment, status, updated_at")
+    .select("id, client_id, workout_date, title, coach_comment, status, submitted_at, updated_at")
     .eq("client_id", studentId);
 
   if (workoutId) {
@@ -346,7 +361,7 @@ async function readWorkoutsForStudent(
   if (exerciseIds.length > 0) {
     const { data: mediaRows, error: mediaErr } = await sb
       .from("exercise_library")
-      .select("id, video_url, thumbnail_url")
+      .select("id, video_asset_id, video_url, thumbnail_url")
       .in("id", exerciseIds);
 
     if (mediaErr) {
@@ -360,7 +375,13 @@ async function readWorkoutsForStudent(
     }
   }
 
-  const exercisesByWorkout = groupExercisesByWorkout(exerciseRows, mediaByExerciseId);
+  const resultsByExerciseInstanceId = options.includeResults
+    ? await getStudentExerciseResultsForExerciseIds(
+        exerciseRows.map((exercise) => cleanOptional(exercise.id)).filter((id): id is string => Boolean(id))
+      )
+    : new Map<string, StudentExerciseResult>();
+
+  const exercisesByWorkout = groupExercisesByWorkout(exerciseRows, mediaByExerciseId, resultsByExerciseInstanceId);
 
   const { data: groups, error: groupsErr } = await sb
     .from("client_program_exercise_groups")
@@ -586,7 +607,7 @@ export async function getStudentWorkoutReadOnlyById(params: {
       studentId: params.studentId,
       workoutId: params.workoutId,
     },
-    { strict: true }
+    { strict: true, includeResults: true }
   );
   return workouts[0] ?? null;
 }

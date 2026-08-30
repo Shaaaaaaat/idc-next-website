@@ -103,22 +103,30 @@ export function parseCloudflareStreamUid(raw: unknown): string {
   }
 }
 
-export function buildCloudflareIframeUrl(uid: string, customerDomain?: string) {
-  const cleanUid = String(uid || "").trim();
-  const host =
+function cloudflareCustomerHost(customerDomain?: string) {
+  return (
     normalizeHostname(customerDomain) ||
     normalizeHostname(process.env.CLOUDFLARE_STREAM_CUSTOMER_DOMAIN) ||
-    DEFAULT_CUSTOMER_DOMAIN;
+    DEFAULT_CUSTOMER_DOMAIN
+  );
+}
+
+export function buildCloudflareIframeUrl(uid: string, customerDomain?: string) {
+  const cleanUid = String(uid || "").trim();
+  const host = cloudflareCustomerHost(customerDomain);
   return `https://${host}/${encodeURIComponent(cleanUid)}/iframe`;
 }
 
 export function buildCloudflareThumbnailUrl(uid: string, customerDomain?: string) {
   const cleanUid = String(uid || "").trim();
-  const host =
-    normalizeHostname(customerDomain) ||
-    normalizeHostname(process.env.CLOUDFLARE_STREAM_CUSTOMER_DOMAIN) ||
-    DEFAULT_CUSTOMER_DOMAIN;
+  const host = cloudflareCustomerHost(customerDomain);
   return `https://${host}/${encodeURIComponent(cleanUid)}/thumbnails/thumbnail.jpg`;
+}
+
+export function buildCloudflareHlsManifestUrl(uid: string, customerDomain?: string) {
+  const cleanUid = String(uid || "").trim();
+  const host = cloudflareCustomerHost(customerDomain);
+  return `https://${host}/${encodeURIComponent(cleanUid)}/manifest/video.m3u8`;
 }
 
 export function normalizeCloudflareVideo(
