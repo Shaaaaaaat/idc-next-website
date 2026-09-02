@@ -23,6 +23,10 @@ import {
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { LkExerciseEditorModal } from "@/components/lk/LkExerciseEditorModal";
+import {
+  isWorkoutReadOnly,
+  LkStudentWorkoutReview,
+} from "@/components/lk/LkStudentWorkoutReview";
 import { WorkoutSelectionBar } from "@/components/lk/WorkoutSelectionBar";
 import { ClipboardNotification } from "@/components/lk/workout-editor/ClipboardNotification";
 import {
@@ -89,6 +93,13 @@ type EditingState = {
 type PreviewExercise = {
   title: string;
   videoUrl: string;
+};
+
+type WorkoutDetailResponse = {
+  ok?: boolean;
+  workout?: CoachWorkout;
+  error?: string;
+  message?: string;
 };
 
 type ProgramTemplateWorkoutPreview = {
@@ -526,10 +537,11 @@ function WorkoutCard({
   onCopy: () => void;
   onToggleSelected: () => void;
 }) {
+  const isReadOnly = isWorkoutReadOnly(workout.status);
   const { attributes, listeners, setActivatorNodeRef, setNodeRef, transform, isDragging } = useDraggable({
     id: `workout:${workout.id}`,
     data: { type: "workout", workout },
-    disabled: isPendingReconciliation,
+    disabled: isPendingReconciliation || isReadOnly,
   });
   const translate = CSS.Translate.toString(transform);
   const style = {
@@ -555,7 +567,7 @@ function WorkoutCard({
       role="button"
       tabIndex={0}
       aria-disabled={isPendingReconciliation}
-      aria-label={`Открыть тренировку ${workout.title}`}
+      aria-label={`${isReadOnly ? "Открыть результат тренировки" : "Открыть тренировку"} ${workout.title}`}
       style={style}
       onClick={isPendingReconciliation ? undefined : onEdit}
       onKeyDown={handleCardKeyDown}
@@ -585,40 +597,44 @@ function WorkoutCard({
           >
             ⧉
           </button>
-          <button
-            type="button"
-            ref={setActivatorNodeRef}
-            onClick={(e) => e.stopPropagation()}
-            disabled={isPendingReconciliation}
-            className={`${cardControlClass} ${
-              isPendingReconciliation ? "cursor-not-allowed opacity-50" : "cursor-grab active:cursor-grabbing"
-            }`}
-            title={isPendingReconciliation ? "Тренировка синхронизируется" : "Перенести тренировку"}
-            {...(isPendingReconciliation ? {} : attributes)}
-            {...(isPendingReconciliation ? {} : listeners)}
-          >
-            ☰
-          </button>
-          <button
-            type="button"
-            role="checkbox"
-            aria-checked={selected}
-            disabled={isPendingReconciliation}
-            onClick={(e) => {
-              e.stopPropagation();
-              if (isPendingReconciliation) return;
-              onToggleSelected();
-            }}
-            className={`flex h-7 w-7 items-center justify-center rounded-xl border text-[11px] font-bold opacity-100 transition-all duration-150 sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100 ${
-              selected
-                ? "border-emerald-300 bg-emerald-500 text-white shadow-sm shadow-emerald-200"
-                : "border-slate-200 bg-white/80 text-transparent hover:border-slate-300 hover:bg-slate-100"
-            } ${isPendingReconciliation ? "cursor-not-allowed opacity-50" : ""}`}
-            aria-label={selected ? `Снять выбор с тренировки ${workout.title}` : `Выбрать тренировку ${workout.title}`}
-            title={isPendingReconciliation ? "Тренировка синхронизируется" : selected ? "Снять выбор" : "Выбрать тренировку"}
-          >
-            ✓
-          </button>
+          {!isReadOnly ? (
+            <>
+              <button
+                type="button"
+                ref={setActivatorNodeRef}
+                onClick={(e) => e.stopPropagation()}
+                disabled={isPendingReconciliation}
+                className={`${cardControlClass} ${
+                  isPendingReconciliation ? "cursor-not-allowed opacity-50" : "cursor-grab active:cursor-grabbing"
+                }`}
+                title={isPendingReconciliation ? "Тренировка синхронизируется" : "Перенести тренировку"}
+                {...(isPendingReconciliation ? {} : attributes)}
+                {...(isPendingReconciliation ? {} : listeners)}
+              >
+                ☰
+              </button>
+              <button
+                type="button"
+                role="checkbox"
+                aria-checked={selected}
+                disabled={isPendingReconciliation}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  if (isPendingReconciliation) return;
+                  onToggleSelected();
+                }}
+                className={`flex h-7 w-7 items-center justify-center rounded-xl border text-[11px] font-bold opacity-100 transition-all duration-150 sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100 ${
+                  selected
+                    ? "border-emerald-300 bg-emerald-500 text-white shadow-sm shadow-emerald-200"
+                    : "border-slate-200 bg-white/80 text-transparent hover:border-slate-300 hover:bg-slate-100"
+                } ${isPendingReconciliation ? "cursor-not-allowed opacity-50" : ""}`}
+                aria-label={selected ? `Снять выбор с тренировки ${workout.title}` : `Выбрать тренировку ${workout.title}`}
+                title={isPendingReconciliation ? "Тренировка синхронизируется" : selected ? "Снять выбор" : "Выбрать тренировку"}
+              >
+                ✓
+              </button>
+            </>
+          ) : null}
         </div>
       </div>
       <div className="mt-3 min-w-0">
@@ -650,6 +666,17 @@ function WorkoutCard({
         <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-600">
           {exerciseCount} {pluralRu(String(exerciseCount), "упражнение", "упражнения", "упражнений")}
         </span>
+        {isReadOnly ? (
+          <span
+            className={`rounded-full px-2.5 py-1 text-xs font-medium ${
+              workout.status === "reviewed"
+                ? "bg-emerald-100 text-emerald-800"
+                : "bg-amber-100 text-amber-800"
+            }`}
+          >
+            {workout.status === "reviewed" ? "Проверено" : "Ждёт обратной связи"}
+          </span>
+        ) : null}
       </div>
     </div>
   );
@@ -1563,6 +1590,8 @@ export function LkStudentCalendar({ studentId, workouts, exerciseLibrary }: Prop
   const [localWorkouts, setLocalWorkouts] = useState(workouts);
   const [localExerciseLibrary, setLocalExerciseLibrary] = useState(exerciseLibrary);
   const [editing, setEditing] = useState<EditingState | null>(null);
+  const [reviewingWorkout, setReviewingWorkout] = useState<CoachWorkout | null>(null);
+  const [openingWorkoutId, setOpeningWorkoutId] = useState("");
   const [error, setError] = useState("");
   const [calendarError, setCalendarError] = useState("");
   const copiedWorkout = useWorkoutClipboard();
@@ -1606,6 +1635,7 @@ export function LkStudentCalendar({ studentId, workouts, exerciseLibrary }: Prop
   const calendarScrollRafRef = useRef<number | null>(null);
   const pendingMoveRefreshRef = useRef<Map<string, PendingMoveRefresh>>(new Map());
   const pendingPastedServerIdByTempIdRef = useRef<Map<string, string>>(new Map());
+  const workoutOpenRequestRef = useRef(0);
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
     useSensor(TouchSensor, { activationConstraint: { delay: 180, tolerance: 8 } }),
@@ -1630,7 +1660,10 @@ export function LkStudentCalendar({ studentId, workouts, exerciseLibrary }: Prop
     return localWorkouts.filter((workout) => selected.has(workout.id));
   }, [localWorkouts, selectedCalendarWorkoutIds]);
   const selectedCalendarWorkoutsBlockedForPersistedMutation = selectedCalendarWorkouts.some(
-    (workout) => pendingPastedWorkoutIdSet.has(workout.id) || isOptimisticId(workout.id)
+    (workout) =>
+      pendingPastedWorkoutIdSet.has(workout.id) ||
+      isOptimisticId(workout.id) ||
+      isWorkoutReadOnly(workout.status)
   );
   const uploadDraftExercise =
     uploadExerciseIndex !== null && editing ? editing.exercises[uploadExerciseIndex] : undefined;
@@ -1737,6 +1770,12 @@ export function LkStudentCalendar({ studentId, workouts, exerciseLibrary }: Prop
 
   useEffect(() => {
     setLocalWorkouts(workouts);
+    const readOnlyWorkoutIds = new Set(
+      workouts.filter((workout) => isWorkoutReadOnly(workout.status)).map((workout) => workout.id)
+    );
+    setSelectedCalendarWorkoutIds((current) =>
+      current.filter((workoutId) => !readOnlyWorkoutIds.has(workoutId))
+    );
     const authoritativeWorkoutIds = new Set(workouts.map((workout) => workout.id));
     setPendingPastedWorkoutIds((current) =>
       current.filter((tempWorkoutId) => {
@@ -2148,14 +2187,33 @@ export function LkStudentCalendar({ studentId, workouts, exerciseLibrary }: Prop
     return true;
   }
 
-  function openEdit(workoutId: string) {
-    setError("");
-    const workout = localWorkouts.find((item) => item.id === workoutId);
-    if (!workout) {
-      setCalendarError("Тренировка обновляется. Подожди обновления календаря.");
-      return;
+  function updateLocalWorkout(workout: CoachWorkout) {
+    setLocalWorkouts((current) =>
+      current.map((item) => (item.id === workout.id ? workout : item))
+    );
+    if (isWorkoutReadOnly(workout.status)) {
+      setSelectedCalendarWorkoutIds((current) =>
+        current.filter((workoutId) => workoutId !== workout.id)
+      );
     }
-    if (rejectBlockedPersistedWorkoutMutation(workout.id, setCalendarError)) return;
+  }
+
+  async function fetchWorkoutDetail(workoutId: string): Promise<CoachWorkout> {
+    const res = await fetch(
+      `/api/lk/coach/students/${studentId}/workouts/${workoutId}`,
+      { method: "GET", cache: "no-store" }
+    );
+    const json = (await res.json().catch(() => null)) as WorkoutDetailResponse | null;
+
+    if (!res.ok || !json?.workout) {
+      throw new Error(json?.message || json?.error || "Не удалось загрузить тренировку.");
+    }
+
+    return json.workout;
+  }
+
+  function openWorkoutEditor(workout: CoachWorkout) {
+    setReviewingWorkout(null);
     setEditing({
       mode: "edit",
       workoutId: workout.id,
@@ -2166,6 +2224,60 @@ export function LkStudentCalendar({ studentId, workouts, exerciseLibrary }: Prop
       groups: workoutGroupsToDraft(workout),
       exercises: workout.exercises.length > 0 ? workout.exercises.map(exerciseToDraft) : [emptyExercise()],
     });
+  }
+
+  async function openWorkout(workoutId: string) {
+    setError("");
+    setCalendarError("");
+    setEditing(null);
+    setReviewingWorkout(null);
+    const workout = localWorkouts.find((item) => item.id === workoutId);
+    if (!workout) {
+      setCalendarError("Тренировка обновляется. Подожди обновления календаря.");
+      return;
+    }
+    if (rejectBlockedPersistedWorkoutMutation(workout.id, setCalendarError)) return;
+
+    const requestId = workoutOpenRequestRef.current + 1;
+    workoutOpenRequestRef.current = requestId;
+    setOpeningWorkoutId(workoutId);
+
+    try {
+      const freshWorkout = await fetchWorkoutDetail(workoutId);
+      if (workoutOpenRequestRef.current !== requestId) return;
+
+      updateLocalWorkout(freshWorkout);
+      if (isWorkoutReadOnly(freshWorkout.status)) {
+        setEditing(null);
+        setReviewingWorkout(freshWorkout);
+      } else {
+        openWorkoutEditor(freshWorkout);
+      }
+    } catch (openError) {
+      if (workoutOpenRequestRef.current !== requestId) return;
+      setCalendarError(
+        openError instanceof Error ? openError.message : "Не удалось загрузить тренировку."
+      );
+    } finally {
+      if (workoutOpenRequestRef.current === requestId) {
+        setOpeningWorkoutId("");
+      }
+    }
+  }
+
+  async function showLockedWorkout(workoutId: string, message: string) {
+    setEditing(null);
+    setCalendarError(message);
+
+    try {
+      const freshWorkout = await fetchWorkoutDetail(workoutId);
+      updateLocalWorkout(freshWorkout);
+      if (isWorkoutReadOnly(freshWorkout.status)) {
+        setReviewingWorkout(freshWorkout);
+      }
+    } catch {
+      router.refresh();
+    }
   }
 
   function openProgramImport(workoutDate: string) {
@@ -2565,6 +2677,10 @@ export function LkStudentCalendar({ studentId, workouts, exerciseLibrary }: Prop
   async function moveWorkoutToDate(workout: CoachWorkout, workoutDate: string) {
     if (workout.date === workoutDate) return;
     if (moveLockedWorkoutIds.includes(workout.id)) return;
+    if (isWorkoutReadOnly(workout.status)) {
+      setCalendarError("Пройденную тренировку нельзя изменять.");
+      return;
+    }
     if (rejectBlockedPersistedWorkoutMutation(workout.id, setCalendarError)) return;
 
     const previousWorkouts = localWorkouts;
@@ -2590,6 +2706,16 @@ export function LkStudentCalendar({ studentId, workouts, exerciseLibrary }: Prop
         error?: string;
       } | null;
       if (!res.ok) {
+        if (json?.error === "locked") {
+          pendingMoveRefreshRef.current.delete(workout.id);
+          unlockWorkoutMove(workout.id);
+          setLocalWorkouts(previousWorkouts);
+          await showLockedWorkout(
+            workout.id,
+            json.message || "Пройденную тренировку нельзя изменять."
+          );
+          return;
+        }
         throw new Error(json?.message || json?.error || "Не удалось перенести тренировку.");
       }
       const returnedWorkout = json?.workout;
@@ -2673,11 +2799,19 @@ export function LkStudentCalendar({ studentId, workouts, exerciseLibrary }: Prop
     }
   }
 
-  async function deleteWorkout(workout: CoachWorkout, options: { refresh?: boolean; suppressError?: boolean } = {}) {
+  async function deleteWorkout(
+    workout: CoachWorkout,
+    options: { refresh?: boolean; suppressError?: boolean } = {}
+  ): Promise<"deleted" | "locked" | "failed"> {
     const shouldRefresh = options.refresh !== false;
-    const previousWorkouts = localWorkouts;
+    if (isWorkoutReadOnly(workout.status)) {
+      if (!options.suppressError) {
+        setCalendarError("Пройденную тренировку нельзя удалить.");
+      }
+      return "locked";
+    }
     if (rejectBlockedPersistedWorkoutMutation(workout.id, options.suppressError ? () => undefined : setCalendarError)) {
-      return false;
+      return "failed";
     }
     setLocalWorkouts((current) => current.filter((item) => item.id !== workout.id));
     if (!options.suppressError) setCalendarError("");
@@ -2686,21 +2820,43 @@ export function LkStudentCalendar({ studentId, workouts, exerciseLibrary }: Prop
       const res = await fetch(`/api/lk/coach/students/${studentId}/workouts/${workout.id}`, {
         method: "DELETE",
       });
+      const json = (await res.json().catch(() => null)) as { message?: string; error?: string } | null;
       if (!res.ok) {
-        const json = (await res.json().catch(() => null)) as { message?: string; error?: string } | null;
+        if (json?.error === "locked") {
+          setLocalWorkouts((current) =>
+            current.some((item) => item.id === workout.id)
+              ? current
+              : [...current, workout].sort(
+                  (a, b) => a.date.localeCompare(b.date) || a.title.localeCompare(b.title, "ru")
+                )
+          );
+          await showLockedWorkout(
+            workout.id,
+            json.message || "Пройденную тренировку нельзя удалить."
+          );
+          return "locked";
+        }
         throw new Error(json?.message || json?.error || "Не удалось удалить тренировку.");
       }
       if (shouldRefresh) router.refresh();
-      return true;
+      return "deleted";
     } catch (e) {
-      setLocalWorkouts(previousWorkouts);
+      setLocalWorkouts((current) =>
+        current.some((item) => item.id === workout.id)
+          ? current
+          : [...current, workout].sort(
+              (a, b) => a.date.localeCompare(b.date) || a.title.localeCompare(b.title, "ru")
+            )
+      );
       if (!options.suppressError) setCalendarError(e instanceof Error ? e.message : "Не удалось удалить тренировку.");
-      return false;
+      return "failed";
     }
   }
 
   function toggleCalendarWorkoutSelection(workoutId: string) {
     if (isPersistedWorkoutMutationBlocked(workoutId)) return;
+    const workout = localWorkouts.find((item) => item.id === workoutId);
+    if (!workout || isWorkoutReadOnly(workout.status)) return;
     setSelectedCalendarWorkoutIds((current) =>
       current.includes(workoutId) ? current.filter((id) => id !== workoutId) : [...current, workoutId]
     );
@@ -2722,7 +2878,7 @@ export function LkStudentCalendar({ studentId, workouts, exerciseLibrary }: Prop
   async function deleteSelectedCalendarWorkouts() {
     if (selectedCalendarWorkouts.length === 0 || deletingSelectedWorkouts) return;
     if (selectedCalendarWorkoutsBlockedForPersistedMutation) {
-      setCalendarError("Тренировка ещё синхронизируется. Подожди обновления календаря.");
+      setCalendarError("Пройденную или синхронизируемую тренировку нельзя удалить.");
       return;
     }
     const count = selectedCalendarWorkouts.length;
@@ -2733,18 +2889,23 @@ export function LkStudentCalendar({ studentId, workouts, exerciseLibrary }: Prop
     setCalendarError("");
     const deletedIds: string[] = [];
     const failedIds: string[] = [];
+    const lockedIds: string[] = [];
 
     for (const workout of selectedCalendarWorkouts) {
-      const deleted = await deleteWorkout(workout, { refresh: false, suppressError: true });
-      if (deleted) {
+      const outcome = await deleteWorkout(workout, { refresh: false, suppressError: true });
+      if (outcome === "deleted") {
         deletedIds.push(workout.id);
+      } else if (outcome === "locked") {
+        lockedIds.push(workout.id);
       } else {
         failedIds.push(workout.id);
       }
     }
 
     setSelectedCalendarWorkoutIds((current) => current.filter((workoutId) => !deletedIds.includes(workoutId)));
-    if (failedIds.length > 0) {
+    if (lockedIds.length > 0) {
+      setCalendarError("Пройденную тренировку нельзя удалить.");
+    } else if (failedIds.length > 0) {
       setCalendarError(`Удалено: ${deletedIds.length}. Не удалось удалить: ${failedIds.length}.`);
     }
     if (deletedIds.length > 0) router.refresh();
@@ -2823,6 +2984,13 @@ export function LkStudentCalendar({ studentId, workouts, exerciseLibrary }: Prop
 
       if (!res.ok) {
         const json = (await res.json().catch(() => null)) as { message?: string; error?: string } | null;
+        if (json?.error === "locked" && editing.workoutId) {
+          await showLockedWorkout(
+            editing.workoutId,
+            json.message || "Пройденную тренировку нельзя изменять."
+          );
+          return;
+        }
         throw new Error(json?.message || json?.error || "Не удалось сохранить тренировку.");
       }
       const json = (await res.json().catch(() => null)) as { workoutId?: string } | null;
@@ -2974,7 +3142,11 @@ export function LkStudentCalendar({ studentId, workouts, exerciseLibrary }: Prop
                 copiedWorkout={copiedWorkout}
                 selectedWorkoutIds={selectedCalendarWorkoutIds}
                 movingWorkoutId={movingWorkoutId}
-                moveLockedWorkoutIds={moveLockedWorkoutIds}
+                moveLockedWorkoutIds={
+                  openingWorkoutId
+                    ? [...moveLockedWorkoutIds, openingWorkoutId]
+                    : moveLockedWorkoutIds
+                }
                 pendingPastedWorkoutIds={pendingPastedWorkoutIdSet}
                 pastingDate={pastingDate}
                 hasWeekDivider={index >= 7}
@@ -2982,7 +3154,7 @@ export function LkStudentCalendar({ studentId, workouts, exerciseLibrary }: Prop
                 onImportFromProgram={() => openProgramImport(key)}
                 onPrefetchProgramImport={prefetchProgramList}
                 onPaste={() => pasteWorkoutToDate(key)}
-                onEditWorkout={openEdit}
+                onEditWorkout={(workoutId) => void openWorkout(workoutId)}
                 onCopyWorkout={(workout) => {
                   copyWorkoutClipboard(calendarWorkoutToClipboard(workout));
                   showClipboardNotification(`Тренировка «${workout.title}» скопирована`);
@@ -3189,6 +3361,13 @@ export function LkStudentCalendar({ studentId, workouts, exerciseLibrary }: Prop
             </div>
           </div>
         </div>
+      ) : null}
+
+      {reviewingWorkout ? (
+        <LkStudentWorkoutReview
+          workout={reviewingWorkout}
+          onClose={() => setReviewingWorkout(null)}
+        />
       ) : null}
 
       {editing ? (
