@@ -21,6 +21,9 @@ function sessionError(reason: string) {
 function ownershipError(reason: string) {
   if (reason === "disabled" || reason === "db_error") return mobileError("INTERNAL_ERROR", 500);
   if (reason === "not_found") return mobileError("NOT_FOUND", 404, "Workout exercise not found");
+  if (reason === "locked") {
+    return mobileError("INVALID_INPUT", 409, "Completed workout results cannot be changed");
+  }
   return mobileError("BAD_REQUEST", 400);
 }
 

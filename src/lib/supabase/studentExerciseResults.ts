@@ -42,12 +42,20 @@ export type StudentExerciseResultOperationResult<T> =
   | { ok: true; data: T }
   | {
       ok: false;
-      reason: "disabled" | "invalid" | "not_found" | "too_many_videos" | "duplicate_video" | "db_error";
+      reason:
+        | "disabled"
+        | "invalid"
+        | "not_found"
+        | "too_many_videos"
+        | "duplicate_video"
+        | "locked"
+        | "db_error";
       message?: string;
     };
 
 type WorkoutOwnershipRow = {
   id?: string | null;
+  status?: string | null;
 };
 
 type ExerciseInstanceRow = {
@@ -130,13 +138,21 @@ export async function resolveStudentExerciseInstance(params: {
 
   const { data: workout, error: workoutError } = await sb
     .from("client_program_workouts")
-    .select("id")
+    .select("id, status")
     .eq("id", workoutId)
     .eq("client_id", clientId)
     .maybeSingle();
 
   if (workoutError) return { ok: false, reason: "db_error", message: workoutError.message };
-  if (!(workout as WorkoutOwnershipRow | null)?.id) return { ok: false, reason: "not_found" };
+  const workoutRow = workout as WorkoutOwnershipRow | null;
+  if (!workoutRow?.id) return { ok: false, reason: "not_found" };
+  if (workoutRow.status === "submitted" || workoutRow.status === "reviewed") {
+    return {
+      ok: false,
+      reason: "locked",
+      message: "Completed workout results cannot be changed",
+    };
+  }
 
   const { data: exercise, error: exerciseError } = await sb
     .from("client_program_exercises")
