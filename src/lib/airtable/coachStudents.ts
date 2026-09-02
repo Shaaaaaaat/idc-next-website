@@ -7,6 +7,8 @@ export type CoachStudent = {
   finalDay: string;
   balance: string;
   nextWorkoutAt?: string;
+  awaitingFeedbackCount?: number;
+  oldestAwaitingFeedbackAt?: string | null;
   grPrice?: string;
   dsPrice?: string;
   prPrice?: string;

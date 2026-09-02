@@ -16,6 +16,24 @@ function formatDateLabel(raw?: string) {
   return d.toLocaleDateString("ru-RU", { day: "2-digit", month: "2-digit" });
 }
 
+function awaitingFeedbackLabel(count?: number) {
+  const value = Number(count || 0);
+  if (!Number.isFinite(value) || value <= 0) return null;
+
+  const lastTwo = value % 100;
+  const last = value % 10;
+  let noun = "тренировок";
+
+  if (lastTwo < 11 || lastTwo > 14) {
+    if (last === 1) noun = "тренировка";
+    if (last >= 2 && last <= 4) noun = "тренировки";
+  }
+
+  const verb = noun === "тренировка" ? "ждёт" : "ждут";
+
+  return `${value} ${noun} ${verb} ответа`;
+}
+
 export function LkCoachStudentsTable({ students }: Props) {
   const [query, setQuery] = useState("");
 
@@ -47,29 +65,40 @@ export function LkCoachStudentsTable({ students }: Props) {
       ) : (
         <>
           <div className="space-y-2 md:hidden">
-            {filtered.map((s) => (
-              <Link
-                key={s.id}
-                href={`/lk/coach/students/${encodeURIComponent(s.id)}`}
-                className="block rounded-xl border border-slate-200 bg-white p-4 shadow-sm transition-colors hover:bg-slate-50"
-              >
-                <p className="mb-2 text-base font-medium">{s.name}</p>
-                <div className="grid grid-cols-2 gap-2 text-sm">
-                  <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
-                    <p className="text-xs text-slate-500">Ближайшая тренировка</p>
-                    <p className="mt-0.5 text-slate-600">{formatDateLabel(s.nextWorkoutAt)}</p>
+            {filtered.map((s) => {
+              const feedbackLabel = awaitingFeedbackLabel(s.awaitingFeedbackCount);
+
+              return (
+                <Link
+                  key={s.id}
+                  href={`/lk/coach/students/${encodeURIComponent(s.id)}`}
+                  className="block rounded-xl border border-slate-200 bg-white p-4 shadow-sm transition-colors hover:bg-slate-50"
+                >
+                  <div className="mb-2 flex flex-wrap items-center gap-2">
+                    <p className="text-base font-medium">{s.name}</p>
+                    {feedbackLabel ? (
+                      <span className="rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-xs font-medium text-amber-800">
+                        {feedbackLabel}
+                      </span>
+                    ) : null}
                   </div>
-                  <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
-                    <p className="text-xs text-slate-500">Баланс</p>
-                    <p className="mt-0.5 text-slate-600">{s.balance}</p>
+                  <div className="grid grid-cols-2 gap-2 text-sm">
+                    <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
+                      <p className="text-xs text-slate-500">Ближайшая тренировка</p>
+                      <p className="mt-0.5 text-slate-600">{formatDateLabel(s.nextWorkoutAt)}</p>
+                    </div>
+                    <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
+                      <p className="text-xs text-slate-500">Баланс</p>
+                      <p className="mt-0.5 text-slate-600">{s.balance}</p>
+                    </div>
+                    <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
+                      <p className="text-xs text-slate-500">Дата окончания</p>
+                      <p className="mt-0.5 text-slate-600">{formatDateLabel(s.finalDay)}</p>
+                    </div>
                   </div>
-                  <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
-                    <p className="text-xs text-slate-500">Дата окончания</p>
-                    <p className="mt-0.5 text-slate-600">{formatDateLabel(s.finalDay)}</p>
-                  </div>
-                </div>
-              </Link>
-            ))}
+                </Link>
+              );
+            })}
           </div>
 
           <div className="hidden overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm md:block">
@@ -80,18 +109,29 @@ export function LkCoachStudentsTable({ students }: Props) {
               <div>Дата окончания</div>
             </div>
             <div className="divide-y divide-slate-100">
-              {filtered.map((s) => (
-                <Link
-                  key={s.id}
-                  href={`/lk/coach/students/${encodeURIComponent(s.id)}`}
-                  className="grid grid-cols-[1.6fr_1fr_1fr_1fr] px-4 py-3 text-sm text-slate-950 transition-colors hover:bg-slate-50"
-                >
-                  <div className="pr-2 break-words">{s.name}</div>
-                  <div className="pr-2 break-words text-slate-600">{formatDateLabel(s.nextWorkoutAt)}</div>
-                  <div className="pr-2 break-words text-slate-600">{s.balance}</div>
-                  <div className="break-words text-slate-600">{formatDateLabel(s.finalDay)}</div>
-                </Link>
-              ))}
+              {filtered.map((s) => {
+                const feedbackLabel = awaitingFeedbackLabel(s.awaitingFeedbackCount);
+
+                return (
+                  <Link
+                    key={s.id}
+                    href={`/lk/coach/students/${encodeURIComponent(s.id)}`}
+                    className="grid grid-cols-[1.6fr_1fr_1fr_1fr] px-4 py-3 text-sm text-slate-950 transition-colors hover:bg-slate-50"
+                  >
+                    <div className="flex flex-wrap items-center gap-2 pr-2 break-words">
+                      <span>{s.name}</span>
+                      {feedbackLabel ? (
+                        <span className="rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-xs font-medium text-amber-800">
+                          {feedbackLabel}
+                        </span>
+                      ) : null}
+                    </div>
+                    <div className="pr-2 break-words text-slate-600">{formatDateLabel(s.nextWorkoutAt)}</div>
+                    <div className="pr-2 break-words text-slate-600">{s.balance}</div>
+                    <div className="break-words text-slate-600">{formatDateLabel(s.finalDay)}</div>
+                  </Link>
+                );
+              })}
             </div>
           </div>
         </>

@@ -71,6 +71,11 @@ type ProgramWorkoutRow = {
   workout_date?: string | null;
 };
 
+type SubmittedWorkoutRow = {
+  client_id?: string | null;
+  submitted_at?: string | null;
+};
+
 function toTime(raw: string): number {
   if (!raw) return Number.NaN;
   const isoLike = raw.includes("T") ? raw : `${raw}T00:00:00`;
@@ -122,7 +127,98 @@ async function getNextWorkoutsByClientIds(clientIds: string[]): Promise<Map<stri
   }
 }
 
-function mapClientToCoachStudent(row: ClientRow, nextWorkoutAt?: string): CoachStudent {
+function aggregateAwaitingFeedback(rows: SubmittedWorkoutRow[]): Map<string, { count: number; oldestAt: string | null }> {
+  const byClient = new Map<string, { count: number; oldestAt: string | null; oldestTime: number }>();
+
+  for (const row of rows) {
+    const clientId = String(row.client_id || "").trim();
+    if (!clientId) continue;
+
+    const submittedAt = String(row.submitted_at || "").trim();
+    const submittedTime = submittedAt ? toTime(submittedAt) : Number.NaN;
+    const existing = byClient.get(clientId);
+
+    if (!existing) {
+      byClient.set(clientId, {
+        count: 1,
+        oldestAt: submittedAt || null,
+        oldestTime: Number.isFinite(submittedTime) ? submittedTime : Number.POSITIVE_INFINITY,
+      });
+      continue;
+    }
+
+    existing.count += 1;
+    if (submittedAt && Number.isFinite(submittedTime) && submittedTime < existing.oldestTime) {
+      existing.oldestAt = submittedAt;
+      existing.oldestTime = submittedTime;
+    }
+  }
+
+  return new Map(
+    Array.from(byClient.entries()).map(([clientId, item]) => [
+      clientId,
+      { count: item.count, oldestAt: item.oldestAt },
+    ])
+  );
+}
+
+function sortTimeOrInfinity(raw?: string | null): number {
+  const value = String(raw || "").trim();
+  if (!value) return Number.POSITIVE_INFINITY;
+  const time = toTime(value);
+  return Number.isFinite(time) ? time : Number.POSITIVE_INFINITY;
+}
+
+async function getAwaitingFeedbackByClientIds(
+  clientIds: string[]
+): Promise<Map<string, { count: number; oldestAt: string | null }>> {
+  if (clientIds.length === 0) return new Map();
+  const sb = getSupabaseAdmin();
+  if (!sb) return new Map();
+
+  try {
+    const { data, error } = await sb
+      .from("client_program_workouts")
+      .select("client_id, submitted_at")
+      .in("client_id", clientIds)
+      .eq("status", "submitted");
+
+    if (error) {
+      console.warn("[supabase/coachStudents] submitted workouts query failed", error.message);
+      return new Map();
+    }
+
+    return aggregateAwaitingFeedback((Array.isArray(data) ? data : []) as SubmittedWorkoutRow[]);
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    console.warn("[supabase/coachStudents] submitted workouts query crashed", msg);
+    return new Map();
+  }
+}
+
+function compareCoachStudents(a: CoachStudent, b: CoachStudent): number {
+  const aCount = a.awaitingFeedbackCount ?? 0;
+  const bCount = b.awaitingFeedbackCount ?? 0;
+  const aHasAwaiting = aCount > 0;
+  const bHasAwaiting = bCount > 0;
+
+  if (aHasAwaiting !== bHasAwaiting) return aHasAwaiting ? -1 : 1;
+
+  if (aHasAwaiting && bHasAwaiting) {
+    const aSubmittedTime = sortTimeOrInfinity(a.oldestAwaitingFeedbackAt);
+    const bSubmittedTime = sortTimeOrInfinity(b.oldestAwaitingFeedbackAt);
+
+    if (aSubmittedTime !== bSubmittedTime) return aSubmittedTime - bSubmittedTime;
+  }
+
+  return a.name.localeCompare(b.name, "ru");
+}
+
+function mapClientToCoachStudent(
+  row: ClientRow,
+  nextWorkoutAt?: string,
+  awaitingFeedback?: { count: number; oldestAt: string | null }
+): CoachStudent {
   const name =
     String(row.fio || "").trim() ||
     String(row.email || "").trim() ||
@@ -142,6 +238,8 @@ function mapClientToCoachStudent(row: ClientRow, nextWorkoutAt?: string): CoachS
     finalDay,
     balance,
     nextWorkoutAt,
+    awaitingFeedbackCount: awaitingFeedback?.count,
+    oldestAwaitingFeedbackAt: awaitingFeedback?.oldestAt,
   };
 }
 
@@ -262,10 +360,17 @@ export async function getCoachStudentsByEmail(email: string): Promise<CoachStude
     }
 
     const list = (Array.isArray(clients) ? clients : []) as ClientRow[];
-    const nextWorkouts = await getNextWorkoutsByClientIds(clientIds);
+    const activeClientIds = list.map((client) => client.id).filter((id): id is string => Boolean(id));
+    const [nextWorkouts, awaitingFeedback] = await Promise.all([
+      getNextWorkoutsByClientIds(activeClientIds),
+      getAwaitingFeedbackByClientIds(activeClientIds),
+    ]);
+
     return list
-      .map((client) => mapClientToCoachStudent(client, nextWorkouts.get(client.id)))
-      .sort((a, b) => a.name.localeCompare(b.name, "ru"));
+      .map((client) =>
+        mapClientToCoachStudent(client, nextWorkouts.get(client.id), awaitingFeedback.get(client.id))
+      )
+      .sort(compareCoachStudents);
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     console.warn("[supabase/coachStudents] getCoachStudentsByEmail crashed", msg);
