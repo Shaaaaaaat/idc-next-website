@@ -1,9 +1,11 @@
 import "server-only";
 
+import { buildCloudflareIframeUrl, isCloudflareStreamUid } from "@/lib/cloudflare/stream";
 import { getSupabaseAdmin, isSupabaseEnabled } from "@/lib/supabase/server";
 
 export type StudentExerciseResultVideo = {
   videoAssetId: string;
+  videoUrl?: string;
   thumbnailUrl?: string;
   sortOrder: number;
 };
@@ -99,6 +101,7 @@ function mapVideosByResultId(rows: ResultVideoRow[]): Map<string, StudentExercis
     const list = map.get(resultId) || [];
     list.push({
       videoAssetId,
+      videoUrl: isCloudflareStreamUid(videoAssetId) ? buildCloudflareIframeUrl(videoAssetId) : undefined,
       thumbnailUrl: cleanOptional(row.thumbnail_url) || undefined,
       sortOrder: row.sort_order ?? list.length + 1,
     });

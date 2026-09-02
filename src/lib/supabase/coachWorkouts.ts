@@ -88,7 +88,7 @@ export type SaveCoachWorkoutResult =
   | { ok: true; workoutId: string }
   | {
       ok: false;
-      reason: "disabled" | "invalid" | "forbidden" | "not_found" | "stale" | "db_error";
+      reason: "disabled" | "invalid" | "forbidden" | "not_found" | "stale" | "locked" | "db_error";
       message?: string;
     };
 
@@ -96,7 +96,7 @@ export type DeleteCoachWorkoutResult =
   | { ok: true }
   | {
       ok: false;
-      reason: "disabled" | "invalid" | "forbidden" | "not_found" | "db_error";
+      reason: "disabled" | "invalid" | "forbidden" | "not_found" | "locked" | "db_error";
       message?: string;
     };
 
@@ -144,6 +144,7 @@ type ExerciseMediaRow = {
 
 type ReadWorkoutsForStudentParams = {
   studentId: string;
+  coachId?: string;
   fromDate?: string;
   toDate?: string;
   workoutId?: string;
@@ -312,6 +313,7 @@ async function readWorkoutsForStudent(
   if (!sb) return [];
 
   const studentId = String(params.studentId || "").trim();
+  const coachId = String(params.coachId || "").trim();
   const workoutId = String(params.workoutId || "").trim();
   if (!studentId) return [];
 
@@ -319,6 +321,10 @@ async function readWorkoutsForStudent(
     .from("client_program_workouts")
     .select("id, client_id, workout_date, title, coach_comment, status, submitted_at, updated_at")
     .eq("client_id", studentId);
+
+  if (coachId) {
+    workoutsQuery = workoutsQuery.eq("coach_id", coachId);
+  }
 
   if (workoutId) {
     workoutsQuery = workoutsQuery.eq("id", workoutId);
@@ -489,7 +495,13 @@ export async function saveCoachWorkout(
     const rpcResult = (rpcData || {}) as { ok?: boolean; error?: string; message?: string; workoutId?: string };
     if (rpcResult.ok === false) {
       const reason = rpcResult.error;
-      if (reason === "invalid" || reason === "forbidden" || reason === "not_found" || reason === "stale") {
+      if (
+        reason === "invalid" ||
+        reason === "forbidden" ||
+        reason === "not_found" ||
+        reason === "stale" ||
+        reason === "locked"
+      ) {
         return { ok: false, reason, message: rpcResult.message };
       }
       return { ok: false, reason: "db_error", message: rpcResult.message || reason || "Workout was not saved" };
@@ -529,7 +541,7 @@ export async function deleteCoachWorkout(input: {
 
     const { data: existing, error: existingErr } = await sb
       .from("client_program_workouts")
-      .select("id")
+      .select("id, status")
       .eq("id", workoutId)
       .eq("client_id", studentId)
       .eq("coach_id", coach.id)
@@ -537,13 +549,9 @@ export async function deleteCoachWorkout(input: {
 
     if (existingErr) return { ok: false, reason: "db_error", message: existingErr.message };
     if (!existing) return { ok: false, reason: "not_found" };
-
-    const { error: exercisesErr } = await sb
-      .from("client_program_exercises")
-      .delete()
-      .eq("client_program_workout_id", workoutId);
-
-    if (exercisesErr) return { ok: false, reason: "db_error", message: exercisesErr.message };
+    if (existing.status === "submitted" || existing.status === "reviewed") {
+      return { ok: false, reason: "locked" };
+    }
 
     const { data, error } = await sb
       .from("client_program_workouts")
@@ -551,11 +559,28 @@ export async function deleteCoachWorkout(input: {
       .eq("id", workoutId)
       .eq("client_id", studentId)
       .eq("coach_id", coach.id)
+      .not("status", "in", "(submitted,reviewed)")
       .select("id")
       .maybeSingle();
 
     if (error) return { ok: false, reason: "db_error", message: error.message };
-    if (!data) return { ok: false, reason: "not_found" };
+    if (!data) {
+      const { data: afterDeleteMiss, error: afterDeleteMissErr } = await sb
+        .from("client_program_workouts")
+        .select("id, status")
+        .eq("id", workoutId)
+        .eq("client_id", studentId)
+        .eq("coach_id", coach.id)
+        .maybeSingle();
+
+      if (afterDeleteMissErr) {
+        return { ok: false, reason: "db_error", message: afterDeleteMissErr.message };
+      }
+      if (afterDeleteMiss?.status === "submitted" || afterDeleteMiss?.status === "reviewed") {
+        return { ok: false, reason: "locked" };
+      }
+      return { ok: false, reason: "not_found" };
+    }
 
     return { ok: true };
   } catch (e) {
@@ -588,13 +613,26 @@ export async function getStudentWorkoutsReadOnly(params: {
 }
 
 export async function getCoachWorkoutForStudentById(params: {
+  coachEmail: string;
   studentId: string;
   workoutId: string;
 }): Promise<CoachWorkout | null> {
-  const workouts = await readWorkoutsForStudent({
-    studentId: params.studentId,
-    workoutId: params.workoutId,
-  });
+  const coachEmail = String(params.coachEmail || "").trim().toLowerCase();
+  const studentId = String(params.studentId || "").trim();
+  const workoutId = String(params.workoutId || "").trim();
+  if (!coachEmail || !studentId || !workoutId) return null;
+
+  const coach = await assertCoachOwnsStudent(coachEmail, studentId);
+  if (!coach) return null;
+
+  const workouts = await readWorkoutsForStudent(
+    {
+      studentId,
+      coachId: coach.id,
+      workoutId,
+    },
+    { strict: true, includeResults: true }
+  );
   return workouts[0] ?? null;
 }
 
