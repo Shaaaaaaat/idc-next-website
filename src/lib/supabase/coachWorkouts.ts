@@ -142,12 +142,15 @@ type ExerciseMediaRow = {
   thumbnail_url?: string | null;
 };
 
-type ReadWorkoutsForStudentParams = {
+export type ReadWorkoutsForStudentParams = {
   studentId: string;
   coachId?: string;
   fromDate?: string;
   toDate?: string;
   workoutId?: string;
+  statuses?: string[];
+  limit?: number;
+  orderBy?: "workout_date_asc" | "submitted_at_desc";
 };
 
 type ReadWorkoutsForStudentOptions = {
@@ -329,13 +332,37 @@ async function readWorkoutsForStudent(
   if (workoutId) {
     workoutsQuery = workoutsQuery.eq("id", workoutId);
   } else {
-    workoutsQuery = workoutsQuery
-      .gte("workout_date", String(params.fromDate || ""))
-      .lte("workout_date", String(params.toDate || ""));
+    if (params.fromDate) {
+      workoutsQuery = workoutsQuery.gte("workout_date", params.fromDate);
+    }
+
+    if (params.toDate) {
+      workoutsQuery = workoutsQuery.lte("workout_date", params.toDate);
+    }
+
+    if (params.statuses && params.statuses.length > 0) {
+      workoutsQuery = workoutsQuery.in("status", params.statuses);
+    }
   }
 
-  const { data: workouts, error: workoutsErr } = await workoutsQuery
-    .order("workout_date", { ascending: true });
+  if (params.orderBy === "submitted_at_desc") {
+    workoutsQuery = workoutsQuery
+      .order("submitted_at", { ascending: false, nullsFirst: false })
+      .order("workout_date", { ascending: false })
+      .order("title", { ascending: true })
+      .order("id", { ascending: true });
+  } else {
+    workoutsQuery = workoutsQuery
+      .order("workout_date", { ascending: true })
+      .order("title", { ascending: true })
+      .order("id", { ascending: true });
+  }
+
+  if (params.limit && params.limit > 0) {
+    workoutsQuery = workoutsQuery.limit(params.limit);
+  }
+
+  const { data: workouts, error: workoutsErr } = await workoutsQuery;
 
   if (workoutsErr) throw workoutsErr;
 
@@ -405,10 +432,33 @@ async function readWorkoutsForStudent(
     exercisesByWorkout
   );
 
-  return workoutRows
+  const normalizedWorkouts = workoutRows
     .map((workout) => normalizeWorkout(workout, exercisesByWorkout, groupsByWorkout))
-    .filter((workout): workout is CoachWorkout => Boolean(workout))
-    .sort((a, b) => a.date.localeCompare(b.date) || a.title.localeCompare(b.title, "ru"));
+    .filter((workout): workout is CoachWorkout => Boolean(workout));
+
+  if (params.orderBy === "submitted_at_desc") {
+    return normalizedWorkouts.sort(compareSubmittedWorkoutsDesc);
+  }
+
+  return normalizedWorkouts.sort((a, b) => a.date.localeCompare(b.date) || a.title.localeCompare(b.title, "ru") || a.id.localeCompare(b.id));
+}
+
+function compareSubmittedWorkoutsDesc(a: CoachWorkout, b: CoachWorkout): number {
+  const aSubmittedAt = cleanOptional(a.submittedAt);
+  const bSubmittedAt = cleanOptional(b.submittedAt);
+
+  if (aSubmittedAt && bSubmittedAt && aSubmittedAt !== bSubmittedAt) {
+    return bSubmittedAt.localeCompare(aSubmittedAt);
+  }
+
+  if (aSubmittedAt && !bSubmittedAt) return -1;
+  if (!aSubmittedAt && bSubmittedAt) return 1;
+
+  return (
+    b.date.localeCompare(a.date) ||
+    a.title.localeCompare(b.title, "ru") ||
+    a.id.localeCompare(b.id)
+  );
 }
 
 async function assertCoachOwnsStudent(coachEmail: string, studentId: string) {
@@ -604,11 +654,7 @@ export async function getCoachWorkoutsForStudent(params: {
   }
 }
 
-export async function getStudentWorkoutsReadOnly(params: {
-  studentId: string;
-  fromDate: string;
-  toDate: string;
-}): Promise<CoachWorkout[]> {
+export async function getStudentWorkoutsReadOnly(params: ReadWorkoutsForStudentParams): Promise<CoachWorkout[]> {
   return await readWorkoutsForStudent(params, { strict: true });
 }
 

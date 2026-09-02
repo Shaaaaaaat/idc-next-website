@@ -1,6 +1,10 @@
 import { mobileError, mobileJson } from "@/app/api/mobile/v1/_lib/responses";
 import { getMobileStudentContext } from "@/lib/auth/mobileSession";
 import { getStudentWorkoutsReadOnly } from "@/lib/supabase/coachWorkouts";
+import {
+  getStudentCompletedWorkoutsForMobile,
+  getStudentUnfinishedWorkoutsForMobile,
+} from "@/lib/supabase/studentWorkoutList";
 import { mobileWorkoutSummary } from "./_dto";
 
 export const runtime = "nodejs";
@@ -24,14 +28,44 @@ export async function GET(req: Request) {
   if (!session.ok) return sessionError(session.reason);
 
   const url = new URL(req.url);
+  const view = url.searchParams.get("view");
   const fromDate = url.searchParams.get("from_date");
   const toDate = url.searchParams.get("to_date");
 
-  if (!validDate(fromDate) || !validDate(toDate) || fromDate > toDate) {
-    return mobileError("BAD_REQUEST", 400, "Invalid date range");
+  if (view && view !== "unfinished" && view !== "completed") {
+    return mobileError("BAD_REQUEST", 400, "Invalid workout view");
   }
 
   try {
+    if (view === "unfinished") {
+      if (!validDate(toDate)) {
+        return mobileError("BAD_REQUEST", 400, "Invalid date range");
+      }
+
+      const workouts = await getStudentUnfinishedWorkoutsForMobile({
+        studentId: session.context.clientId,
+        toDate,
+      });
+
+      return mobileJson({
+        workouts: workouts.map(mobileWorkoutSummary),
+      });
+    }
+
+    if (view === "completed") {
+      const workouts = await getStudentCompletedWorkoutsForMobile({
+        studentId: session.context.clientId,
+      });
+
+      return mobileJson({
+        workouts: workouts.map(mobileWorkoutSummary),
+      });
+    }
+
+    if (!validDate(fromDate) || !validDate(toDate) || fromDate > toDate) {
+      return mobileError("BAD_REQUEST", 400, "Invalid date range");
+    }
+
     const workouts = await getStudentWorkoutsReadOnly({
       studentId: session.context.clientId,
       fromDate,
