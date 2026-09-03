@@ -1178,9 +1178,6 @@ async function handleSubscriptionPurchaseTrainer(
     "",
     `👤 Имя: ${clientName(null, payload)}`,
     `📚 Кол-во занятий: ${asString(payload.lessons).trim() || "—"}`,
-    `💰 Текущий баланс: ${
-      formatBalance(payload.balance_after, payload.currency ?? "RUB")
-    }`,
   ].join("\n");
 
   return resultFromTelegram(
