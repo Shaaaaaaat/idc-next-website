@@ -102,8 +102,8 @@ const TELEGRAM_COACH_CHAT_ID_SPB_HKC =
 const TELEGRAM_TIMEOUT_MS = 20_000;
 const TELEGRAM_MAX_ATTEMPTS = 2;
 const TELEGRAM_RETRY_DELAY_MS = 1_500;
-const PURCHASE_MAX_DURABLE_ATTEMPTS = 5;
-const PURCHASE_RETRY_DELAYS_MS = [
+const DURABLE_TELEGRAM_MAX_ATTEMPTS = 5;
+const DURABLE_TELEGRAM_RETRY_DELAYS_MS = [
   60 * 1000,
   5 * 60 * 1000,
   15 * 60 * 1000,
@@ -114,14 +114,18 @@ const MAX_NOT_READY_WAIT_MS = EMAIL_INSTRUCTION_DELAY_MS + 5_000;
 const STALE_THRESHOLD_MS = 3 * 60 * 1000;
 const STALE_ALERT_THROTTLE_MS = 30 * 60 * 1000;
 const FINAL_STATUSES = new Set(["sent", "skipped", "failed"]);
-const PURCHASE_PAID_EVENT_TYPES = new Set([
+const DURABLE_TELEGRAM_EVENT_TYPES = new Set([
   "purchase_paid_admin",
   "purchase_paid_client",
   "purchase_paid_coach",
+  "studio_monthly_report",
 ]);
 const SKIPPED_CODES = new Set([
   "client_telegram_missing",
   "trainer_telegram_missing",
+  "studio_telegram_missing",
+  "studio_report_payload_missing",
+  "studio_report_too_large",
   "studio_meta_missing",
   "telegram_config_missing",
   "admin_chat_missing",
@@ -466,19 +470,19 @@ function isTransientTelegramFailure(telegram: SendResult) {
 }
 
 function durableRetryDelayMs(attemptCount: number) {
-  return PURCHASE_RETRY_DELAYS_MS[
+  return DURABLE_TELEGRAM_RETRY_DELAYS_MS[
     Math.min(
       Math.max(attemptCount - 1, 0),
-      PURCHASE_RETRY_DELAYS_MS.length - 1,
+      DURABLE_TELEGRAM_RETRY_DELAYS_MS.length - 1,
     )
   ];
 }
 
-function resultFromPurchaseTelegram(
+function resultFromDurableTelegram(
   event: NotificationEvent,
   telegram: SendResult,
 ): HandleResult {
-  if (!PURCHASE_PAID_EVENT_TYPES.has(event.event_type)) {
+  if (!DURABLE_TELEGRAM_EVENT_TYPES.has(event.event_type)) {
     return resultFromTelegram(telegram);
   }
 
@@ -494,7 +498,7 @@ function resultFromPurchaseTelegram(
   const attemptCount = event.attempt_count ?? 0;
   if (
     isTransientTelegramFailure(telegram) &&
-    attemptCount < PURCHASE_MAX_DURABLE_ATTEMPTS
+    attemptCount < DURABLE_TELEGRAM_MAX_ATTEMPTS
   ) {
     return {
       status: "retry",
@@ -914,9 +918,152 @@ async function sendPurchaseTelegram(
     target: string;
   },
 ) {
-  return resultFromPurchaseTelegram(
+  return resultFromDurableTelegram(
     event,
     await sendTelegramWithRetry(params),
+  );
+}
+
+function parseAmount(value: unknown) {
+  const number = Number(value ?? 0);
+  return Number.isFinite(number) ? number : 0;
+}
+
+function formatMoney(value: unknown) {
+  const amount = parseAmount(value);
+  return `${new Intl.NumberFormat("ru-RU", {
+    minimumFractionDigits: Number.isInteger(amount) ? 0 : 2,
+    maximumFractionDigits: 2,
+  }).format(amount)} ₽`;
+}
+
+function formatReportMonth(value: unknown) {
+  const raw = asString(value);
+  const date = raw ? new Date(`${raw.slice(0, 10)}T00:00:00.000Z`) : new Date();
+  const safeDate = Number.isNaN(date.getTime()) ? new Date() : date;
+
+  return new Intl.DateTimeFormat("ru-RU", {
+    month: "long",
+    year: "numeric",
+    timeZone: "UTC",
+  }).format(safeDate);
+}
+
+function formatReportDate(value: unknown) {
+  const raw = asString(value);
+  const date = raw ? new Date(`${raw.slice(0, 10)}T00:00:00.000Z`) : null;
+  if (!date || Number.isNaN(date.getTime())) return "—";
+
+  return new Intl.DateTimeFormat("ru-RU", {
+    day: "2-digit",
+    month: "2-digit",
+    timeZone: "UTC",
+  }).format(date);
+}
+
+function studioReportBreakdown(payload: Record<string, unknown>) {
+  const rows = Array.isArray(payload.breakdown) ? payload.breakdown : [];
+
+  return rows
+    .flatMap((row) => {
+      if (!row || typeof row !== "object") return [];
+      const item = row as Record<string, unknown>;
+      const format = asString(item.format).trim();
+      const date = formatReportDate(item.workout_date);
+      const amount = formatMoney(item.amount);
+      const count = Math.max(0, Math.round(parseAmount(item.count)));
+      const peopleSuffix = format === "Групповая тренировка" && count > 0
+        ? ` — ${count} чел.`
+        : "";
+
+      return [`${date} — ${format || "—"}${peopleSuffix}: ${amount}`];
+    });
+}
+
+function buildStudioMonthlyReportMessages(payload: Record<string, unknown>) {
+  const studioTitle = pickValue(payload, ["studio_title", "studio_title_snapshot"]) || "Студия";
+  const reportMonth = formatReportMonth(payload.report_month);
+  const totalAmount = formatMoney(payload.total_amount);
+  const lines = studioReportBreakdown(payload);
+  const header = [
+    `<b>Отчёт по студии за ${escapeTgHtml(reportMonth)}</b>`,
+    "",
+    `Студия: ${escapeTgHtml(studioTitle)}`,
+    `Итого к оплате: ${escapeTgHtml(totalAmount)}`,
+  ].join("\n");
+  const maxMessageLength = 3500;
+
+  if (lines.length === 0) {
+    return [`${header}\n\nДетализация: нет строк для отчёта.`];
+  }
+
+  const messages: string[] = [];
+  let part = 1;
+  let current = `${header}\n\nДетализация:`;
+
+  for (const line of lines) {
+    const safeLine = escapeTgHtml(line);
+    const next = `${current}\n${safeLine}`;
+
+    if (next.length <= maxMessageLength) {
+      current = next;
+      continue;
+    }
+
+    messages.push(current);
+    part += 1;
+    current = [
+      `<b>Отчёт по студии за ${escapeTgHtml(reportMonth)}</b>`,
+      `Студия: ${escapeTgHtml(studioTitle)}`,
+      "",
+      `Детализация, часть ${part}:`,
+      safeLine,
+    ].join("\n");
+  }
+
+  messages.push(current);
+  return messages;
+}
+
+async function handleStudioMonthlyReport(
+  event: NotificationEvent,
+): Promise<HandleResult> {
+  const payload = event.payload ?? {};
+  const chatId = pickValue(payload, ["recipient_tgid", "tgid", "chat_id"]);
+
+  if (!chatId) {
+    return {
+      status: "skipped",
+      errorCode: "studio_telegram_missing",
+      errorMessage: "Studio monthly report recipient tgid is missing",
+    };
+  }
+
+  if (!payload.report_month || parseAmount(payload.total_amount) <= 0) {
+    return {
+      status: "skipped",
+      errorCode: "studio_report_payload_missing",
+      errorMessage: "Studio monthly report payload is missing report_month or positive total_amount",
+    };
+  }
+
+  const messages = buildStudioMonthlyReportMessages(payload);
+  if (messages.length !== 1) {
+    return {
+      status: "skipped",
+      errorCode: "studio_report_too_large",
+      errorMessage: "Studio monthly report requires chunked outbox events before delivery",
+    };
+  }
+
+  return resultFromDurableTelegram(
+    event,
+    await sendTelegramWithRetry({
+      botToken: CLIENT_BOT_TOKEN,
+      chatId,
+      text: messages[0],
+      target: "studio:monthly_report",
+    }),
   );
 }
 
@@ -1588,6 +1735,18 @@ async function deliverEvent(event: NotificationEvent): Promise<HandleResult> {
     };
   }
 
+  if (event.event_type === "studio_monthly_report") {
+    if (event.channel !== "telegram") return unsupportedChannel(event);
+    if (event.recipient_type !== "studio") {
+      return {
+        status: "skipped",
+        errorCode: "unsupported_recipient_type",
+        errorMessage: `Unsupported recipient_type: ${event.recipient_type}`,
+      };
+    }
+    return await handleStudioMonthlyReport(event);
+  }
+
   const client = await getClient(event.client_id);
   if (!client) {
     return {
@@ -1601,7 +1760,8 @@ async function deliverEvent(event: NotificationEvent): Promise<HandleResult> {
 
   if (
     event.recipient_type !== "client" && event.recipient_type !== "trainer" &&
-    event.recipient_type !== "coach" && event.recipient_type !== "admin"
+    event.recipient_type !== "coach" && event.recipient_type !== "admin" &&
+    event.recipient_type !== "studio"
   ) {
     return {
       status: "skipped",
@@ -1828,7 +1988,7 @@ async function processEvent(eventId: string) {
 function isStale(event: NotificationEvent) {
   const timestamp = event.status === "processing"
     ? event.updated_at ?? event.last_attempt_at ?? event.created_at
-    : PURCHASE_PAID_EVENT_TYPES.has(event.event_type)
+    : DURABLE_TELEGRAM_EVENT_TYPES.has(event.event_type)
     ? event.next_attempt_at ?? event.created_at
     : event.created_at;
 
