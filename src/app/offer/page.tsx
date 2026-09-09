@@ -14,6 +14,9 @@ export default function OfferPage() {
             <h1 className="text-2xl sm:text-3xl font-semibold tracking-tight">
               Публичная оферта
             </h1>
+            <p className="text-[12px] sm:text-sm text-brand-muted">
+              Редакция от 20 февраля 2026 г.
+            </p>
           </div>
           <Link
             href="/"

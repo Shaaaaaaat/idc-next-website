@@ -351,7 +351,7 @@ type TrialStudioMeta = {
 const TRIAL_STUDIO_META: Record<string, TrialStudioMeta> = {
   msk_youcan: {
     gymName: "You Can",
-    address: "м. Улица 1905 года",
+    address: "Ул. Большая Декабрьская, д.3 с1",
     coach: "Женя",
     directionsUrl: "https://storage.yandexcloud.net/idc-website-app/ycg.jpeg",
     chatUrl: "https://t.me/+ofJDca2V3y9kNDVi",
