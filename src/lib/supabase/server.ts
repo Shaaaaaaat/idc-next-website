@@ -2,7 +2,11 @@ import "server-only";
 
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 
-export type SupabaseFeatureFlag = "read_coach_lk" | "write_leads" | "write_purchases";
+export type SupabaseFeatureFlag =
+  | "read_coach_lk"
+  | "write_leads"
+  | "write_purchases"
+  | "write_student_profile";
 
 function envTruthy(v: string | undefined): boolean {
   const t = String(v ?? "").trim().toLowerCase();
@@ -61,6 +65,8 @@ export function isSupabaseEnabled(flag: SupabaseFeatureFlag): boolean {
       return envTruthy(process.env.SUPABASE_WRITE_LEADS);
     case "write_purchases":
       return envTruthy(process.env.SUPABASE_WRITE_PURCHASES);
+    case "write_student_profile":
+      return envTruthy(process.env.SUPABASE_WRITE_STUDENT_PROFILE);
     default:
       return false;
   }
