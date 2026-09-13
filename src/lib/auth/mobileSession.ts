@@ -1,6 +1,6 @@
 import "server-only";
 
-import { validateSession } from "@/lib/auth/lkAuth";
+import { sessionTokenFingerprint, validateSession } from "@/lib/auth/lkAuth";
 import {
   getActiveStudentIdentityByEmail,
   type StudentIdentity,
@@ -44,6 +44,26 @@ function contextFromStudent(
   };
 }
 
+function requestPathname(req: Request): string {
+  try {
+    return new URL(req.url).pathname;
+  } catch {
+    return "/";
+  }
+}
+
+function logMobileSessionFailure(
+  req: Request,
+  details: { reason: string; sessionToken?: string }
+) {
+  console.warn("[MOBILE_SESSION]", {
+    method: req.method,
+    pathname: requestPathname(req),
+    reason: details.reason,
+    sessionFingerprint: sessionTokenFingerprint(details.sessionToken),
+  });
+}
+
 export function parseBearerToken(req: Request): BearerTokenResult {
   const header = req.headers.get("authorization");
   if (!header) return { ok: false, reason: "missing_authorization" };
@@ -70,12 +90,28 @@ export async function getMobileStudentContext(req: Request): Promise<MobileSessi
 
   const sessionToken = parsed.sessionToken;
   const validated = await validateSession(sessionToken);
-  if (!validated.ok || !validated.data?.email) {
+  if (!validated.ok) {
+    logMobileSessionFailure(req, {
+      reason: validated.reason,
+      sessionToken,
+    });
+    return { ok: false, reason: "invalid_session" };
+  }
+
+  if (!validated.data?.email) {
+    logMobileSessionFailure(req, {
+      reason: "missing_email",
+      sessionToken,
+    });
     return { ok: false, reason: "invalid_session" };
   }
 
   const student = await getActiveStudentIdentityByEmail(validated.data.email);
   if (!student.ok) {
+    logMobileSessionFailure(req, {
+      reason: student.reason,
+      sessionToken,
+    });
     if (student.reason === "disabled" || student.reason === "db_error") {
       return { ok: false, reason: "server_error" };
     }

@@ -1,5 +1,7 @@
 import "server-only";
 
+import { createHash } from "node:crypto";
+
 export type LkAuthResult<T> =
   | { ok: true; data: T }
   | { ok: false; reason: "bad_response" | "request_failed" | "env_missing" | "auth_failed" };
@@ -49,10 +51,32 @@ function envReady() {
   return Boolean(AUTH_CF_URL && AUTH_INTERNAL_TOKEN);
 }
 
+export function sessionTokenFingerprint(token: unknown): string | undefined {
+  const value = String(token || "").trim();
+  if (!value) return undefined;
+  return createHash("sha256").update(value).digest("hex").slice(0, 16);
+}
+
+function sessionFingerprintFromPayload(
+  payload: RequestPayload | ConsumePayload | ValidatePayload | RevokePayload
+) {
+  if (payload.action !== "validate_session" && payload.action !== "revoke_session") {
+    return undefined;
+  }
+
+  return sessionTokenFingerprint(payload.session_token);
+}
+
+function safeAuthWorkerError(error: unknown): string | undefined {
+  return typeof error === "string" ? error.slice(0, 80) : undefined;
+}
+
 async function postAuth<TSuccess>(
   payload: RequestPayload | ConsumePayload | ValidatePayload | RevokePayload
 ): Promise<LkAuthResult<TSuccess>> {
   if (!envReady()) return { ok: false, reason: "env_missing" };
+
+  const startedAt = Date.now();
 
   try {
     const res = await fetch(String(AUTH_CF_URL), {
@@ -62,21 +86,27 @@ async function postAuth<TSuccess>(
       cache: "no-store",
     });
 
+    const durationMs = Date.now() - startedAt;
+    const json = (await res.json().catch(() => null)) as TSuccess | null;
+    const authResponseMeta = json as { ok?: unknown; error?: unknown } | null;
+    const logMeta = {
+      action: payload.action,
+      status: res.status,
+      durationMs,
+      ok: authResponseMeta?.ok,
+      error: safeAuthWorkerError(authResponseMeta?.error),
+      sessionFingerprint: sessionFingerprintFromPayload(payload),
+    };
+
     if (!res.ok) {
+      console.warn("[AUTH_CF]", logMeta);
       if (res.status === 401 || res.status === 403) {
         return { ok: false, reason: "auth_failed" };
       }
       return { ok: false, reason: "request_failed" };
     }
 
-    const json = (await res.json().catch(() => null)) as TSuccess | null;
-
-    const authResponseMeta = json as { ok?: unknown; error?: unknown } | null;
-    console.log("[AUTH_CF]", {
-      status: res.status,
-      ok: authResponseMeta?.ok,
-      error: authResponseMeta?.error,
-    });
+    console.log("[AUTH_CF]", logMeta);
 
 
     if (!json || typeof json !== "object") {

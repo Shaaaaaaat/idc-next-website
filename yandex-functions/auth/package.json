@@ -1,0 +1,9 @@
+{
+    "name": "auth-magic-link",
+    "version": "1.0.0",
+    "dependencies": {
+      "@supabase/supabase-js": "^2.49.0",
+      "ydb-sdk": "^5.11.1",
+      "@yandex-cloud/nodejs-sdk": "^2.9.0"
+    }
+  }
