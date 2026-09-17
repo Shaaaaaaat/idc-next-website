@@ -14,6 +14,7 @@ const PROFILE_SELECT = [
   "birth_date",
   "weight_kg",
   "height_cm",
+  "avatar_path",
 ].join(", ");
 
 type StudentProfileRow = {
@@ -28,6 +29,7 @@ type StudentProfileRow = {
   birth_date?: string | null;
   weight_kg?: number | string | null;
   height_cm?: number | string | null;
+  avatar_path?: string | null;
 };
 
 export type StudentMobileProfile = {
@@ -42,6 +44,7 @@ export type StudentMobileProfile = {
   birthDate: string | null;
   weightKg: number | null;
   heightCm: number | null;
+  avatarPath: string | null;
 };
 
 export type StudentProfileUpdateInput = {
@@ -61,6 +64,17 @@ export type StudentProfileResult =
 
 export type StudentProfileReadResult = StudentProfileResult;
 export type StudentProfileUpdateResult = StudentProfileResult;
+
+export type StudentAvatarProfileResult =
+  | {
+      ok: true;
+      avatarPath: string | null;
+      previousAvatarPath?: string | null;
+    }
+  | {
+      ok: false;
+      reason: "disabled" | "invalid" | "not_found" | "db_error";
+    };
 
 type StudentProfileUpdateObject = {
   city?: string | null;
@@ -103,6 +117,7 @@ function mapStudentProfile(row: StudentProfileRow | null): StudentMobileProfile 
     birthDate: cleanOptional(row?.birth_date),
     weightKg: finiteNumberOrNull(row?.weight_kg),
     heightCm: finiteNumberOrNull(row?.height_cm),
+    avatarPath: cleanOptional(row?.avatar_path),
   };
 }
 
@@ -170,4 +185,112 @@ export async function updateStudentMobileProfileByClientId(
   if (!profile) return { ok: false, reason: "not_found" };
 
   return { ok: true, profile };
+}
+
+export async function getStudentAvatarPathByClientId(
+  clientId: string
+): Promise<StudentAvatarProfileResult> {
+  if (!isSupabaseEnabled("write_student_profile")) {
+    return { ok: false, reason: "disabled" };
+  }
+  const sb = getSupabaseAdmin();
+  if (!sb) return { ok: false, reason: "disabled" };
+
+  const normalizedClientId = cleanOptional(clientId);
+  if (!normalizedClientId) return { ok: false, reason: "invalid" };
+
+  try {
+    const { data, error } = await sb
+      .from("clients")
+      .select("avatar_path")
+      .eq("id", normalizedClientId)
+      .maybeSingle();
+
+    if (error) return { ok: false, reason: "db_error" };
+    if (!data) return { ok: false, reason: "not_found" };
+
+    return {
+      ok: true,
+      avatarPath: cleanOptional((data as { avatar_path?: string | null }).avatar_path),
+    };
+  } catch {
+    return { ok: false, reason: "db_error" };
+  }
+}
+
+export async function replaceStudentAvatarPathByClientId(
+  clientId: string,
+  avatarPath: string
+): Promise<StudentAvatarProfileResult> {
+  const current = await getStudentAvatarPathByClientId(clientId);
+  if (!current.ok) return current;
+
+  const sb = getSupabaseAdmin();
+  const normalizedClientId = cleanOptional(clientId);
+  const normalizedAvatarPath = cleanOptional(avatarPath);
+  if (!sb) return { ok: false, reason: "disabled" };
+  if (!normalizedClientId || !normalizedAvatarPath) {
+    return { ok: false, reason: "invalid" };
+  }
+
+  try {
+    const { data, error } = await sb
+      .from("clients")
+      .update({
+        avatar_path: normalizedAvatarPath,
+        avatar_updated_at: new Date().toISOString(),
+      })
+      .eq("id", normalizedClientId)
+      .select("avatar_path")
+      .maybeSingle();
+
+    if (error) return { ok: false, reason: "db_error" };
+    if (!data) return { ok: false, reason: "not_found" };
+
+    return {
+      ok: true,
+      avatarPath: cleanOptional((data as { avatar_path?: string | null }).avatar_path),
+      previousAvatarPath: current.avatarPath,
+    };
+  } catch {
+    return { ok: false, reason: "db_error" };
+  }
+}
+
+export async function clearStudentAvatarPathByClientId(
+  clientId: string
+): Promise<StudentAvatarProfileResult> {
+  const current = await getStudentAvatarPathByClientId(clientId);
+  if (!current.ok) return current;
+  if (!current.avatarPath) {
+    return { ok: true, avatarPath: null, previousAvatarPath: null };
+  }
+
+  const sb = getSupabaseAdmin();
+  const normalizedClientId = cleanOptional(clientId);
+  if (!sb) return { ok: false, reason: "disabled" };
+  if (!normalizedClientId) return { ok: false, reason: "invalid" };
+
+  try {
+    const { data, error } = await sb
+      .from("clients")
+      .update({
+        avatar_path: null,
+        avatar_updated_at: null,
+      })
+      .eq("id", normalizedClientId)
+      .select("id")
+      .maybeSingle();
+
+    if (error) return { ok: false, reason: "db_error" };
+    if (!data) return { ok: false, reason: "not_found" };
+
+    return {
+      ok: true,
+      avatarPath: null,
+      previousAvatarPath: current.avatarPath,
+    };
+  } catch {
+    return { ok: false, reason: "db_error" };
+  }
 }

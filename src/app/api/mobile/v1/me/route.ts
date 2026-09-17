@@ -1,5 +1,6 @@
 import { getMobileStudentContext } from "@/lib/auth/mobileSession";
 import { mobileError, mobileJson } from "@/app/api/mobile/v1/_lib/responses";
+import { createClientAvatarSignedReadUrl } from "@/lib/supabase/clientAvatarStorage";
 import {
   getStudentMobileProfileByClientId,
   type StudentMobileProfile,
@@ -26,7 +27,11 @@ function profileError(result: Exclude<StudentProfileResult, { ok: true }>) {
   return mobileError("INTERNAL_ERROR", 500);
 }
 
-function profileToUser(profile: StudentMobileProfile, session: MobileSessionContext) {
+function profileToUser(
+  profile: StudentMobileProfile,
+  session: MobileSessionContext,
+  avatarUrl: string | null
+) {
   const fio = profile.fio;
 
   return {
@@ -42,7 +47,25 @@ function profileToUser(profile: StudentMobileProfile, session: MobileSessionCont
     birthDate: profile.birthDate,
     weightKg: profile.weightKg,
     heightCm: profile.heightCm,
+    avatarUrl,
   };
+}
+
+async function avatarUrlForProfile(profile: StudentMobileProfile): Promise<string | null> {
+  if (!profile.avatarPath) return null;
+
+  const result = await createClientAvatarSignedReadUrl(
+    profile.clientId,
+    profile.avatarPath
+  );
+  if (!result.ok) {
+    console.warn("[api/mobile/v1/me] avatar signed read failed", {
+      operation: "signed_read",
+    });
+    return null;
+  }
+
+  return result.data.signedUrl;
 }
 
 async function requireMobileSession(req: Request) {
@@ -154,9 +177,10 @@ export async function GET(req: Request) {
 
   const result = await getStudentMobileProfileByClientId(session.context.clientId);
   if (!result.ok) return profileError(result);
+  const avatarUrl = await avatarUrlForProfile(result.profile);
 
   return mobileJson({
-    user: profileToUser(result.profile, session.context),
+    user: profileToUser(result.profile, session.context, avatarUrl),
   });
 }
 
@@ -175,8 +199,9 @@ export async function PATCH(req: Request) {
     validated.patch
   );
   if (!result.ok) return profileError(result);
+  const avatarUrl = await avatarUrlForProfile(result.profile);
 
   return mobileJson({
-    user: profileToUser(result.profile, session.context),
+    user: profileToUser(result.profile, session.context, avatarUrl),
   });
 }

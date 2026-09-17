@@ -1,6 +1,7 @@
 import "server-only";
 
 import type { CoachStudent } from "@/lib/airtable/coachStudents";
+import { createClientAvatarSignedReadUrls } from "@/lib/supabase/clientAvatarStorage";
 import { getSupabaseAdmin, isSupabaseEnabled } from "@/lib/supabase/server";
 
 export type CoachProfileRow = {
@@ -56,6 +57,7 @@ type ClientRow = {
   final_day?: string | null;
   balance?: string | number | null;
   currency?: string | null;
+  avatar_path?: string | null;
   gr_price?: string | number | null;
   ds_price?: string | number | null;
   pr_price?: string | number | null;
@@ -217,7 +219,8 @@ function compareCoachStudents(a: CoachStudent, b: CoachStudent): number {
 function mapClientToCoachStudent(
   row: ClientRow,
   nextWorkoutAt?: string,
-  awaitingFeedback?: { count: number; oldestAt: string | null }
+  awaitingFeedback?: { count: number; oldestAt: string | null },
+  avatarUrl?: string
 ): CoachStudent {
   const name =
     String(row.fio || "").trim() ||
@@ -237,10 +240,27 @@ function mapClientToCoachStudent(
     email: row.email?.trim() || undefined,
     finalDay,
     balance,
+    avatarUrl: avatarUrl || undefined,
     nextWorkoutAt,
     awaitingFeedbackCount: awaitingFeedback?.count,
     oldestAwaitingFeedbackAt: awaitingFeedback?.oldestAt,
   };
+}
+
+async function getAvatarUrlsByClientRows(rows: ClientRow[]): Promise<Map<string, string>> {
+  const candidates = rows
+    .map((row) => ({ clientId: row.id, path: row.avatar_path }))
+    .filter((item) => Boolean(String(item.path || "").trim()));
+
+  if (candidates.length === 0) return new Map();
+
+  const result = await createClientAvatarSignedReadUrls(candidates);
+  if (result.ok) return result.data;
+
+  console.warn("[supabase/coachStudents] avatar signing failed", {
+    operation: "avatar_signing",
+  });
+  return new Map();
 }
 
 function currencySymbolFromCode(raw: string) {
@@ -350,7 +370,7 @@ export async function getCoachStudentsByEmail(email: string): Promise<CoachStude
 
     const { data: clients, error: clientsErr } = await sb
       .from("clients")
-      .select("id, email, fio, is_active, final_day, balance")
+      .select("id, email, fio, is_active, final_day, balance, avatar_path")
       .in("id", clientIds)
       .eq("is_active", true);
 
@@ -361,14 +381,20 @@ export async function getCoachStudentsByEmail(email: string): Promise<CoachStude
 
     const list = (Array.isArray(clients) ? clients : []) as ClientRow[];
     const activeClientIds = list.map((client) => client.id).filter((id): id is string => Boolean(id));
-    const [nextWorkouts, awaitingFeedback] = await Promise.all([
+    const [nextWorkouts, awaitingFeedback, avatarUrls] = await Promise.all([
       getNextWorkoutsByClientIds(activeClientIds),
       getAwaitingFeedbackByClientIds(activeClientIds),
+      getAvatarUrlsByClientRows(list),
     ]);
 
     return list
       .map((client) =>
-        mapClientToCoachStudent(client, nextWorkouts.get(client.id), awaitingFeedback.get(client.id))
+        mapClientToCoachStudent(
+          client,
+          nextWorkouts.get(client.id),
+          awaitingFeedback.get(client.id),
+          avatarUrls.get(client.id)
+        )
       )
       .sort(compareCoachStudents);
   } catch (e) {

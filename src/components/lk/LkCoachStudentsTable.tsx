@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { CoachStudent } from "@/lib/airtable/coachStudents";
 
 type Props = {
@@ -32,6 +32,46 @@ function awaitingFeedbackLabel(count?: number) {
   const verb = noun === "тренировка" ? "ждёт" : "ждут";
 
   return `${value} ${noun} ${verb} ответа`;
+}
+
+function initialsFor(student: CoachStudent) {
+  const source = student.name.trim() && student.name !== "—" ? student.name : student.email || "";
+  const initials = source
+    .trim()
+    .split(/\s+/)
+    .slice(0, 2)
+    .map((part) => part[0])
+    .join("")
+    .toUpperCase();
+
+  return initials || "?";
+}
+
+function StudentAvatar({ student }: { student: CoachStudent }) {
+  const avatarUrl = student.avatarUrl || "";
+  const [failedUrl, setFailedUrl] = useState("");
+  const showImage = Boolean(avatarUrl && failedUrl !== avatarUrl);
+
+  useEffect(() => {
+    setFailedUrl("");
+  }, [avatarUrl]);
+
+  return (
+    <span className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-full bg-slate-100 text-sm font-semibold text-slate-500">
+      {showImage ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          src={avatarUrl}
+          alt=""
+          aria-hidden="true"
+          className="h-full w-full object-cover"
+          onError={() => setFailedUrl(avatarUrl)}
+        />
+      ) : (
+        <span>{initialsFor(student)}</span>
+      )}
+    </span>
+  );
 }
 
 export function LkCoachStudentsTable({ students }: Props) {
@@ -74,13 +114,19 @@ export function LkCoachStudentsTable({ students }: Props) {
                   href={`/lk/coach/students/${encodeURIComponent(s.id)}`}
                   className="block rounded-xl border border-slate-200 bg-white p-4 shadow-sm transition-colors hover:bg-slate-50"
                 >
-                  <div className="mb-2 flex flex-wrap items-center gap-2">
-                    <p className="text-base font-medium">{s.name}</p>
-                    {feedbackLabel ? (
-                      <span className="rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-xs font-medium text-amber-800">
-                        {feedbackLabel}
-                      </span>
-                    ) : null}
+                  <div className="mb-3 flex items-start gap-3">
+                    <StudentAvatar student={s} />
+                    <div className="min-w-0 flex-1">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <p className="break-words text-base font-medium">{s.name}</p>
+                        {feedbackLabel ? (
+                          <span className="rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-xs font-medium text-amber-800">
+                            {feedbackLabel}
+                          </span>
+                        ) : null}
+                      </div>
+                      {s.email ? <p className="mt-1 break-words text-sm text-slate-500">{s.email}</p> : null}
+                    </div>
                   </div>
                   <div className="grid grid-cols-2 gap-2 text-sm">
                     <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
@@ -118,13 +164,19 @@ export function LkCoachStudentsTable({ students }: Props) {
                     href={`/lk/coach/students/${encodeURIComponent(s.id)}`}
                     className="grid grid-cols-[1.6fr_1fr_1fr_1fr] px-4 py-3 text-sm text-slate-950 transition-colors hover:bg-slate-50"
                   >
-                    <div className="flex flex-wrap items-center gap-2 pr-2 break-words">
-                      <span>{s.name}</span>
-                      {feedbackLabel ? (
-                        <span className="rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-xs font-medium text-amber-800">
-                          {feedbackLabel}
-                        </span>
-                      ) : null}
+                    <div className="flex items-center gap-3 pr-2 break-words">
+                      <StudentAvatar student={s} />
+                      <div className="min-w-0">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span>{s.name}</span>
+                          {feedbackLabel ? (
+                            <span className="rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-xs font-medium text-amber-800">
+                              {feedbackLabel}
+                            </span>
+                          ) : null}
+                        </div>
+                        {s.email ? <p className="mt-1 break-words text-xs text-slate-500">{s.email}</p> : null}
+                      </div>
                     </div>
                     <div className="pr-2 break-words text-slate-600">{formatDateLabel(s.nextWorkoutAt)}</div>
                     <div className="pr-2 break-words text-slate-600">{s.balance}</div>

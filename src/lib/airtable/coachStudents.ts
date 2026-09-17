@@ -6,6 +6,7 @@ export type CoachStudent = {
   email?: string;
   finalDay: string;
   balance: string;
+  avatarUrl?: string;
   nextWorkoutAt?: string;
   awaitingFeedbackCount?: number;
   oldestAwaitingFeedbackAt?: string | null;
