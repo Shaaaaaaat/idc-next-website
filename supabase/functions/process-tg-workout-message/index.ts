@@ -55,6 +55,13 @@ type ExistingWorkoutMatch = {
   earning_count: number;
 };
 
+type ExistingTelegramMessage = {
+  id: string;
+  status: string | null;
+  result_payload: unknown;
+  error_message: string | null;
+};
+
 const STUDIO_MAP: Record<string, string> = {
   elfit: "msk-oktyabrskaya",
   october: "msk-oktyabrskaya",
@@ -240,6 +247,52 @@ function recoveryTitle(rawText: string) {
   return `TG quick charge: ${rawText.slice(0, 80)}`;
 }
 
+function isDuplicateTelegramMessageError(error: unknown) {
+  if (!error || typeof error !== "object") return false;
+
+  const maybeError = error as { code?: unknown; message?: unknown };
+  return maybeError.code === "23505" ||
+    String(maybeError.message || "").toLowerCase().includes(
+      "idx_tg_workout_messages_telegram_source_unique",
+    );
+}
+
+async function findExistingTelegramMessage(
+  telegramChatId: string | null,
+  telegramMessageId: string | null,
+): Promise<ExistingTelegramMessage | null> {
+  if (!telegramChatId || !telegramMessageId) return null;
+
+  const existing = await supabase
+    .from("tg_workout_messages")
+    .select("id, status, result_payload, error_message")
+    .eq("telegram_chat_id", telegramChatId)
+    .eq("telegram_message_id", telegramMessageId)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (existing.error) throw existing.error;
+  return existing.data as ExistingTelegramMessage | null;
+}
+
+function duplicateMessageResponse(existing: ExistingTelegramMessage) {
+  return new Response(
+    JSON.stringify({
+      ok: existing.status === "processed",
+      duplicate: true,
+      message_id: existing.id,
+      status: existing.status,
+      result: existing.result_payload,
+      error: existing.status === "error" ? existing.error_message : undefined,
+    }),
+    {
+      status: existing.status === "error" ? 500 : 200,
+      headers: { "content-type": "application/json" },
+    },
+  );
+}
+
 async function findMatchingWorkout(
   params: {
     clientId: string;
@@ -384,6 +437,7 @@ async function processClientWithRetry(
       if (params.accountingOnly && rpc.data?.scheduled_workout_id) {
         const accountingRpc = await supabase.rpc("create_workout_accounting_only", {
           p_scheduled_workout_id: rpc.data.scheduled_workout_id,
+          p_include_expenses: params.includeExpenses,
         });
 
         if (accountingRpc.error) throw accountingRpc.error;
@@ -503,6 +557,12 @@ Deno.serve(async (req) => {
       );
     }
 
+    const existingMessage = await findExistingTelegramMessage(
+      telegramChatId,
+      telegramMessageId,
+    );
+    if (existingMessage) return duplicateMessageResponse(existingMessage);
+
     const insertMessage = await supabase
       .from("tg_workout_messages")
       .insert({
@@ -516,7 +576,17 @@ Deno.serve(async (req) => {
       .select("id")
       .single();
 
-    if (insertMessage.error) throw insertMessage.error;
+    if (insertMessage.error) {
+      if (isDuplicateTelegramMessageError(insertMessage.error)) {
+        const existing = await findExistingTelegramMessage(
+          telegramChatId,
+          telegramMessageId,
+        );
+        if (existing) return duplicateMessageResponse(existing);
+      }
+
+      throw insertMessage.error;
+    }
 
     messageId = insertMessage.data.id;
 

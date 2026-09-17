@@ -30,6 +30,8 @@ type CoachAct = {
   personal_hours: number | null;
   group_people: number | null;
   group_hours: number | null;
+  split_people: number | null;
+  split_hours: number | null;
   video_hours: number | null;
   video_hours_voice: number | null;
   master_people: number | null;
@@ -132,6 +134,8 @@ function buildPayload(act: CoachAct, webhookType: WebhookType): Record<string, s
     personal_hours: String(act.personal_hours ?? 0),
     group_people: String(act.group_people ?? 0),
     group_hours: String(act.group_hours ?? 0),
+    split_people: String(act.split_people ?? 0),
+    split_hours: String(act.split_hours ?? 0),
     video_hoursNo: String(act.video_hours ?? 0),
     video_hoursVoice: String(act.video_hours_voice ?? 0),
     master_people: String(act.master_people ?? 0),
