@@ -6,6 +6,9 @@ import { sendTelegramWithRetry } from "@/lib/telegram/sendTelegramWithRetry";
 
 /* ---------------- ENV ---------------- */
 const ROBO_SECRET2 = process.env.ROBO_SECRET2;
+const IDC_ERRORS_BOT_TOKEN = process.env.IDC_ERRORS_BOT_TOKEN;
+const IDC_ERRORS_CHAT_ID_RAW = process.env.IDC_ERRORS_CHAT_ID;
+const IDC_ERRORS_CHAT_ID = IDC_ERRORS_CHAT_ID_RAW ? Number(IDC_ERRORS_CHAT_ID_RAW) : NaN;
 
 /* ---------------- YDB CF (RU-first) ---------------- */
 async function postToYdbCFStatus(payload: { id_payment: number | string; status: "paid" | "created" }) {
@@ -212,6 +215,64 @@ function logRobokassaResult(event: string, payload: Record<string, unknown>) {
     console.log(JSON.stringify({ tag: "IDC_ROBOKASSA_RESULT", event, ...payload }));
   } catch {
     console.log(`[IDC_ROBOKASSA_RESULT] ${event}`);
+  }
+}
+
+function safeAlertValue(value: unknown, maxLength = 120) {
+  return String(value ?? "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, maxLength) || "-";
+}
+
+async function sendPurchaseNotFoundAlert(params: {
+  invId: string;
+  foundSource: "website" | "purchases" | "none";
+  outSum: string;
+}) {
+  if (!IDC_ERRORS_BOT_TOKEN || !Number.isFinite(IDC_ERRORS_CHAT_ID)) {
+    logRobokassaResult("purchase_not_found_alert_unavailable", {
+      operation: "robokassa_purchase_not_found_alert",
+      invId: params.invId,
+    });
+    return;
+  }
+
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 2500);
+
+  try {
+    const res = await fetch(`https://api.telegram.org/bot${IDC_ERRORS_BOT_TOKEN}/sendMessage`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        chat_id: IDC_ERRORS_CHAT_ID,
+        text: [
+          "IDC Robokassa paid purchase not found after retry",
+          "Payment is confirmed, but client access may not have been issued.",
+          `invId: ${safeAlertValue(params.invId)}`,
+          `foundSource: ${safeAlertValue(params.foundSource)}`,
+          `outSum: ${safeAlertValue(params.outSum)}`,
+          "Check public.purchases.id_payment for this InvId.",
+        ].join("\n"),
+        disable_web_page_preview: true,
+      }),
+      signal: controller.signal,
+    });
+
+    if (!res.ok) {
+      logRobokassaResult("purchase_not_found_alert_failed", {
+        operation: "robokassa_purchase_not_found_alert",
+        invId: params.invId,
+      });
+    }
+  } catch {
+    logRobokassaResult("purchase_not_found_alert_failed", {
+      operation: "robokassa_purchase_not_found_alert",
+      invId: params.invId,
+    });
+  } finally {
+    clearTimeout(timeoutId);
   }
 }
 
@@ -466,6 +527,13 @@ async function handle(params: URLSearchParams) {
     );
   } catch {
     /* ignore */
+  }
+  if (!markPaidRes.ok && markPaidRes.reason === "purchase_not_found") {
+    await sendPurchaseNotFoundAlert({
+      invId: String(invId),
+      foundSource,
+      outSum,
+    });
   }
 
   // ---------- Build rich Telegram message ----------

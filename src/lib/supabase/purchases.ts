@@ -4,9 +4,20 @@ import type { MarkPurchasePaidResult, UpsertPurchaseCreatedInput } from "@/lib/s
 import { getSupabaseAdmin, getSupabasePurchasesEnvDiag, isSupabaseEnabled } from "@/lib/supabase/server";
 
 const LOG = "IDC_SUPABASE_PURCHASES";
+const MARK_PAID_LOOKUP_RETRY_DELAYS_MS = [300, 800, 1500] as const;
+
+type PurchaseLookupClient = NonNullable<ReturnType<typeof getSupabaseAdmin>>;
+type PurchaseLookupRow = { id?: string | null; status?: string | null };
+type PurchaseLookupResult =
+  | { ok: true; purchase: PurchaseLookupRow | null }
+  | { ok: false; reason: "db_error"; message: string };
 
 function normalizeIdPayment(id: number | string): string {
   return String(id).trim();
+}
+
+function sleep(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 function logLine(event: string, payload: Record<string, unknown>) {
@@ -34,6 +45,57 @@ function formatPostgrestError(err: {
 function isTerminalPurchaseStatus(status: string): boolean {
   const s = status.trim();
   return s === "Paid" || s === "Matched" || s === "paid" || s === "matched";
+}
+
+async function lookupPurchaseByIdPayment(
+  sb: PurchaseLookupClient,
+  idPayment: string
+): Promise<PurchaseLookupResult> {
+  const { data, error } = await sb
+    .from("purchases")
+    .select("id, status")
+    .eq("id_payment", idPayment)
+    .maybeSingle();
+
+  if (error) {
+    return { ok: false, reason: "db_error", message: error.message };
+  }
+
+  return { ok: true, purchase: (data as PurchaseLookupRow | null) ?? null };
+}
+
+async function lookupPurchaseByIdPaymentWithRetry(
+  sb: PurchaseLookupClient,
+  idPayment: string
+): Promise<PurchaseLookupResult> {
+  let attempt = 1;
+
+  while (attempt <= MARK_PAID_LOOKUP_RETRY_DELAYS_MS.length + 1) {
+    const result = await lookupPurchaseByIdPayment(sb, idPayment);
+    if (!result.ok) return result;
+    if (result.purchase?.id) {
+      if (attempt > 1) {
+        logLine("mark_paid_lookup_recovered", {
+          id_payment: idPayment,
+          attempt,
+        });
+      }
+      return result;
+    }
+
+    const retryDelayMs = MARK_PAID_LOOKUP_RETRY_DELAYS_MS[attempt - 1];
+    logLine("mark_paid_lookup_not_found", {
+      id_payment: idPayment,
+      attempt,
+      retryDelayMs: retryDelayMs ?? null,
+    });
+
+    if (retryDelayMs == null) return result;
+    await sleep(retryDelayMs);
+    attempt += 1;
+  }
+
+  return { ok: true, purchase: null };
 }
 
 export type UpsertPurchaseCreatedResult =
@@ -173,21 +235,16 @@ export async function markPurchasePaidAndProcess(id_payment: number | string): P
   logLine("mark_paid_start", { id_payment: idPayment });
 
   try {
-    const { data: purchase, error: findErr } = await sb
-      .from("purchases")
-      .select("id, status")
-      .eq("id_payment", idPayment)
-      .maybeSingle();
-
-    if (findErr) {
+    const found = await lookupPurchaseByIdPaymentWithRetry(sb, idPayment);
+    if (!found.ok) {
       logLine("mark_paid_find_error", {
         id_payment: idPayment,
-        error: formatPostgrestError(findErr),
+        error: { message: found.message },
       });
-      return { ok: false, reason: "rpc_failed", message: findErr.message };
+      return { ok: false, reason: "rpc_failed", message: found.message };
     }
 
-    const purchaseRow = purchase as { id?: string } | null;
+    const purchaseRow = found.purchase;
     if (!purchaseRow?.id) {
       logLine("mark_paid_not_found", { id_payment: idPayment });
       return { ok: false, reason: "purchase_not_found" };
