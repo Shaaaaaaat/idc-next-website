@@ -252,6 +252,20 @@ export async function markPurchasePaidAndProcess(id_payment: number | string): P
 
     const purchaseId = String(purchaseRow.id);
 
+    const { error: paidAtErr } = await sb
+      .from("purchases")
+      .update({ paid_at: new Date().toISOString() })
+      .eq("id", purchaseId)
+      .is("paid_at", null);
+    if (paidAtErr) {
+      logLine("mark_paid_paid_at_update_error", {
+        id_payment: idPayment,
+        purchaseId,
+        error: formatPostgrestError(paidAtErr),
+      });
+      return { ok: false, reason: "update_failed", message: paidAtErr.message };
+    }
+
     const { error: updErr } = await sb.from("purchases").update({ status: "Paid" }).eq("id", purchaseId);
     if (updErr) {
       logLine("mark_paid_update_error", {
