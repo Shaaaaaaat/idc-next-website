@@ -183,7 +183,8 @@ async function getAwaitingFeedbackByClientIds(
       .from("client_program_workouts")
       .select("client_id, submitted_at")
       .in("client_id", clientIds)
-      .eq("status", "submitted");
+      .eq("status", "submitted")
+      .is("coach_viewed_at", null);
 
     if (error) {
       console.warn("[supabase/coachStudents] submitted workouts query failed", error.message);

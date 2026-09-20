@@ -22,16 +22,14 @@ function awaitingFeedbackLabel(count?: number) {
 
   const lastTwo = value % 100;
   const last = value % 10;
-  let noun = "тренировок";
+  let label = "новых тренировок";
 
   if (lastTwo < 11 || lastTwo > 14) {
-    if (last === 1) noun = "тренировка";
-    if (last >= 2 && last <= 4) noun = "тренировки";
+    if (last === 1) label = "новая тренировка";
+    if (last >= 2 && last <= 4) label = "новые тренировки";
   }
 
-  const verb = noun === "тренировка" ? "ждёт" : "ждут";
-
-  return `${value} ${noun} ${verb} ответа`;
+  return `${value} ${label}`;
 }
 
 function initialsFor(student: CoachStudent) {

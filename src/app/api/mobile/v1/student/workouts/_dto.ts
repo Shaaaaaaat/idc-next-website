@@ -56,6 +56,7 @@ export function mobileWorkoutSummary(workout: CoachWorkout) {
     exercise_count: workout.exercises.length,
     completed_exercise_count: 0,
     submitted_at: nullableString(workout.submittedAt),
+    coachViewedAt: nullableString(workout.coachViewedAt),
     updated_at: nullableString(workout.updatedAt),
   };
 }

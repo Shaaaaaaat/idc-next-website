@@ -242,6 +242,7 @@ function GroupReview({ group }: { group: CoachWorkoutExerciseGroup }) {
 
 export function LkStudentWorkoutReview({ workout, onClose }: Props) {
   const isReviewed = workout.status === "reviewed";
+  const isAwaitingCoachView = workout.awaitingCoachView === true;
   const blocks = buildReviewBlocks(workout);
   const dialogRef = useRef<HTMLDivElement>(null);
   const closeButtonRef = useRef<HTMLButtonElement>(null);
@@ -315,10 +316,12 @@ export function LkStudentWorkoutReview({ workout, onClose }: Props) {
                 className={`rounded-full px-2.5 py-1 text-xs font-semibold ${
                   isReviewed
                     ? "bg-emerald-100 text-emerald-800"
-                    : "bg-amber-100 text-amber-800"
+                    : isAwaitingCoachView
+                      ? "bg-amber-100 text-amber-800"
+                      : "bg-slate-100 text-slate-600"
                 }`}
               >
-                {isReviewed ? "Проверено" : "Ждёт обратной связи"}
+                {isReviewed ? "Проверено" : isAwaitingCoachView ? "Ждёт просмотра" : "Просмотрено"}
               </span>
               <span className="text-sm text-slate-500">{formatWorkoutDate(workout.date)}</span>
             </div>

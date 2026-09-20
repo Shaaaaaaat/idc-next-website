@@ -102,6 +102,16 @@ type WorkoutDetailResponse = {
   message?: string;
 };
 
+type MarkWorkoutViewedResponse = {
+  ok?: boolean;
+  viewed?: boolean;
+  coachViewedAt?: unknown;
+  alreadyViewed?: boolean;
+  reason?: string;
+  error?: string;
+  message?: string;
+};
+
 type ProgramTemplateWorkoutPreview = {
   id: string;
   dayNumber: number;
@@ -671,10 +681,12 @@ function WorkoutCard({
             className={`rounded-full px-2.5 py-1 text-xs font-medium ${
               workout.status === "reviewed"
                 ? "bg-emerald-100 text-emerald-800"
-                : "bg-amber-100 text-amber-800"
+                : workout.awaitingCoachView
+                  ? "bg-amber-100 text-amber-800"
+                  : "bg-slate-100 text-slate-600"
             }`}
           >
-            {workout.status === "reviewed" ? "Проверено" : "Ждёт обратной связи"}
+            {workout.status === "reviewed" ? "Проверено" : workout.awaitingCoachView ? "Ждёт просмотра" : "Просмотрено"}
           </span>
         ) : null}
       </div>
@@ -1631,11 +1643,13 @@ export function LkStudentCalendar({ studentId, workouts, exerciseLibrary }: Prop
   const clipboardNotificationTimerRef = useRef<number | null>(null);
   const calendarPendingTimerRef = useRef<number | null>(null);
   const calendarGridRef = useRef<HTMLDivElement>(null);
+  const isMountedRef = useRef(true);
   const calendarInitialScrolledRef = useRef(false);
   const calendarScrollRafRef = useRef<number | null>(null);
   const pendingMoveRefreshRef = useRef<Map<string, PendingMoveRefresh>>(new Map());
   const pendingPastedServerIdByTempIdRef = useRef<Map<string, string>>(new Map());
   const workoutOpenRequestRef = useRef(0);
+  const reviewingWorkoutIdRef = useRef("");
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
     useSensor(TouchSensor, { activationConstraint: { delay: 180, tolerance: 8 } }),
@@ -1853,7 +1867,14 @@ export function LkStudentCalendar({ studentId, workouts, exerciseLibrary }: Prop
   }, [visibleWeekStart]);
 
   useEffect(() => {
+    reviewingWorkoutIdRef.current = reviewingWorkout?.id || "";
+  }, [reviewingWorkout]);
+
+  useEffect(() => {
+    isMountedRef.current = true;
+
     return () => {
+      isMountedRef.current = false;
       if (importSuccessTimerRef.current) window.clearTimeout(importSuccessTimerRef.current);
       if (clipboardNotificationTimerRef.current) window.clearTimeout(clipboardNotificationTimerRef.current);
       if (calendarPendingTimerRef.current) window.clearTimeout(calendarPendingTimerRef.current);
@@ -2212,8 +2233,68 @@ export function LkStudentCalendar({ studentId, workouts, exerciseLibrary }: Prop
     return json.workout;
   }
 
-  function openWorkoutEditor(workout: CoachWorkout) {
+  function applyWorkoutViewed(workoutId: string, coachViewedAt: string) {
+    setLocalWorkouts((current) =>
+      current.map((item) =>
+        item.id === workoutId
+          ? {
+              ...item,
+              coachViewedAt,
+              awaitingCoachView: false,
+              awaitingFeedback: false,
+            }
+          : item
+      )
+    );
+    setReviewingWorkout((current) =>
+      current?.id === workoutId
+        ? {
+            ...current,
+            coachViewedAt,
+            awaitingCoachView: false,
+            awaitingFeedback: false,
+          }
+        : current
+    );
+  }
+
+  function closeWorkoutReview() {
+    reviewingWorkoutIdRef.current = "";
     setReviewingWorkout(null);
+  }
+
+  async function markWorkoutViewed(workoutId: string) {
+    try {
+      const res = await fetch(
+        `/api/lk/coach/students/${studentId}/workouts/${workoutId}/viewed`,
+        { method: "POST", cache: "no-store" }
+      );
+      const json = (await res.json().catch(() => null)) as MarkWorkoutViewedResponse | null;
+
+      if (!res.ok || !json?.ok) {
+        throw new Error(json?.message || json?.error || "Не удалось отметить тренировку просмотренной.");
+      }
+
+      if (
+        json.viewed === true &&
+        typeof json.coachViewedAt === "string" &&
+        json.coachViewedAt.trim()
+      ) {
+        if (!isMountedRef.current) return;
+        applyWorkoutViewed(workoutId, json.coachViewedAt);
+      }
+    } catch (viewError) {
+      if (!isMountedRef.current || reviewingWorkoutIdRef.current !== workoutId) return;
+      console.warn(
+        "[lk/student-calendar] mark workout viewed failed",
+        viewError instanceof Error ? viewError.message : String(viewError)
+      );
+      setCalendarError("Не удалось отметить тренировку просмотренной.");
+    }
+  }
+
+  function openWorkoutEditor(workout: CoachWorkout) {
+    closeWorkoutReview();
     setEditing({
       mode: "edit",
       workoutId: workout.id,
@@ -2230,7 +2311,7 @@ export function LkStudentCalendar({ studentId, workouts, exerciseLibrary }: Prop
     setError("");
     setCalendarError("");
     setEditing(null);
-    setReviewingWorkout(null);
+    closeWorkoutReview();
     const workout = localWorkouts.find((item) => item.id === workoutId);
     if (!workout) {
       setCalendarError("Тренировка обновляется. Подожди обновления календаря.");
@@ -2249,7 +2330,11 @@ export function LkStudentCalendar({ studentId, workouts, exerciseLibrary }: Prop
       updateLocalWorkout(freshWorkout);
       if (isWorkoutReadOnly(freshWorkout.status)) {
         setEditing(null);
+        reviewingWorkoutIdRef.current = freshWorkout.id;
         setReviewingWorkout(freshWorkout);
+        if (freshWorkout.awaitingCoachView === true) {
+          void markWorkoutViewed(freshWorkout.id);
+        }
       } else {
         openWorkoutEditor(freshWorkout);
       }
@@ -2273,7 +2358,11 @@ export function LkStudentCalendar({ studentId, workouts, exerciseLibrary }: Prop
       const freshWorkout = await fetchWorkoutDetail(workoutId);
       updateLocalWorkout(freshWorkout);
       if (isWorkoutReadOnly(freshWorkout.status)) {
+        reviewingWorkoutIdRef.current = freshWorkout.id;
         setReviewingWorkout(freshWorkout);
+        if (freshWorkout.awaitingCoachView === true) {
+          void markWorkoutViewed(freshWorkout.id);
+        }
       }
     } catch {
       router.refresh();
@@ -3366,7 +3455,7 @@ export function LkStudentCalendar({ studentId, workouts, exerciseLibrary }: Prop
       {reviewingWorkout ? (
         <LkStudentWorkoutReview
           workout={reviewingWorkout}
-          onClose={() => setReviewingWorkout(null)}
+          onClose={closeWorkoutReview}
         />
       ) : null}
 

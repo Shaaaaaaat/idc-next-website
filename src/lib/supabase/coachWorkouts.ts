@@ -42,6 +42,9 @@ export type CoachWorkout = {
   title: string;
   status?: string;
   submittedAt?: string;
+  coachViewedAt?: string | null;
+  awaitingCoachView?: boolean;
+  awaitingFeedback?: boolean;
   exercises: CoachWorkoutExercise[];
   groups?: CoachWorkoutExerciseGroup[];
   coachComment?: string;
@@ -100,6 +103,15 @@ export type DeleteCoachWorkoutResult =
       message?: string;
     };
 
+export type MarkCoachWorkoutViewedResult =
+  | { ok: true; viewed: true; coachViewedAt: string; alreadyViewed: boolean }
+  | { ok: true; viewed: false; coachViewedAt: null; alreadyViewed: false; reason: "not_applicable" }
+  | {
+      ok: false;
+      reason: "disabled" | "invalid" | "forbidden" | "not_found" | "db_error";
+      message?: string;
+    };
+
 type ProgramWorkoutRow = {
   id: string;
   client_id?: string | null;
@@ -108,6 +120,7 @@ type ProgramWorkoutRow = {
   coach_comment?: string | null;
   status?: string | null;
   submitted_at?: string | null;
+  coach_viewed_at?: string | null;
   updated_at?: string | null;
 };
 
@@ -158,6 +171,8 @@ type ReadWorkoutsForStudentOptions = {
   includeResults?: boolean;
 };
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
 function firstString(...values: unknown[]): string {
   for (const value of values) {
     const raw = String(value || "").trim();
@@ -176,6 +191,10 @@ function toDateKey(raw: string): string {
 
 function isDateKey(raw: string): boolean {
   return /^\d{4}-\d{2}-\d{2}$/.test(raw);
+}
+
+function isUuid(raw: string): boolean {
+  return UUID_RE.test(raw);
 }
 
 function cleanOptional(raw: unknown): string | null {
@@ -276,6 +295,9 @@ function normalizeWorkout(
   const dateRaw = String(row.workout_date || "").trim();
   const date = toDateKey(dateRaw);
   if (!clientId || !date) return null;
+  const status = firstString(row.status) || undefined;
+  const coachViewedAt = cleanOptional(row.coach_viewed_at);
+  const awaitingCoachView = status === "submitted" && !coachViewedAt;
   const groups = groupsByWorkout.get(row.id) || [];
   const rawExercises = exercisesByWorkout.get(row.id) || [];
   const orderedExercises = [
@@ -298,8 +320,11 @@ function normalizeWorkout(
     clientId,
     date,
     title: firstString(row.title, "Тренировка"),
-    status: firstString(row.status) || undefined,
+    status,
     submittedAt: cleanOptional(row.submitted_at) || undefined,
+    coachViewedAt,
+    awaitingCoachView,
+    awaitingFeedback: awaitingCoachView,
     exercises: orderedExercises,
     groups,
     coachComment: firstString(row.coach_comment) || undefined,
@@ -322,7 +347,7 @@ async function readWorkoutsForStudent(
 
   let workoutsQuery = sb
     .from("client_program_workouts")
-    .select("id, client_id, workout_date, title, coach_comment, status, submitted_at, updated_at")
+    .select("id, client_id, workout_date, title, coach_comment, status, submitted_at, coach_viewed_at, updated_at")
     .eq("client_id", studentId);
 
   if (coachId) {
@@ -478,6 +503,91 @@ async function assertCoachOwnsStudent(coachEmail: string, studentId: string) {
 
   if (error || !data) return null;
   return coach;
+}
+
+export async function markCoachWorkoutViewed(input: {
+  coachEmail: string;
+  studentId: string;
+  workoutId: string;
+}): Promise<MarkCoachWorkoutViewedResult> {
+  if (!isSupabaseEnabled("read_coach_lk")) return { ok: false, reason: "disabled" };
+
+  const coachEmail = String(input.coachEmail || "").trim().toLowerCase();
+  const studentId = String(input.studentId || "").trim();
+  const workoutId = String(input.workoutId || "").trim();
+  if (!coachEmail || !isUuid(studentId) || !isUuid(workoutId)) return { ok: false, reason: "invalid" };
+
+  const sb = getSupabaseAdmin();
+  if (!sb) return { ok: false, reason: "disabled" };
+
+  try {
+    const coach = await assertCoachOwnsStudent(coachEmail, studentId);
+    if (!coach) return { ok: false, reason: "forbidden" };
+
+    const { data: existing, error: existingErr } = await sb
+      .from("client_program_workouts")
+      .select("id, status, coach_viewed_at")
+      .eq("id", workoutId)
+      .eq("client_id", studentId)
+      .maybeSingle();
+
+    if (existingErr) return { ok: false, reason: "db_error", message: existingErr.message };
+    if (!existing) return { ok: false, reason: "not_found" };
+
+    const existingRow = existing as { status?: string | null; coach_viewed_at?: string | null };
+    const existingViewedAt = cleanOptional(existingRow.coach_viewed_at);
+    if (existingViewedAt) {
+      return { ok: true, viewed: true, coachViewedAt: existingViewedAt, alreadyViewed: true };
+    }
+
+    if (existingRow.status !== "submitted") {
+      return { ok: true, viewed: false, coachViewedAt: null, alreadyViewed: false, reason: "not_applicable" };
+    }
+
+    const viewedAt = new Date().toISOString();
+    const { data: updated, error: updateErr } = await sb
+      .from("client_program_workouts")
+      .update({ coach_viewed_at: viewedAt })
+      .eq("id", workoutId)
+      .eq("client_id", studentId)
+      .eq("status", "submitted")
+      .is("coach_viewed_at", null)
+      .select("coach_viewed_at")
+      .maybeSingle();
+
+    if (updateErr) return { ok: false, reason: "db_error", message: updateErr.message };
+
+    const updatedViewedAt = cleanOptional((updated as { coach_viewed_at?: string | null } | null)?.coach_viewed_at);
+    if (updatedViewedAt) {
+      return { ok: true, viewed: true, coachViewedAt: updatedViewedAt, alreadyViewed: false };
+    }
+
+    const { data: afterRace, error: afterRaceErr } = await sb
+      .from("client_program_workouts")
+      .select("status, coach_viewed_at")
+      .eq("id", workoutId)
+      .eq("client_id", studentId)
+      .maybeSingle();
+
+    if (afterRaceErr) return { ok: false, reason: "db_error", message: afterRaceErr.message };
+    if (!afterRace) return { ok: false, reason: "not_found" };
+
+    const afterRaceRow = afterRace as { status?: string | null; coach_viewed_at?: string | null };
+    const afterRaceViewedAt = cleanOptional(afterRaceRow.coach_viewed_at);
+    if (afterRaceViewedAt) {
+      return { ok: true, viewed: true, coachViewedAt: afterRaceViewedAt, alreadyViewed: true };
+    }
+
+    if (afterRaceRow.status !== "submitted") {
+      return { ok: true, viewed: false, coachViewedAt: null, alreadyViewed: false, reason: "not_applicable" };
+    }
+
+    return { ok: false, reason: "db_error", message: "Workout view marker was not saved" };
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    console.warn("[supabase/coachWorkouts] markCoachWorkoutViewed crashed", msg);
+    return { ok: false, reason: "db_error", message: msg };
+  }
 }
 
 export async function saveCoachWorkout(
