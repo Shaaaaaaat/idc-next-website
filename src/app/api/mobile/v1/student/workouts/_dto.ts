@@ -68,6 +68,9 @@ export function mobileWorkoutDetail(workout: CoachWorkout) {
       id: group.id,
       title: nullableString(group.title),
       sort_order: group.sortOrder,
+      sets: nullableString(group.sets),
+      rest: nullableString(group.rest),
+      notes: nullableString(group.notes),
     })),
     exercises: workout.exercises.map((exercise) => ({
       id: nullableString(exercise.id) || "",
