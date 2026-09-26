@@ -55,20 +55,29 @@ function StudentAvatar({ student }: { student: CoachStudent }) {
   }, [avatarUrl]);
 
   return (
-    <span className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-full bg-slate-100 text-sm font-semibold text-slate-500">
+    <span className="relative flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-full bg-slate-100 text-sm font-semibold text-slate-500">
+      <span>{initialsFor(student)}</span>
       {showImage ? (
         // eslint-disable-next-line @next/next/no-img-element
         <img
           src={avatarUrl}
           alt=""
           aria-hidden="true"
-          className="h-full w-full object-cover"
+          className="absolute inset-0 h-full w-full object-cover"
+          decoding="async"
           onError={() => setFailedUrl(avatarUrl)}
         />
-      ) : (
-        <span>{initialsFor(student)}</span>
-      )}
+      ) : null}
     </span>
+  );
+}
+
+function StudentMetric({ label, value }: { label: string; value: string | undefined }) {
+  return (
+    <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 md:border-0 md:bg-transparent md:px-0 md:py-0">
+      <p className="text-xs text-slate-500 md:hidden">{label}</p>
+      <p className="mt-0.5 text-slate-600 md:mt-0">{value}</p>
+    </div>
   );
 }
 
@@ -101,8 +110,14 @@ export function LkCoachStudentsTable({ students }: Props) {
           Ученики не найдены.
         </div>
       ) : (
-        <>
-          <div className="space-y-2 md:hidden">
+        <div className="space-y-2 md:space-y-0 md:overflow-hidden md:rounded-xl md:border md:border-slate-200 md:bg-white md:shadow-sm">
+          <div className="hidden grid-cols-[1.6fr_1fr_1fr_1fr] bg-slate-100 px-4 py-3 text-xs uppercase tracking-[0.12em] text-slate-500 md:grid">
+            <div>Имя</div>
+            <div>Ближайшая тренировка</div>
+            <div>Баланс</div>
+            <div>Дата окончания</div>
+          </div>
+          <div className="space-y-2 md:divide-y md:divide-slate-100 md:space-y-0">
             {filtered.map((s) => {
               const feedbackLabel = awaitingFeedbackLabel(s.awaitingFeedbackCount);
 
@@ -110,81 +125,32 @@ export function LkCoachStudentsTable({ students }: Props) {
                 <Link
                   key={s.id}
                   href={`/lk/coach/students/${encodeURIComponent(s.id)}`}
-                  className="block rounded-xl border border-slate-200 bg-white p-4 shadow-sm transition-colors hover:bg-slate-50"
+                  className="block rounded-xl border border-slate-200 bg-white p-4 text-slate-950 shadow-sm transition-colors hover:bg-slate-50 md:grid md:grid-cols-[1.6fr_1fr_1fr_1fr] md:rounded-none md:border-0 md:px-4 md:py-3 md:text-sm md:shadow-none"
                 >
-                  <div className="mb-3 flex items-start gap-3">
+                  <div className="mb-3 flex items-start gap-3 md:mb-0 md:items-center md:pr-2">
                     <StudentAvatar student={s} />
                     <div className="min-w-0 flex-1">
                       <div className="flex flex-wrap items-center gap-2">
-                        <p className="break-words text-base font-medium">{s.name}</p>
+                        <p className="break-words text-base font-medium md:text-sm">{s.name}</p>
                         {feedbackLabel ? (
                           <span className="rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-xs font-medium text-amber-800">
                             {feedbackLabel}
                           </span>
                         ) : null}
                       </div>
-                      {s.email ? <p className="mt-1 break-words text-sm text-slate-500">{s.email}</p> : null}
+                      {s.email ? <p className="mt-1 break-words text-sm text-slate-500 md:text-xs">{s.email}</p> : null}
                     </div>
                   </div>
-                  <div className="grid grid-cols-2 gap-2 text-sm">
-                    <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
-                      <p className="text-xs text-slate-500">Ближайшая тренировка</p>
-                      <p className="mt-0.5 text-slate-600">{formatDateLabel(s.nextWorkoutAt)}</p>
-                    </div>
-                    <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
-                      <p className="text-xs text-slate-500">Баланс</p>
-                      <p className="mt-0.5 text-slate-600">{s.balance}</p>
-                    </div>
-                    <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
-                      <p className="text-xs text-slate-500">Дата окончания</p>
-                      <p className="mt-0.5 text-slate-600">{formatDateLabel(s.finalDay)}</p>
-                    </div>
+                  <div className="grid grid-cols-2 gap-2 text-sm md:contents">
+                    <StudentMetric label="Ближайшая тренировка" value={formatDateLabel(s.nextWorkoutAt)} />
+                    <StudentMetric label="Баланс" value={s.balance} />
+                    <StudentMetric label="Дата окончания" value={formatDateLabel(s.finalDay)} />
                   </div>
                 </Link>
               );
             })}
           </div>
-
-          <div className="hidden overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm md:block">
-            <div className="grid grid-cols-[1.6fr_1fr_1fr_1fr] bg-slate-100 px-4 py-3 text-xs uppercase tracking-[0.12em] text-slate-500">
-              <div>Имя</div>
-              <div>Ближайшая тренировка</div>
-              <div>Баланс</div>
-              <div>Дата окончания</div>
-            </div>
-            <div className="divide-y divide-slate-100">
-              {filtered.map((s) => {
-                const feedbackLabel = awaitingFeedbackLabel(s.awaitingFeedbackCount);
-
-                return (
-                  <Link
-                    key={s.id}
-                    href={`/lk/coach/students/${encodeURIComponent(s.id)}`}
-                    className="grid grid-cols-[1.6fr_1fr_1fr_1fr] px-4 py-3 text-sm text-slate-950 transition-colors hover:bg-slate-50"
-                  >
-                    <div className="flex items-center gap-3 pr-2 break-words">
-                      <StudentAvatar student={s} />
-                      <div className="min-w-0">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <span>{s.name}</span>
-                          {feedbackLabel ? (
-                            <span className="rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-xs font-medium text-amber-800">
-                              {feedbackLabel}
-                            </span>
-                          ) : null}
-                        </div>
-                        {s.email ? <p className="mt-1 break-words text-xs text-slate-500">{s.email}</p> : null}
-                      </div>
-                    </div>
-                    <div className="pr-2 break-words text-slate-600">{formatDateLabel(s.nextWorkoutAt)}</div>
-                    <div className="pr-2 break-words text-slate-600">{s.balance}</div>
-                    <div className="break-words text-slate-600">{formatDateLabel(s.finalDay)}</div>
-                  </Link>
-                );
-              })}
-            </div>
-          </div>
-        </>
+        </div>
       )}
     </div>
   );

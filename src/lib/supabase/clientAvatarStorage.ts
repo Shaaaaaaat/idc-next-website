@@ -6,6 +6,7 @@ import { getSupabaseAdmin, isSupabaseEnabled } from "@/lib/supabase/server";
 export const CLIENT_AVATAR_BUCKET = "client-avatars";
 export const CLIENT_AVATAR_MAX_BYTES = 5 * 1024 * 1024;
 export const CLIENT_AVATAR_READ_TTL_SECONDS = 300;
+const CLIENT_AVATAR_READ_CACHE_REUSE_SECONDS = 240;
 
 export type ClientAvatarContentType = "image/jpeg" | "image/png" | "image/webp";
 
@@ -38,6 +39,11 @@ export type ClientAvatarSignedReadInput = {
   path: string | null | undefined;
 };
 
+type ClientAvatarSignedReadCacheEntry = {
+  signedUrl: string;
+  reusableUntilMs: number;
+};
+
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const AVATAR_FILENAME_RE =
@@ -54,6 +60,8 @@ const CONTENT_TYPE_BY_EXTENSION: Record<"jpg" | "png" | "webp", ClientAvatarCont
   png: "image/png",
   webp: "image/webp",
 };
+
+const signedReadUrlCacheByPath = new Map<string, ClientAvatarSignedReadCacheEntry>();
 
 function normalizeUuid(value: unknown): string | null {
   const normalized = String(value || "").trim().toLowerCase();
@@ -106,6 +114,14 @@ function storageFailure(error: unknown): ClientAvatarStorageResult<never> {
     ok: false,
     reason: storageStatus(error) === 404 ? "not_found" : "storage_error",
   };
+}
+
+function pruneSignedReadUrlCache(nowMs: number) {
+  for (const [path, entry] of signedReadUrlCacheByPath.entries()) {
+    if (entry.reusableUntilMs <= nowMs) {
+      signedReadUrlCacheByPath.delete(path);
+    }
+  }
 }
 
 function warnStorageFailure(
@@ -230,18 +246,29 @@ export async function createClientAvatarSignedReadUrls(
   inputs: ClientAvatarSignedReadInput[]
 ): Promise<ClientAvatarStorageResult<Map<string, string>>> {
   const pathToClientId = new Map<string, string>();
-  const validPaths: string[] = [];
+  const pathsToSign: string[] = [];
+  const signedUrlsByClientId = new Map<string, string>();
+  const nowMs = Date.now();
+
+  pruneSignedReadUrlCache(nowMs);
 
   for (const input of inputs) {
     const ownedPath = parseOwnedAvatarPath(input.clientId, input.path);
     if (!ownedPath || pathToClientId.has(ownedPath.path)) continue;
 
     pathToClientId.set(ownedPath.path, ownedPath.clientId);
-    validPaths.push(ownedPath.path);
+    const cached = signedReadUrlCacheByPath.get(ownedPath.path);
+    if (cached && cached.reusableUntilMs > nowMs) {
+      signedUrlsByClientId.set(ownedPath.clientId, cached.signedUrl);
+      continue;
+    }
+
+    signedReadUrlCacheByPath.delete(ownedPath.path);
+    pathsToSign.push(ownedPath.path);
   }
 
-  if (validPaths.length === 0) {
-    return { ok: true, data: new Map() };
+  if (pathsToSign.length === 0) {
+    return { ok: true, data: signedUrlsByClientId };
   }
 
   const storage = getReadStorage();
@@ -249,7 +276,7 @@ export async function createClientAvatarSignedReadUrls(
 
   try {
     const { data, error } = await storage.createSignedUrls(
-      validPaths,
+      pathsToSign,
       CLIENT_AVATAR_READ_TTL_SECONDS
     );
     if (error) {
@@ -261,8 +288,8 @@ export async function createClientAvatarSignedReadUrls(
       return { ok: false, reason: "storage_error" };
     }
 
-    const signedUrlsByClientId = new Map<string, string>();
     let hasPerPathFailure = false;
+    const reusableUntilMs = Date.now() + CLIENT_AVATAR_READ_CACHE_REUSE_SECONDS * 1000;
 
     for (const item of data) {
       const path = typeof item?.path === "string" ? item.path : "";
@@ -274,6 +301,7 @@ export async function createClientAvatarSignedReadUrls(
         continue;
       }
 
+      signedReadUrlCacheByPath.set(path, { signedUrl, reusableUntilMs });
       signedUrlsByClientId.set(clientId, signedUrl);
     }
 
