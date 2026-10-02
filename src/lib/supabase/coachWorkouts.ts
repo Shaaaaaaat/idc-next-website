@@ -197,6 +197,10 @@ function isUuid(raw: string): boolean {
   return UUID_RE.test(raw);
 }
 
+function isReadOnlyWorkoutStatus(status: unknown): boolean {
+  return status === "submitted" || status === "reviewed";
+}
+
 function cleanOptional(raw: unknown): string | null {
   const value = String(raw || "").trim();
   return value || null;
@@ -789,7 +793,18 @@ export async function getCoachWorkoutForStudentById(params: {
     },
     { strict: true, includeResults: true }
   );
-  return workouts[0] ?? null;
+  const primaryWorkout = workouts[0] ?? null;
+  if (primaryWorkout) return primaryWorkout;
+
+  const fallbackWorkouts = await readWorkoutsForStudent(
+    {
+      studentId,
+      workoutId,
+    },
+    { strict: true, includeResults: true }
+  );
+  const fallbackWorkout = fallbackWorkouts[0] ?? null;
+  return fallbackWorkout && isReadOnlyWorkoutStatus(fallbackWorkout.status) ? fallbackWorkout : null;
 }
 
 export async function getStudentWorkoutReadOnlyById(params: {
