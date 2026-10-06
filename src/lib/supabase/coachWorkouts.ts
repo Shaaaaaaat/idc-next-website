@@ -197,10 +197,6 @@ function isUuid(raw: string): boolean {
   return UUID_RE.test(raw);
 }
 
-function isReadOnlyWorkoutStatus(status: unknown): boolean {
-  return status === "submitted" || status === "reviewed";
-}
-
 function cleanOptional(raw: unknown): string | null {
   const value = String(raw || "").trim();
   return value || null;
@@ -703,27 +699,12 @@ export async function deleteCoachWorkout(input: {
     const coach = await assertCoachOwnsStudent(coachEmail, studentId);
     if (!coach) return { ok: false, reason: "forbidden" };
 
-    const { data: existing, error: existingErr } = await sb
-      .from("client_program_workouts")
-      .select("id, status")
-      .eq("id", workoutId)
-      .eq("client_id", studentId)
-      .eq("coach_id", coach.id)
-      .maybeSingle();
-
-    if (existingErr) return { ok: false, reason: "db_error", message: existingErr.message };
-    if (!existing) return { ok: false, reason: "not_found" };
-    if (existing.status === "submitted" || existing.status === "reviewed") {
-      return { ok: false, reason: "locked" };
-    }
-
     const { data, error } = await sb
       .from("client_program_workouts")
       .delete()
       .eq("id", workoutId)
       .eq("client_id", studentId)
-      .eq("coach_id", coach.id)
-      .not("status", "in", "(submitted,reviewed)")
+      .eq("status", "planned")
       .select("id")
       .maybeSingle();
 
@@ -734,16 +715,12 @@ export async function deleteCoachWorkout(input: {
         .select("id, status")
         .eq("id", workoutId)
         .eq("client_id", studentId)
-        .eq("coach_id", coach.id)
         .maybeSingle();
 
       if (afterDeleteMissErr) {
         return { ok: false, reason: "db_error", message: afterDeleteMissErr.message };
       }
-      if (afterDeleteMiss?.status === "submitted" || afterDeleteMiss?.status === "reviewed") {
-        return { ok: false, reason: "locked" };
-      }
-      return { ok: false, reason: "not_found" };
+      return afterDeleteMiss ? { ok: false, reason: "locked" } : { ok: false, reason: "not_found" };
     }
 
     return { ok: true };
@@ -788,23 +765,11 @@ export async function getCoachWorkoutForStudentById(params: {
   const workouts = await readWorkoutsForStudent(
     {
       studentId,
-      coachId: coach.id,
       workoutId,
     },
     { strict: true, includeResults: true }
   );
-  const primaryWorkout = workouts[0] ?? null;
-  if (primaryWorkout) return primaryWorkout;
-
-  const fallbackWorkouts = await readWorkoutsForStudent(
-    {
-      studentId,
-      workoutId,
-    },
-    { strict: true, includeResults: true }
-  );
-  const fallbackWorkout = fallbackWorkouts[0] ?? null;
-  return fallbackWorkout && isReadOnlyWorkoutStatus(fallbackWorkout.status) ? fallbackWorkout : null;
+  return workouts[0] ?? null;
 }
 
 export async function getStudentWorkoutReadOnlyById(params: {
