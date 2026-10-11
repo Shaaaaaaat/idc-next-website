@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { LkCoachNotificationCenter } from "@/components/lk/LkCoachNotificationCenter";
 import { LkShellLogoutLink, LkShellSidebar, LkShellTopNav } from "@/components/lk/LkShellNav";
 
 type LkRole = "admin" | "coach" | "client" | "guest";
@@ -66,6 +67,11 @@ function HeaderBlock({
       </div>
 
       <div className="flex items-center gap-2">
+        {role === "coach" ? (
+          <div className="md:hidden">
+            <LkCoachNotificationCenter placement="header" />
+          </div>
+        ) : null}
         {topRight}
         {authed ? <LkShellLogoutLink /> : null}
       </div>
@@ -86,6 +92,11 @@ export function LkShell({ role, title, subtitle, children, topRight, nav, active
             {hideHeader ? null : (
               <HeaderBlock role={role} title={title} subtitle={subtitle} topRight={topRight} authed={authed} />
             )}
+            {hideHeader && role === "coach" ? (
+              <div className="mb-4 flex justify-end md:hidden">
+                <LkCoachNotificationCenter placement="header" />
+              </div>
+            ) : null}
             <div className="md:hidden">
               <LkShellTopNav items={items} activeHref={activeHref} />
             </div>

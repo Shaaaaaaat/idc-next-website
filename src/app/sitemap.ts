@@ -11,6 +11,7 @@ export default function sitemap(): MetadataRoute.Sitemap {
     { url: `${base}/project`, lastModified },
     { url: `${base}/payment`, lastModified },
     { url: `${base}/pdp`, lastModified },
+    { url: `${base}/support`, lastModified },
   ];
 }
 

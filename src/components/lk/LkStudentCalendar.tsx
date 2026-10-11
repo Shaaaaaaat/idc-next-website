@@ -560,7 +560,7 @@ function WorkoutCard({
   const exerciseTitles = buildWorkoutPreviewExercises(workout);
   const exerciseCount = exerciseTitles.length;
   const cardControlClass =
-    "flex h-7 w-7 items-center justify-center rounded-xl border border-slate-200 bg-white/80 text-slate-400 opacity-100 transition-all duration-150 hover:border-slate-300 hover:bg-slate-100 hover:text-slate-700 sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100";
+    "flex h-7 w-7 items-center justify-center rounded-xl border border-slate-200 bg-white/80 text-slate-400 transition-all duration-150 hover:border-slate-300 hover:bg-slate-100 hover:text-slate-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-primary/20";
 
   function handleCardKeyDown(e: ReactKeyboardEvent<HTMLDivElement>) {
     if (e.target !== e.currentTarget) return;
@@ -589,13 +589,12 @@ function WorkoutCard({
         isDragging ? "relative z-30 opacity-95 shadow-[0_24px_52px_rgba(15,23,42,0.18)] ring-2 ring-brand-primary/20" : ""
       } ${isMoving ? "pointer-events-none opacity-60" : ""}`}
     >
-      <div className="flex items-start justify-between gap-2.5">
-        <div className="min-w-0 flex-1 pt-0.5">
-          <h4 className="line-clamp-2 text-base font-semibold leading-snug text-slate-950" title={workout.title}>
-            {workout.title}
-          </h4>
-        </div>
-        <div className="flex shrink-0 items-center gap-1">
+      <div className="min-w-0 pt-0.5">
+        <h4 className="min-w-0 whitespace-normal break-words text-base font-semibold leading-snug text-slate-950" title={workout.title}>
+          {workout.title}
+        </h4>
+      </div>
+      <div className="mt-2 flex flex-wrap items-center gap-1.5">
           <button
             type="button"
             onClick={(e) => {
@@ -633,7 +632,7 @@ function WorkoutCard({
                   if (isPendingReconciliation) return;
                   onToggleSelected();
                 }}
-                className={`flex h-7 w-7 items-center justify-center rounded-xl border text-[11px] font-bold opacity-100 transition-all duration-150 sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100 ${
+                className={`flex h-7 w-7 items-center justify-center rounded-xl border text-[11px] font-bold transition-all duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-primary/20 ${
                   selected
                     ? "border-emerald-300 bg-emerald-500 text-white shadow-sm shadow-emerald-200"
                     : "border-slate-200 bg-white/80 text-transparent hover:border-slate-300 hover:bg-slate-100"
@@ -645,7 +644,6 @@ function WorkoutCard({
               </button>
             </>
           ) : null}
-        </div>
       </div>
       <div className="mt-3 min-w-0">
         {exerciseTitles.length > 0 ? (
@@ -3210,7 +3208,7 @@ export function LkStudentCalendar({ studentId, workouts, exerciseLibrary }: Prop
         <div
           ref={calendarGridRef}
           onScroll={scheduleVisibleCalendarWeekDetection}
-          className="grid max-h-[72vh] gap-2 overflow-y-auto pr-1 lg:grid-cols-7"
+          className="grid max-h-[72vh] min-w-0 gap-2 overflow-auto pr-1 lg:grid-cols-[repeat(7,minmax(10rem,1fr))]"
         >
           {days.map((day, index) => {
             const key = dateKey(day);

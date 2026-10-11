@@ -10,6 +10,8 @@ import type {
 type Props = {
   workout: CoachWorkout;
   onClose: () => void;
+  calendarHref?: string;
+  previewMode?: "draft_video";
 };
 
 type ReviewBlock =
@@ -240,8 +242,9 @@ function GroupReview({ group }: { group: CoachWorkoutExerciseGroup }) {
   );
 }
 
-export function LkStudentWorkoutReview({ workout, onClose }: Props) {
+export function LkStudentWorkoutReview({ workout, onClose, calendarHref, previewMode }: Props) {
   const isReviewed = workout.status === "reviewed";
+  const isDraftVideoPreview = previewMode === "draft_video";
   const isAwaitingCoachView = workout.awaitingCoachView === true;
   const blocks = buildReviewBlocks(workout);
   const dialogRef = useRef<HTMLDivElement>(null);
@@ -316,12 +319,18 @@ export function LkStudentWorkoutReview({ workout, onClose }: Props) {
                 className={`rounded-full px-2.5 py-1 text-xs font-semibold ${
                   isReviewed
                     ? "bg-emerald-100 text-emerald-800"
-                    : isAwaitingCoachView
+                    : isDraftVideoPreview || isAwaitingCoachView
                       ? "bg-amber-100 text-amber-800"
                       : "bg-slate-100 text-slate-600"
                 }`}
               >
-                {isReviewed ? "Проверено" : isAwaitingCoachView ? "Ждёт просмотра" : "Просмотрено"}
+                {isReviewed
+                  ? "Проверено"
+                  : isDraftVideoPreview
+                    ? "Видео в незавершённой тренировке"
+                    : isAwaitingCoachView
+                      ? "Ждёт просмотра"
+                      : "Просмотрено"}
               </span>
               <span className="text-sm text-slate-500">{formatWorkoutDate(workout.date)}</span>
             </div>
@@ -329,18 +338,32 @@ export function LkStudentWorkoutReview({ workout, onClose }: Props) {
               {workout.title}
             </h3>
           </div>
-          <button
-            ref={closeButtonRef}
-            type="button"
-            onClick={onClose}
-            className="rounded-full border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-600 transition-colors hover:bg-slate-100"
-          >
-            Закрыть
-          </button>
+          <div className="flex shrink-0 flex-wrap items-center gap-2">
+            {calendarHref ? (
+              <a
+                href={calendarHref}
+                className="inline-flex items-center justify-center rounded-full border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-600 transition-colors hover:bg-slate-100 focus:outline-none focus:ring-2 focus:ring-brand-primary/20"
+                aria-label="Открыть календарь ученика"
+                title="Открыть календарь ученика"
+              >
+                Календарь
+              </a>
+            ) : null}
+            <button
+              ref={closeButtonRef}
+              type="button"
+              onClick={onClose}
+              className="rounded-full border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-600 transition-colors hover:bg-slate-100"
+            >
+              Закрыть
+            </button>
+          </div>
         </div>
 
         <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm leading-6 text-slate-600">
-          {isReviewed
+          {isDraftVideoPreview
+            ? "Ученик добавил видео в тренировку, но ещё не отправил её на проверку. Это информационный сигнал, а не обязательная очередь проверки."
+            : isReviewed
             ? "Тренировка завершена и доступна только для просмотра."
             : "Тренировка пройдена учеником. Редактирование недоступно."}
         </div>

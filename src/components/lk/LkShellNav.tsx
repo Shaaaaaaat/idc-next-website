@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { LkCoachNotificationCenter } from "@/components/lk/LkCoachNotificationCenter";
 import { useLkUnsavedChangesOptional } from "@/components/lk/LkUnsavedChangesContext";
 
 type LkRole = "admin" | "coach" | "client" | "guest";
@@ -92,11 +93,18 @@ export function LkShellSidebar({
             );
           })}
         </nav>
+        {role === "coach" ? (
+          <div className="mt-4 border-t border-white/10 pt-4">
+            <LkCoachNotificationCenter placement="sidebar" />
+          </div>
+        ) : null}
       </div>
       <div className="space-y-1 border-t border-white/10 pt-4">
-        <span className="block cursor-not-allowed rounded-xl px-3 py-2 text-sm text-white/35">
-          Уведомления
-        </span>
+        {role !== "coach" ? (
+          <span className="block cursor-not-allowed rounded-xl px-3 py-2 text-sm text-white/35">
+            Уведомления
+          </span>
+        ) : null}
         <span className="block cursor-not-allowed rounded-xl px-3 py-2 text-sm text-white/35">
           {profileLabel}
         </span>
