@@ -26,6 +26,10 @@ function airtableTableUrl(baseId: string, tableId: string) {
   )}`;
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
 async function postToYdbCF(payload: {
   name: string;
   phone: string;
@@ -40,7 +44,7 @@ async function postToYdbCF(payload: {
     return { ok: false as const, reason: "cf_url_missing" as const };
   }
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 7000); // 7s timeout
+  const timer = setTimeout(() => controller.abort(), 5000);
   try {
     const internalToken = process.env.CF_INTERNAL_TOKEN;
     const headers: Record<string, string> = { "Content-Type": "application/json" };
@@ -52,13 +56,12 @@ async function postToYdbCF(payload: {
       signal: controller.signal,
       cache: "no-store",
     });
-    clearTimeout(timer);
     const text = await r.text();
-    let json: any = null;
+    let json: unknown = null;
     try {
       json = JSON.parse(text);
     } catch {}
-    if (!r.ok || !json?.ok) {
+    if (!r.ok || !isRecord(json) || json.ok !== true) {
       return {
         ok: false as const,
         reason: "cf_failed" as const,
@@ -66,10 +69,14 @@ async function postToYdbCF(payload: {
         text,
       };
     }
-    return { ok: true as const, ydb_id: json?.ydb_id ?? null };
-  } catch (e: any) {
+    return { ok: true as const, ydb_id: json.ydb_id ?? null };
+  } catch (e: unknown) {
+    if (e instanceof Error && e.name === "AbortError") {
+      return { ok: false as const, reason: "cf_timeout" as const };
+    }
+    return { ok: false as const, reason: "cf_crashed" as const, error: e instanceof Error ? e.message : String(e) };
+  } finally {
     clearTimeout(timer);
-    return { ok: false as const, reason: "cf_crashed" as const, error: e?.message };
   }
 }
 
@@ -115,13 +122,9 @@ export async function POST(req: Request) {
         reason: cfRes.reason,
         status: "status" in cfRes ? cfRes.status : undefined,
       });
-      return NextResponse.json(
-        { error: "Не удалось сохранить заявку. Попробуйте ещё раз." },
-        { status: 502 }
-      );
     }
 
-    const fields: Record<string, any> = {
+    const fields: Record<string, unknown> = {
       FIO: fullName,
       Phone: phone,
       City: city,

@@ -1,6 +1,6 @@
 // src/app/api/robokassa/result/route.ts
 import crypto from "crypto";
-import { NextRequest, NextResponse } from "next/server";
+import { after, NextRequest, NextResponse } from "next/server";
 import { markPurchasePaidAndProcess } from "@/lib/supabase/purchases";
 import { sendTelegramWithRetry } from "@/lib/telegram/sendTelegramWithRetry";
 
@@ -10,12 +10,16 @@ const IDC_ERRORS_BOT_TOKEN = process.env.IDC_ERRORS_BOT_TOKEN;
 const IDC_ERRORS_CHAT_ID_RAW = process.env.IDC_ERRORS_CHAT_ID;
 const IDC_ERRORS_CHAT_ID = IDC_ERRORS_CHAT_ID_RAW ? Number(IDC_ERRORS_CHAT_ID_RAW) : NaN;
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
 /* ---------------- YDB CF (RU-first) ---------------- */
 async function postToYdbCFStatus(payload: { id_payment: number | string; status: "paid" | "created" }) {
   const url = process.env.YDB_CF_URL;
   if (!url) return { ok: false as const, reason: "cf_url_missing" as const };
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 7000);
+  const timer = setTimeout(() => controller.abort(), 5000);
   try {
     const internalToken = process.env.CF_INTERNAL_TOKEN;
     const headers: Record<string, string> = { "Content-Type": "application/json" };
@@ -27,17 +31,18 @@ async function postToYdbCFStatus(payload: { id_payment: number | string; status:
       signal: controller.signal,
       cache: "no-store",
     });
-    clearTimeout(timer);
     const text = await r.text();
-    let json: any = null;
+    let json: unknown = null;
     try { json = JSON.parse(text); } catch {}
-    if (!r.ok || !json?.ok) {
+    if (!r.ok || !isRecord(json) || json.ok !== true) {
       return { ok: false as const, reason: "cf_failed" as const, status: r.status, text };
     }
     return { ok: true as const };
-  } catch (e: any) {
+  } catch (e: unknown) {
+    if (e instanceof Error && e.name === "AbortError") return { ok: false as const, reason: "cf_timeout" as const };
+    return { ok: false as const, reason: "cf_crashed" as const, error: e instanceof Error ? e.message : String(e) };
+  } finally {
     clearTimeout(timer);
-    return { ok: false as const, reason: "cf_crashed" as const, error: e?.message };
   }
 }
 
@@ -489,8 +494,25 @@ async function handle(params: URLSearchParams) {
     return new NextResponse("bad signature", { status: 400 });
   }
 
-  // RU-first: обновляем статус лида в YDB по id_payment (перед Airtable)
-  await postToYdbCFStatus({ id_payment: Number(invId), status: "paid" }).catch(() => {});
+  after(async () => {
+    try {
+      const result = await postToYdbCFStatus({ id_payment: Number(invId), status: "paid" });
+      if (!result.ok) {
+        logRobokassaResult("ydb_paid_status_mirror_failed", {
+          operation: "robokassa_ydb_paid_status_mirror",
+          invId: String(invId),
+          reason: result.reason,
+          status: "status" in result ? result.status : undefined,
+        });
+      }
+    } catch {
+      logRobokassaResult("ydb_paid_status_mirror_crashed", {
+        operation: "robokassa_ydb_paid_status_mirror",
+        invId: String(invId),
+        reason: "cf_crashed",
+      });
+    }
+  });
 
   // Airtable: Status -> paid
   const foundWebsite = await airtableFindByField("AIRTABLE_PURCHASE_WEBSITE_TABLE", "id_payment", invId);
