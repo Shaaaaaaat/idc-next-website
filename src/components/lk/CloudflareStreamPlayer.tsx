@@ -17,6 +17,7 @@ type CloudflareStreamEventHandler = () => void;
 
 type CloudflareStreamPlayerHandle = {
   playbackRate: number;
+  currentTime?: number;
   duration?: number;
   readyState?: number;
   addEventListener?: (type: "loadedmetadata" | "ratechange", listener: CloudflareStreamEventHandler) => void;
@@ -81,61 +82,6 @@ function hasRateChangeSync(player: CloudflareStreamPlayerHandle) {
 function hasMediaReadyState(player: CloudflareStreamPlayerHandle) {
   if (typeof player.readyState === "number" && player.readyState >= 1) return true;
   return typeof player.duration === "number" && Number.isFinite(player.duration) && player.duration > 0;
-}
-
-function waitForPlayerReadiness(player: CloudflareStreamPlayerHandle, signal: AbortSignal) {
-  return new Promise<void>((resolve, reject) => {
-    if (signal.aborted) {
-      reject(new DOMException("Player initialization was aborted", "AbortError"));
-      return;
-    }
-
-    if (!hasRateChangeSync(player)) {
-      reject(new Error("Cloudflare player events are unavailable"));
-      return;
-    }
-
-    let settled = false;
-    let intervalId: number | null = null;
-    let timeoutId: number | null = null;
-
-    const cleanup = () => {
-      if (intervalId !== null) window.clearInterval(intervalId);
-      if (timeoutId !== null) window.clearTimeout(timeoutId);
-      player.removeEventListener?.("loadedmetadata", handleLoadedMetadata);
-      signal.removeEventListener("abort", handleAbort);
-    };
-
-    const settle = (callback: () => void) => {
-      if (settled) return;
-      settled = true;
-      cleanup();
-      callback();
-    };
-
-    function checkReady() {
-      if (hasMediaReadyState(player)) {
-        settle(resolve);
-      }
-    }
-
-    function handleLoadedMetadata() {
-      settle(resolve);
-    }
-
-    function handleAbort() {
-      settle(() => reject(new DOMException("Player initialization was aborted", "AbortError")));
-    }
-
-    player.addEventListener?.("loadedmetadata", handleLoadedMetadata);
-    signal.addEventListener("abort", handleAbort);
-    intervalId = window.setInterval(checkReady, 100);
-    timeoutId = window.setTimeout(() => {
-      settle(() => reject(new Error("Cloudflare player did not become ready in time")));
-    }, PLAYER_READY_TIMEOUT_MS);
-
-    checkReady();
-  });
 }
 
 function loadCloudflareStreamSdk() {
@@ -227,8 +173,8 @@ function CloudflareStreamPlayerInner({
   const menuHoveredRef = useRef(false);
   const closeTimerRef = useRef<number | null>(null);
   const positionFrameRef = useRef<number | null>(null);
+  const tryEnableControlRef = useRef<(() => void) | null>(null);
 
-  const [iframeLoadCount, setIframeLoadCount] = useState(0);
   const [isControlAvailable, setIsControlAvailable] = useState(false);
   const [currentRate, setCurrentRate] = useState(DEFAULT_RATE);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
@@ -329,7 +275,7 @@ function CloudflareStreamPlayerInner({
   );
 
   useEffect(() => {
-    if (!showSpeedControl || iframeLoadCount === 0) return;
+    if (!showSpeedControl) return;
 
     const iframe = iframeRef.current;
     if (!iframe) return;
@@ -339,6 +285,60 @@ function CloudflareStreamPlayerInner({
     requestIdRef.current = requestId;
     const controller = new AbortController();
     let removeRateChangeListener: (() => void) | null = null;
+    let removeLoadedMetadataListener: (() => void) | null = null;
+    let readinessPollingId: number | null = null;
+    let readinessTimeoutId: number | null = null;
+    let mediaReadyConfirmed = false;
+    let rateChangeConfirmed = false;
+    let isEnablingControl = false;
+
+    const isCurrentRequest = () => !controller.signal.aborted && requestIdRef.current === requestId;
+
+    const stopReadinessPolling = () => {
+      if (readinessPollingId !== null) {
+        window.clearInterval(readinessPollingId);
+        readinessPollingId = null;
+      }
+      if (readinessTimeoutId !== null) {
+        window.clearTimeout(readinessTimeoutId);
+        readinessTimeoutId = null;
+      }
+    };
+
+    const tryEnableControl = () => {
+      if (!isCurrentRequest()) return;
+      if (isEnablingControl) return;
+
+      const player = playerRef.current;
+      if (!player || !hasPlaybackRateControl(player) || !hasRateChangeSync(player)) return;
+
+      if (hasMediaReadyState(player)) {
+        mediaReadyConfirmed = true;
+      }
+
+      if (!mediaReadyConfirmed && !rateChangeConfirmed) return;
+
+      isEnablingControl = true;
+      try {
+        if (initialRateAppliedSrcRef.current !== src) {
+          if (!rateChangeConfirmed) {
+            player.playbackRate = DEFAULT_RATE;
+          }
+          initialRateAppliedSrcRef.current = src;
+        }
+
+        if (!syncRateFromPlayer(player)) return;
+
+        setIsControlAvailable(true);
+        stopReadinessPolling();
+      } catch {
+        setIsControlAvailable(false);
+      } finally {
+        isEnablingControl = false;
+      }
+    };
+
+    tryEnableControlRef.current = tryEnableControl;
 
     async function initializePlayer() {
       try {
@@ -351,35 +351,38 @@ function CloudflareStreamPlayerInner({
         }
 
         const player = createPlayer(iframeElement);
-        await waitForPlayerReadiness(player, controller.signal);
-        if (controller.signal.aborted || requestIdRef.current !== requestId) return;
-
         if (!hasPlaybackRateControl(player) || !hasRateChangeSync(player)) {
           throw new Error("Cloudflare Stream playback rate synchronization is unavailable");
         }
 
         const handleRateChange = () => {
+          if (!isCurrentRequest()) return;
+          rateChangeConfirmed = true;
           if (!syncRateFromPlayer(player)) {
             setIsControlAvailable(false);
+            return;
           }
+          tryEnableControl();
         };
 
+        const handleLoadedMetadata = () => {
+          mediaReadyConfirmed = true;
+          tryEnableControl();
+        };
+
+        player.addEventListener?.("loadedmetadata", handleLoadedMetadata);
         player.addEventListener?.("ratechange", handleRateChange);
+        removeLoadedMetadataListener = () => player.removeEventListener?.("loadedmetadata", handleLoadedMetadata);
         removeRateChangeListener = () => player.removeEventListener?.("ratechange", handleRateChange);
         playerRef.current = player;
 
-        if (initialRateAppliedSrcRef.current !== src) {
-          player.playbackRate = DEFAULT_RATE;
-          initialRateAppliedSrcRef.current = src;
-        }
-
-        if (!syncRateFromPlayer(player)) {
-          throw new Error("Cloudflare Stream playback rate read failed");
-        }
-
-        setIsControlAvailable(true);
+        readinessPollingId = window.setInterval(tryEnableControl, 100);
+        readinessTimeoutId = window.setTimeout(stopReadinessPolling, PLAYER_READY_TIMEOUT_MS);
+        tryEnableControl();
       } catch {
         if (controller.signal.aborted || requestIdRef.current !== requestId) return;
+        stopReadinessPolling();
+        removeLoadedMetadataListener?.();
         removeRateChangeListener?.();
         playerRef.current = null;
         setIsControlAvailable(false);
@@ -390,10 +393,13 @@ function CloudflareStreamPlayerInner({
 
     return () => {
       controller.abort();
+      tryEnableControlRef.current = null;
+      stopReadinessPolling();
+      removeLoadedMetadataListener?.();
       removeRateChangeListener?.();
       playerRef.current = null;
     };
-  }, [iframeLoadCount, showSpeedControl, src, syncRateFromPlayer]);
+  }, [showSpeedControl, src, syncRateFromPlayer]);
 
   useEffect(() => {
     if (!isMenuOpen) return;
@@ -527,7 +533,7 @@ function CloudflareStreamPlayerInner({
         loading={loading}
         allow="accelerometer; gyroscope; autoplay; encrypted-media; picture-in-picture;"
         allowFullScreen
-        onLoad={() => setIframeLoadCount((count) => count + 1)}
+        onLoad={() => tryEnableControlRef.current?.()}
         className={cx("h-full w-full", iframeClassName)}
       />
 
