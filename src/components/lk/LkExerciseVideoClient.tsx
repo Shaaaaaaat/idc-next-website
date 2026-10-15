@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import type { ExerciseLibraryItem } from "@/lib/supabase/exerciseLibrary";
+import { CloudflareStreamPlayer } from "@/components/lk/CloudflareStreamPlayer";
 import { ExerciseTagPills, LkExerciseEditorModal } from "@/components/lk/LkExerciseEditorModal";
 import { LkShell } from "@/components/lk/LkShell";
 
@@ -55,12 +56,9 @@ export function LkExerciseVideoClient({ exercise, role, backHref, canEdit }: Pro
 
         <div className="mx-auto max-w-3xl overflow-hidden rounded-3xl border border-slate-200 bg-slate-100 shadow-sm">
           <div className="aspect-video">
-            <iframe
+            <CloudflareStreamPlayer
               src={exercise.videoUrl}
               title={exercise.title}
-              loading="lazy"
-              allow="accelerometer; gyroscope; autoplay; encrypted-media; picture-in-picture;"
-              allowFullScreen
               className="h-full w-full"
             />
           </div>

@@ -6,6 +6,7 @@ import type {
   CoachWorkoutExercise,
   CoachWorkoutExerciseGroup,
 } from "@/lib/supabase/coachWorkouts";
+import { CloudflareStreamPlayer } from "@/components/lk/CloudflareStreamPlayer";
 
 type Props = {
   workout: CoachWorkout;
@@ -150,12 +151,9 @@ function StudentResult({ exercise }: { exercise: CoachWorkoutExercise }) {
                 className="overflow-hidden rounded-2xl border border-amber-200 bg-slate-950"
               >
                 <div className="aspect-video">
-                  <iframe
+                  <CloudflareStreamPlayer
                     src={video.videoUrl}
                     title={title}
-                    loading="lazy"
-                    allow="accelerometer; gyroscope; autoplay; encrypted-media; picture-in-picture;"
-                    allowFullScreen
                     className="h-full w-full"
                   />
                 </div>
