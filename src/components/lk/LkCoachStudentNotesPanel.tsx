@@ -97,6 +97,13 @@ export function LkCoachStudentNotesPanel({ studentId, variant = "page", onClose 
   const [busyKey, setBusyKey] = useState("");
   const requestRef = useRef(0);
   const mountedRef = useRef(false);
+  const draftTextareaRef = useRef<HTMLTextAreaElement>(null);
+
+  function resizeDraftTextarea(element = draftTextareaRef.current) {
+    if (!element) return;
+    element.style.height = "auto";
+    element.style.height = `${Math.min(element.scrollHeight, 96)}px`;
+  }
 
   useEffect(() => {
     mountedRef.current = true;
@@ -145,6 +152,10 @@ export function LkCoachStudentNotesPanel({ studentId, variant = "page", onClose 
       controller.abort();
     };
   }, [studentId, retryKey]);
+
+  useEffect(() => {
+    resizeDraftTextarea();
+  }, [draft]);
 
   const orderedNotes = useMemo(() => orderedNewestFirst(notes), [notes]);
   const createLength = draft.length;
@@ -271,34 +282,21 @@ export function LkCoachStudentNotesPanel({ studentId, variant = "page", onClose 
       <div
         className={
           isSide
-            ? "min-h-0 shrink-0 overflow-y-auto overscroll-contain border-b border-slate-100 p-4 max-h-[min(50dvh,24rem)]"
+            ? "min-h-0 shrink-0 overflow-y-auto overscroll-contain border-b border-slate-100 p-4 max-h-[min(42dvh,18rem)]"
             : "rounded-3xl border border-slate-200 bg-white p-4 shadow-sm"
         }
       >
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-          <div>
-            <h3 className="text-xl font-semibold text-slate-950">Заметки</h3>
-            <p className="mt-1 text-sm text-slate-500">Видно только вам как тренеру</p>
-          </div>
-          <div className="flex flex-wrap gap-2">
+        <div className="flex items-center justify-between gap-3">
+          <h3 className="text-xl font-semibold text-slate-950">Заметки</h3>
+          {onClose ? (
             <button
               type="button"
-              onClick={() => setRetryKey((value) => value + 1)}
-              disabled={loading}
-              className="inline-flex min-h-11 items-center justify-center rounded-full border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-600 transition-colors hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60"
+              onClick={onClose}
+              className="inline-flex min-h-10 items-center justify-center rounded-full border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-600 transition-colors hover:bg-slate-100"
             >
-              {loading ? "Обновляем..." : "Повторить"}
+              Закрыть
             </button>
-            {onClose ? (
-              <button
-                type="button"
-                onClick={onClose}
-                className="inline-flex min-h-11 items-center justify-center rounded-full border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-600 transition-colors hover:bg-slate-100"
-              >
-                Закрыть
-              </button>
-            ) : null}
-          </div>
+          ) : null}
         </div>
 
         <div className="mt-4 space-y-2">
@@ -306,15 +304,18 @@ export function LkCoachStudentNotesPanel({ studentId, variant = "page", onClose 
             Новая заметка
           </label>
           <textarea
+            ref={draftTextareaRef}
             id="student-note-body"
+            rows={1}
             value={draft}
             onChange={(event) => {
               setDraft(event.target.value);
               setCreateError("");
+              resizeDraftTextarea(event.currentTarget);
             }}
             disabled={Boolean(busyKey)}
             maxLength={NOTE_BODY_MAX_LENGTH + 500}
-            className="min-h-28 w-full resize-y rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-950 outline-none transition-colors placeholder:text-slate-400 focus:border-brand-primary disabled:cursor-not-allowed disabled:bg-slate-50"
+            className="min-h-11 max-h-24 w-full resize-none overflow-y-auto rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-950 outline-none transition-colors placeholder:text-slate-400 focus:border-brand-primary disabled:cursor-not-allowed disabled:bg-slate-50"
             placeholder="Напишите личную заметку по ученику..."
           />
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
@@ -340,9 +341,17 @@ export function LkCoachStudentNotesPanel({ studentId, variant = "page", onClose 
 
       <div className={isSide ? "min-h-0 flex-1 space-y-3 overflow-y-auto overscroll-contain p-4" : "space-y-4"}>
         {loadError ? (
-          <p className="rounded-2xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
-            {loadError}
-          </p>
+          <div className="flex flex-col gap-2 rounded-2xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700 sm:flex-row sm:items-center sm:justify-between">
+            <span>{loadError}</span>
+            <button
+              type="button"
+              onClick={() => setRetryKey((value) => value + 1)}
+              disabled={loading}
+              className="self-start rounded-full bg-white px-3 py-1 text-xs font-semibold text-red-700 transition-colors hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-60 sm:self-auto"
+            >
+              {loading ? "Обновляем..." : "Повторить"}
+            </button>
+          </div>
         ) : null}
         {mutationError ? (
           <p className="rounded-2xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">

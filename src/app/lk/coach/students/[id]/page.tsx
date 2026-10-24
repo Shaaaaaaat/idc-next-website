@@ -118,17 +118,20 @@ export default async function LkCoachStudentPage({ params, searchParams }: PageP
         </div>
 
         <nav aria-label="Разделы карточки ученика" className="-mx-1 overflow-x-auto px-1 pb-1">
-          <div className="inline-flex min-w-full gap-1 rounded-2xl border border-slate-200 bg-white p-1 shadow-sm sm:min-w-0">
-            {STUDENT_TABS.map((item) => (
-              <Link
-                key={item.id}
-                href={`/lk/coach/students/${encodeURIComponent(student.id)}?tab=${item.id}`}
-                aria-current={activeTab === item.id ? "page" : undefined}
-                className={tabClassName(activeTab === item.id)}
-              >
-                {item.label}
-              </Link>
-            ))}
+          <div className="flex min-w-full items-center justify-between gap-3 sm:min-w-0">
+            <div className="inline-flex gap-1 rounded-2xl border border-slate-200 bg-white p-1 shadow-sm">
+              {STUDENT_TABS.map((item) => (
+                <Link
+                  key={item.id}
+                  href={`/lk/coach/students/${encodeURIComponent(student.id)}?tab=${item.id}`}
+                  aria-current={activeTab === item.id ? "page" : undefined}
+                  className={tabClassName(activeTab === item.id)}
+                >
+                  {item.label}
+                </Link>
+              ))}
+            </div>
+            <div id="coach-student-notes-tab-action" className="shrink-0" />
           </div>
         </nav>
 

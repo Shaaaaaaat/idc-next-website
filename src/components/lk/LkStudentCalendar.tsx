@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
+import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
 import {
   closestCenter,
@@ -53,6 +54,7 @@ const CALENDAR_SUCCESS_TIMEOUT_MS = 2000;
 const CALENDAR_SCROLL_ACTIVATION_OFFSET = 36;
 const NOTES_CALENDAR_SIDE_MIN_WIDTH = 1140;
 const NOTES_EDITOR_SIDE_MIN_WIDTH = 1160;
+const NOTES_TAB_ACTION_ELEMENT_ID = "coach-student-notes-tab-action";
 
 type IdleDeadlineLike = { timeRemaining: () => number; didTimeout: boolean };
 type WindowWithIdleCallback = Window & {
@@ -1668,7 +1670,6 @@ export function LkStudentCalendar({ studentId, workouts, exerciseLibrary, initia
   const calendarShellRef = useRef<HTMLElement>(null);
   const notesHostRef = useRef<HTMLDivElement>(null);
   const editorDialogRef = useRef<HTMLDivElement>(null);
-  const editorNotesSlotRef = useRef<HTMLDivElement>(null);
   const calendarNotesButtonRef = useRef<HTMLButtonElement>(null);
   const editorNotesButtonRef = useRef<HTMLButtonElement>(null);
   const lastNotesTriggerRef = useRef<HTMLButtonElement | null>(null);
@@ -1688,6 +1689,7 @@ export function LkStudentCalendar({ studentId, workouts, exerciseLibrary, initia
   const [workspaceWidth, setWorkspaceWidth] = useState(0);
   const [viewportWidth, setViewportWidth] = useState(0);
   const [notesSlotBox, setNotesSlotBox] = useState<NotesSlotBox | null>(null);
+  const [notesTabActionElement, setNotesTabActionElement] = useState<HTMLElement | null>(null);
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
     useSensor(TouchSensor, { activationConstraint: { delay: 180, tolerance: 8 } }),
@@ -1724,7 +1726,7 @@ export function LkStudentCalendar({ studentId, workouts, exerciseLibrary, initia
     uploadExerciseIndex !== null ||
     Boolean(programImportDate) ||
     Boolean(reviewingWorkout);
-  const notesInlineWithEditor = notesOpen && Boolean(editing) && viewportWidth >= NOTES_EDITOR_SIDE_MIN_WIDTH;
+  const notesInlineWithEditor = notesOpen && Boolean(editing) && Boolean(notesSlotBox) && !overlayModalOpen;
   const notesInlineWithCalendar = notesOpen && !editing && workspaceWidth >= NOTES_CALENDAR_SIDE_MIN_WIDTH;
   const notesDrawerMode = notesOpen && !notesInlineWithEditor && !notesInlineWithCalendar && !overlayModalOpen;
   const isEditorOpen = Boolean(editing);
@@ -1983,6 +1985,13 @@ export function LkStudentCalendar({ studentId, workouts, exerciseLibrary, initia
   }, []);
 
   useEffect(() => {
+    const frameId = window.requestAnimationFrame(() => {
+      setNotesTabActionElement(document.getElementById(NOTES_TAB_ACTION_ELEMENT_ID));
+    });
+    return () => window.cancelAnimationFrame(frameId);
+  }, []);
+
+  useEffect(() => {
     const element = calendarShellRef.current;
     if (!element) return;
 
@@ -2011,17 +2020,32 @@ export function LkStudentCalendar({ studentId, workouts, exerciseLibrary, initia
   }, []);
 
   useEffect(() => {
-    if (!notesInlineWithEditor) return;
-
-    const slot = editorNotesSlotRef.current;
-    if (!slot) return;
+    if (!editing || !notesOpen || overlayModalOpen) {
+      const frameId = window.requestAnimationFrame(() => setNotesSlotBox(null));
+      return () => window.cancelAnimationFrame(frameId);
+    }
 
     const updateSlotBox = () => {
-      const rect = slot.getBoundingClientRect();
+      const rect = editorDialogRef.current?.getBoundingClientRect();
+      if (!rect) {
+        setNotesSlotBox(null);
+        return;
+      }
+
+      const gap = 16;
+      const margin = 16;
+      const minWidth = 320;
+      const maxWidth = 384;
+      const availableWidth = window.innerWidth - rect.right - gap - margin;
+      if (availableWidth < minWidth || window.innerWidth < NOTES_EDITOR_SIDE_MIN_WIDTH) {
+        setNotesSlotBox(null);
+        return;
+      }
+
       setNotesSlotBox({
         top: rect.top,
-        left: rect.left,
-        width: rect.width,
+        left: rect.right + gap,
+        width: Math.min(maxWidth, availableWidth),
         height: rect.height,
       });
     };
@@ -2039,14 +2063,16 @@ export function LkStudentCalendar({ studentId, workouts, exerciseLibrary, initia
     }
 
     const observer = new ResizeObserver(updateSlotBox);
-    observer.observe(slot);
+    const editorDialog = editorDialogRef.current;
+    if (editorDialog) observer.observe(editorDialog);
+
     return () => {
       window.cancelAnimationFrame(frameId);
       observer.disconnect();
       window.removeEventListener("resize", updateSlotBox);
       window.removeEventListener("scroll", updateSlotBox, true);
     };
-  }, [notesInlineWithEditor]);
+  }, [editing, notesOpen, overlayModalOpen, viewportWidth]);
 
   useEffect(() => {
     if (!notesDrawerMode || overlayModalOpen) return;
@@ -3423,6 +3449,24 @@ export function LkStudentCalendar({ studentId, workouts, exerciseLibrary, initia
 
   return (
     <section ref={calendarShellRef} className="space-y-4">
+      {notesTabActionElement
+        ? createPortal(
+            <button
+              ref={calendarNotesButtonRef}
+              type="button"
+              onClick={() => toggleNotes(calendarNotesButtonRef.current)}
+              className={`inline-flex min-h-11 shrink-0 items-center justify-center rounded-xl px-4 py-2 text-sm font-semibold transition-colors focus:outline-none focus:ring-2 focus:ring-brand-primary/30 ${
+                notesOpen
+                  ? "bg-slate-950 text-white shadow-sm"
+                  : "text-slate-500 hover:bg-slate-100 hover:text-slate-800"
+              }`}
+              aria-expanded={notesOpen}
+            >
+              Заметки
+            </button>,
+            notesTabActionElement
+          )
+        : null}
       <ClipboardNotification message={clipboardNotification} />
       <div
         className={
@@ -3440,19 +3484,6 @@ export function LkStudentCalendar({ studentId, workouts, exerciseLibrary, initia
           </h2>
         </div>
         <div className="flex flex-wrap gap-2">
-          <button
-            ref={calendarNotesButtonRef}
-            type="button"
-            onClick={() => toggleNotes(calendarNotesButtonRef.current)}
-            className={`rounded-full px-3 py-2 text-sm font-semibold transition-colors ${
-              notesOpen
-                ? "bg-slate-950 text-white hover:bg-slate-800"
-                : "bg-slate-100 text-slate-600 hover:bg-slate-200"
-            }`}
-            aria-expanded={notesOpen}
-          >
-            Заметки
-          </button>
           {showTodayButton ? (
             <button
               type="button"
@@ -3604,7 +3635,9 @@ export function LkStudentCalendar({ studentId, workouts, exerciseLibrary, initia
               hidden={!notesOpen}
               inert={!notesOpen || overlayModalOpen || undefined}
               className={
-                notesDrawerMode
+                !notesOpen
+                  ? "hidden"
+                  : notesDrawerMode
                   ? "fixed inset-y-3 right-3 z-[56] flex w-[min(92vw,28rem)] max-w-[28rem] flex-col"
                   : notesInlineWithEditor
                     ? "flex min-h-0 flex-col"
@@ -3849,20 +3882,16 @@ export function LkStudentCalendar({ studentId, workouts, exerciseLibrary, initia
       {editing ? (
         <div
           className="fixed inset-0 z-50 flex items-end bg-slate-950/40 px-3 py-4 sm:items-center sm:justify-center"
+          role={notesInlineWithEditor ? "dialog" : undefined}
+          aria-modal={notesInlineWithEditor ? true : undefined}
+          aria-labelledby={notesInlineWithEditor ? "student-workout-editor-title" : undefined}
+          aria-owns={notesInlineWithEditor && notesOpen ? "coach-student-notes-panel" : undefined}
           onMouseDown={(e) => {
             if (e.target === e.currentTarget && !saving && !notesDrawerMode) setEditing(null);
           }}
         >
           <div
-            className={
-              notesInlineWithEditor
-                ? "grid max-h-[90vh] w-full max-w-[min(96vw,1400px)] grid-cols-[minmax(0,1fr)_minmax(22rem,28rem)] items-stretch gap-3"
-                : "contents"
-            }
-            role={notesInlineWithEditor ? "dialog" : undefined}
-            aria-modal={notesInlineWithEditor ? true : undefined}
-            aria-labelledby={notesInlineWithEditor ? "student-workout-editor-title" : undefined}
-            aria-owns={notesInlineWithEditor && notesOpen ? "coach-student-notes-panel" : undefined}
+            className="contents"
             onMouseDown={(e) => {
               if (notesInlineWithEditor) e.stopPropagation();
             }}
@@ -3872,9 +3901,7 @@ export function LkStudentCalendar({ studentId, workouts, exerciseLibrary, initia
             role={notesInlineWithEditor ? undefined : "dialog"}
             aria-modal={notesInlineWithEditor ? undefined : true}
             aria-labelledby={notesInlineWithEditor ? undefined : "student-workout-editor-title"}
-            className={`max-h-[86vh] w-full overflow-y-auto rounded-3xl bg-white p-4 text-slate-950 shadow-2xl sm:p-5 ${
-              notesInlineWithEditor ? "max-h-[90vh] max-w-none" : "max-w-3xl"
-            }`}
+            className="max-h-[86vh] w-full max-w-3xl overflow-y-auto rounded-3xl bg-white p-4 text-slate-950 shadow-2xl sm:p-5"
             onMouseDown={(e) => e.stopPropagation()}
           >
             <div className="mb-4 flex items-start justify-between gap-3">
@@ -4073,9 +4100,6 @@ export function LkStudentCalendar({ studentId, workouts, exerciseLibrary, initia
               </button>
             </div>
           </div>
-          {notesInlineWithEditor ? (
-            <div ref={editorNotesSlotRef} className="min-h-0 min-w-0" aria-hidden="true" />
-          ) : null}
           </div>
         </div>
       ) : null}
