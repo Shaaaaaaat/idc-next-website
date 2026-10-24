@@ -4,7 +4,6 @@ import { notFound, redirect } from "next/navigation";
 import { getValidatedSessionEmail } from "@/lib/auth/lkSession";
 import { resolveLkAccessByEmail } from "@/lib/auth/lkAccess";
 import { LkAccessDenied } from "@/components/lk/LkAccessDenied";
-import { LkCoachStudentNotesPanel } from "@/components/lk/LkCoachStudentNotesPanel";
 import { LkCoachStudentProfilePanel } from "@/components/lk/LkCoachStudentProfilePanel";
 import { LkInfoCard, LkShell } from "@/components/lk/LkShell";
 import { LkStudentCalendar } from "@/components/lk/LkStudentCalendar";
@@ -21,7 +20,6 @@ const MS_PER_DAY = 24 * 60 * 60 * 1000;
 const STUDENT_TABS = [
   { id: "calendar", label: "Календарь" },
   { id: "data", label: "Данные ученика" },
-  { id: "notes", label: "Заметки" },
 ] as const;
 
 type StudentTab = (typeof STUDENT_TABS)[number]["id"];
@@ -40,7 +38,7 @@ function formatShortDate(raw?: string) {
 
 function normalizeTab(rawTab?: string | string[]): StudentTab {
   if (Array.isArray(rawTab)) return "calendar";
-  if (rawTab === "data" || rawTab === "notes") return rawTab;
+  if (rawTab === "data") return rawTab;
   return "calendar";
 }
 
@@ -57,6 +55,7 @@ export default async function LkCoachStudentPage({ params, searchParams }: PageP
   const { id } = await params;
   const { tab } = await searchParams;
   const activeTab = normalizeTab(tab);
+  const initialNotesOpen = !Array.isArray(tab) && tab === "notes";
   const email = await getValidatedSessionEmail();
   if (!email) redirect("/lk/login");
 
@@ -85,12 +84,15 @@ export default async function LkCoachStudentPage({ params, searchParams }: PageP
     const exerciseLibrary = await listActiveExercises(access.email);
 
     tabContent = (
-      <LkStudentCalendar studentId={student.id} workouts={workouts} exerciseLibrary={exerciseLibrary} />
+      <LkStudentCalendar
+        studentId={student.id}
+        workouts={workouts}
+        exerciseLibrary={exerciseLibrary}
+        initialNotesOpen={initialNotesOpen}
+      />
     );
   } else if (activeTab === "data") {
     tabContent = <LkCoachStudentProfilePanel studentId={student.id} />;
-  } else {
-    tabContent = <LkCoachStudentNotesPanel studentId={student.id} />;
   }
 
   return (

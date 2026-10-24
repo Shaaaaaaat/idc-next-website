@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import { useRouter } from "next/navigation";
 import {
   closestCenter,
@@ -23,6 +23,7 @@ import {
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { LkExerciseEditorModal } from "@/components/lk/LkExerciseEditorModal";
+import { LkCoachStudentNotesPanel } from "@/components/lk/LkCoachStudentNotesPanel";
 import {
   isWorkoutReadOnly,
   LkStudentWorkoutReview,
@@ -42,6 +43,7 @@ type Props = {
   studentId: string;
   workouts: CoachWorkout[];
   exerciseLibrary: ExerciseLibraryItem[];
+  initialNotesOpen?: boolean;
 };
 
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
@@ -49,6 +51,8 @@ const PREVIOUS_CALENDAR_WEEKS = 10;
 const FUTURE_CALENDAR_DAYS = 42;
 const CALENDAR_SUCCESS_TIMEOUT_MS = 2000;
 const CALENDAR_SCROLL_ACTIVATION_OFFSET = 36;
+const NOTES_CALENDAR_SIDE_MIN_WIDTH = 1140;
+const NOTES_EDITOR_SIDE_MIN_WIDTH = 1160;
 
 type IdleDeadlineLike = { timeRemaining: () => number; didTimeout: boolean };
 type WindowWithIdleCallback = Window & {
@@ -246,6 +250,26 @@ function addDays(date: Date, days: number) {
 
 function addWeeks(date: Date, weeks: number) {
   return addDays(date, weeks * 7);
+}
+
+type NotesSlotBox = {
+  top: number;
+  left: number;
+  width: number;
+  height: number;
+};
+
+function getFocusableElements(container: HTMLElement | null) {
+  if (!container || container.hasAttribute("hidden") || container.closest("[inert]")) return [];
+  return Array.from(
+    container.querySelectorAll<HTMLElement>(
+      'button:not([disabled]), a[href], input:not([disabled]), textarea:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])'
+    )
+  ).filter((element) => {
+    if (element.hasAttribute("hidden") || element.closest("[hidden],[inert]")) return false;
+    const style = window.getComputedStyle(element);
+    return style.display !== "none" && style.visibility !== "hidden" && element.getClientRects().length > 0;
+  });
 }
 
 function calendarRangeLabel(start: Date, daysCount: number) {
@@ -1593,7 +1617,7 @@ function WorkoutExerciseCard({
   );
 }
 
-export function LkStudentCalendar({ studentId, workouts, exerciseLibrary }: Props) {
+export function LkStudentCalendar({ studentId, workouts, exerciseLibrary, initialNotesOpen = false }: Props) {
   const router = useRouter();
   const [visibleWeekStart] = useState(() => startOfWeek(new Date()));
   const [visibleScrollWeekStart, setVisibleScrollWeekStart] = useState(() => startOfWeek(new Date()));
@@ -1641,6 +1665,17 @@ export function LkStudentCalendar({ studentId, workouts, exerciseLibrary }: Prop
   const clipboardNotificationTimerRef = useRef<number | null>(null);
   const calendarPendingTimerRef = useRef<number | null>(null);
   const calendarGridRef = useRef<HTMLDivElement>(null);
+  const calendarShellRef = useRef<HTMLElement>(null);
+  const notesHostRef = useRef<HTMLDivElement>(null);
+  const editorDialogRef = useRef<HTMLDivElement>(null);
+  const editorNotesSlotRef = useRef<HTMLDivElement>(null);
+  const calendarNotesButtonRef = useRef<HTMLButtonElement>(null);
+  const editorNotesButtonRef = useRef<HTMLButtonElement>(null);
+  const lastNotesTriggerRef = useRef<HTMLButtonElement | null>(null);
+  const editorTriggerRef = useRef<HTMLElement | null>(null);
+  const editorFocusSessionRef = useRef(false);
+  const overlayModalOpenRef = useRef(false);
+  const notesDrawerModeRef = useRef(false);
   const isMountedRef = useRef(true);
   const calendarInitialScrolledRef = useRef(false);
   const calendarScrollRafRef = useRef<number | null>(null);
@@ -1648,6 +1683,11 @@ export function LkStudentCalendar({ studentId, workouts, exerciseLibrary }: Prop
   const pendingPastedServerIdByTempIdRef = useRef<Map<string, string>>(new Map());
   const workoutOpenRequestRef = useRef(0);
   const reviewingWorkoutIdRef = useRef("");
+  const [notesOpen, setNotesOpen] = useState(initialNotesOpen);
+  const [notesMounted, setNotesMounted] = useState(initialNotesOpen);
+  const [workspaceWidth, setWorkspaceWidth] = useState(0);
+  const [viewportWidth, setViewportWidth] = useState(0);
+  const [notesSlotBox, setNotesSlotBox] = useState<NotesSlotBox | null>(null);
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
     useSensor(TouchSensor, { activationConstraint: { delay: 180, tolerance: 8 } }),
@@ -1679,6 +1719,61 @@ export function LkStudentCalendar({ studentId, workouts, exerciseLibrary }: Prop
   );
   const uploadDraftExercise =
     uploadExerciseIndex !== null && editing ? editing.exercises[uploadExerciseIndex] : undefined;
+  const overlayModalOpen =
+    Boolean(previewExercise) ||
+    uploadExerciseIndex !== null ||
+    Boolean(programImportDate) ||
+    Boolean(reviewingWorkout);
+  const notesInlineWithEditor = notesOpen && Boolean(editing) && viewportWidth >= NOTES_EDITOR_SIDE_MIN_WIDTH;
+  const notesInlineWithCalendar = notesOpen && !editing && workspaceWidth >= NOTES_CALENDAR_SIDE_MIN_WIDTH;
+  const notesDrawerMode = notesOpen && !notesInlineWithEditor && !notesInlineWithCalendar && !overlayModalOpen;
+  const isEditorOpen = Boolean(editing);
+  overlayModalOpenRef.current = overlayModalOpen;
+  notesDrawerModeRef.current = notesDrawerMode;
+
+  const syncNotesUrl = useCallback((open: boolean, mode: "push" | "replace" = "push") => {
+    const url = new URL(window.location.href);
+    if (open) {
+      url.searchParams.set("tab", "notes");
+    } else if (url.searchParams.get("tab") === "notes") {
+      url.searchParams.set("tab", "calendar");
+    } else {
+      return;
+    }
+    window.history[mode === "push" ? "pushState" : "replaceState"](null, "", url);
+  }, []);
+
+  const openNotes = useCallback((trigger?: HTMLButtonElement | null, mode: "push" | "replace" = "push") => {
+    if (trigger) lastNotesTriggerRef.current = trigger;
+    setNotesMounted(true);
+    setNotesOpen(true);
+    syncNotesUrl(true, mode);
+  }, [syncNotesUrl]);
+
+  const closeNotes = useCallback((mode: "push" | "replace" = "push") => {
+    setNotesOpen(false);
+    syncNotesUrl(false, mode);
+    window.requestAnimationFrame(() => {
+      if (overlayModalOpen) return;
+      const editorTrigger = editorNotesButtonRef.current;
+      const calendarTrigger = calendarNotesButtonRef.current;
+      const target =
+        editorTrigger && document.contains(editorTrigger)
+          ? editorTrigger
+          : calendarTrigger && document.contains(calendarTrigger)
+            ? calendarTrigger
+            : lastNotesTriggerRef.current;
+      if (target && document.contains(target)) target.focus();
+    });
+  }, [overlayModalOpen, syncNotesUrl]);
+
+  const toggleNotes = useCallback((trigger?: HTMLButtonElement | null) => {
+    if (notesOpen) {
+      closeNotes();
+      return;
+    }
+    openNotes(trigger);
+  }, [closeNotes, notesOpen, openNotes]);
 
   function scrollCalendarDayIntoView(dayKeyToShow: string, behavior: ScrollBehavior = "smooth") {
     const container = calendarGridRef.current;
@@ -1881,6 +1976,196 @@ export function LkStudentCalendar({ studentId, workouts, exerciseLibrary }: Prop
   }, []);
 
   useEffect(() => {
+    const updateViewportWidth = () => setViewportWidth(window.innerWidth);
+    updateViewportWidth();
+    window.addEventListener("resize", updateViewportWidth);
+    return () => window.removeEventListener("resize", updateViewportWidth);
+  }, []);
+
+  useEffect(() => {
+    const element = calendarShellRef.current;
+    if (!element) return;
+
+    const updateWorkspaceWidth = () => setWorkspaceWidth(element.getBoundingClientRect().width);
+    updateWorkspaceWidth();
+
+    if (typeof ResizeObserver === "undefined") {
+      window.addEventListener("resize", updateWorkspaceWidth);
+      return () => window.removeEventListener("resize", updateWorkspaceWidth);
+    }
+
+    const observer = new ResizeObserver(updateWorkspaceWidth);
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, []);
+
+  useEffect(() => {
+    const handlePopState = () => {
+      const shouldOpen = new URL(window.location.href).searchParams.get("tab") === "notes";
+      if (shouldOpen) setNotesMounted(true);
+      setNotesOpen(shouldOpen);
+    };
+
+    window.addEventListener("popstate", handlePopState);
+    return () => window.removeEventListener("popstate", handlePopState);
+  }, []);
+
+  useEffect(() => {
+    if (!notesInlineWithEditor) return;
+
+    const slot = editorNotesSlotRef.current;
+    if (!slot) return;
+
+    const updateSlotBox = () => {
+      const rect = slot.getBoundingClientRect();
+      setNotesSlotBox({
+        top: rect.top,
+        left: rect.left,
+        width: rect.width,
+        height: rect.height,
+      });
+    };
+
+    const frameId = window.requestAnimationFrame(updateSlotBox);
+    window.addEventListener("resize", updateSlotBox);
+    window.addEventListener("scroll", updateSlotBox, true);
+
+    if (typeof ResizeObserver === "undefined") {
+      return () => {
+        window.cancelAnimationFrame(frameId);
+        window.removeEventListener("resize", updateSlotBox);
+        window.removeEventListener("scroll", updateSlotBox, true);
+      };
+    }
+
+    const observer = new ResizeObserver(updateSlotBox);
+    observer.observe(slot);
+    return () => {
+      window.cancelAnimationFrame(frameId);
+      observer.disconnect();
+      window.removeEventListener("resize", updateSlotBox);
+      window.removeEventListener("scroll", updateSlotBox, true);
+    };
+  }, [notesInlineWithEditor]);
+
+  useEffect(() => {
+    if (!notesDrawerMode || overlayModalOpen) return;
+
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    getFocusableElements(notesHostRef.current)[0]?.focus();
+
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        event.stopPropagation();
+        closeNotes();
+        return;
+      }
+
+      if (event.key !== "Tab") return;
+
+      const focusable = getFocusableElements(notesHostRef.current);
+      if (focusable.length === 0) {
+        event.preventDefault();
+        return;
+      }
+
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (event.shiftKey && (document.activeElement === first || !notesHostRef.current?.contains(document.activeElement))) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && (document.activeElement === last || !notesHostRef.current?.contains(document.activeElement))) {
+        event.preventDefault();
+        first.focus();
+      }
+    }
+
+    document.addEventListener("keydown", handleKeyDown, true);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      document.removeEventListener("keydown", handleKeyDown, true);
+    };
+  }, [closeNotes, notesDrawerMode, overlayModalOpen]);
+
+  useEffect(() => {
+    if (!notesOpen || notesDrawerMode || editing || overlayModalOpen) return;
+
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") closeNotes();
+    }
+
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, [closeNotes, editing, notesDrawerMode, notesOpen, overlayModalOpen]);
+
+  useEffect(() => {
+    if (!editing || notesDrawerMode || overlayModalOpen) return;
+
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key !== "Tab") return;
+
+      const editorFocusable = getFocusableElements(editorDialogRef.current);
+      const notesFocusable = notesOpen ? getFocusableElements(notesHostRef.current) : [];
+      const firstEditor = editorFocusable[0];
+      const lastEditor = editorFocusable[editorFocusable.length - 1];
+      const firstNotes = notesFocusable[0];
+      const lastNotes = notesFocusable[notesFocusable.length - 1];
+      const active = document.activeElement;
+      const inEditor = Boolean(editorDialogRef.current?.contains(active));
+      const inNotes = Boolean(notesHostRef.current?.contains(active));
+
+      if (firstNotes && lastEditor && !event.shiftKey && active === lastEditor) {
+        event.preventDefault();
+        firstNotes.focus();
+        return;
+      }
+      if (firstNotes && lastEditor && event.shiftKey && active === firstNotes) {
+        event.preventDefault();
+        lastEditor.focus();
+        return;
+      }
+      if (lastNotes && firstEditor && !event.shiftKey && active === lastNotes) {
+        event.preventDefault();
+        firstEditor.focus();
+        return;
+      }
+      if (lastNotes && firstEditor && event.shiftKey && active === firstEditor) {
+        event.preventDefault();
+        lastNotes.focus();
+        return;
+      }
+      if (!firstNotes && firstEditor && lastEditor && !event.shiftKey && active === lastEditor) {
+        event.preventDefault();
+        firstEditor.focus();
+        return;
+      }
+      if (!firstNotes && firstEditor && lastEditor && event.shiftKey && active === firstEditor) {
+        event.preventDefault();
+        lastEditor.focus();
+        return;
+      }
+
+      const focusable = [...editorFocusable, ...notesFocusable];
+      if (focusable.length === 0) {
+        event.preventDefault();
+        return;
+      }
+
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (!inEditor && !inNotes) {
+        event.preventDefault();
+        (event.shiftKey ? last : first).focus();
+      }
+    }
+
+    document.addEventListener("keydown", handleKeyDown, true);
+    return () => document.removeEventListener("keydown", handleKeyDown, true);
+  }, [editing, notesDrawerMode, notesOpen, overlayModalOpen]);
+
+  useEffect(() => {
     if (!previewExercise) return;
 
     function handleKeyDown(e: KeyboardEvent) {
@@ -1892,15 +2177,43 @@ export function LkStudentCalendar({ studentId, workouts, exerciseLibrary }: Prop
   }, [previewExercise]);
 
   useEffect(() => {
-    if (!editing || saving || previewExercise || uploadExerciseIndex !== null) return;
+    if (!editing || saving || overlayModalOpen || notesDrawerMode) return;
 
     function handleKeyDown(e: KeyboardEvent) {
-      if (e.key === "Escape") setEditing(null);
+      if (e.key !== "Escape") return;
+      if (notesOpen && !notesInlineWithEditor) {
+        closeNotes();
+        return;
+      }
+      setEditing(null);
     }
 
     document.addEventListener("keydown", handleKeyDown);
     return () => document.removeEventListener("keydown", handleKeyDown);
-  }, [editing, saving, previewExercise, uploadExerciseIndex]);
+  }, [closeNotes, editing, notesDrawerMode, notesInlineWithEditor, notesOpen, overlayModalOpen, saving]);
+
+  useEffect(() => {
+    if (isEditorOpen) {
+      if (editorFocusSessionRef.current) return;
+      editorFocusSessionRef.current = true;
+      const active = document.activeElement;
+      if (active instanceof HTMLElement) {
+        editorTriggerRef.current = active;
+      }
+      const frameId = window.requestAnimationFrame(() => {
+        if (overlayModalOpenRef.current || notesDrawerModeRef.current) return;
+        getFocusableElements(editorDialogRef.current)[0]?.focus();
+      });
+      return () => window.cancelAnimationFrame(frameId);
+    }
+
+    if (!editorFocusSessionRef.current) return;
+    editorFocusSessionRef.current = false;
+    const target = editorTriggerRef.current;
+    editorTriggerRef.current = null;
+    if (!target || !document.contains(target) || overlayModalOpenRef.current || notesDrawerModeRef.current) return;
+    target.focus();
+  }, [isEditorOpen]);
 
   useEffect(() => {
     if (!editing) setUploadExerciseIndex(null);
@@ -3109,8 +3422,16 @@ export function LkStudentCalendar({ studentId, workouts, exerciseLibrary }: Prop
   }
 
   return (
-    <section className="space-y-4">
+    <section ref={calendarShellRef} className="space-y-4">
       <ClipboardNotification message={clipboardNotification} />
+      <div
+        className={
+          notesInlineWithCalendar
+            ? "grid min-w-0 grid-cols-[minmax(0,1fr)_minmax(22rem,28rem)] items-start gap-4"
+            : "space-y-4"
+        }
+      >
+        <div className="min-w-0 space-y-4">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Календарь</p>
@@ -3119,6 +3440,19 @@ export function LkStudentCalendar({ studentId, workouts, exerciseLibrary }: Prop
           </h2>
         </div>
         <div className="flex flex-wrap gap-2">
+          <button
+            ref={calendarNotesButtonRef}
+            type="button"
+            onClick={() => toggleNotes(calendarNotesButtonRef.current)}
+            className={`rounded-full px-3 py-2 text-sm font-semibold transition-colors ${
+              notesOpen
+                ? "bg-slate-950 text-white hover:bg-slate-800"
+                : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+            }`}
+            aria-expanded={notesOpen}
+          >
+            Заметки
+          </button>
           {showTodayButton ? (
             <button
               type="button"
@@ -3253,6 +3587,61 @@ export function LkStudentCalendar({ studentId, workouts, exerciseLibrary }: Prop
           })}
         </div>
       </DndContext>
+        </div>
+
+        {notesMounted ? (
+          <>
+            {notesOpen && notesDrawerMode ? (
+              <div
+                className="fixed inset-0 z-[55] bg-slate-950/40"
+                onMouseDown={(event) => {
+                  if (event.target === event.currentTarget) closeNotes();
+                }}
+              />
+            ) : null}
+            <div
+              ref={notesHostRef}
+              hidden={!notesOpen}
+              inert={!notesOpen || overlayModalOpen || undefined}
+              className={
+                notesDrawerMode
+                  ? "fixed inset-y-3 right-3 z-[56] flex w-[min(92vw,28rem)] max-w-[28rem] flex-col"
+                  : notesInlineWithEditor
+                    ? "flex min-h-0 flex-col"
+                    : notesInlineWithCalendar
+                      ? "sticky top-4 flex max-h-[calc(100dvh-2rem)] min-h-0 w-full flex-col"
+                      : "fixed bottom-4 right-4 top-4 z-[45] flex w-[min(28rem,calc(100vw-2rem))] flex-col"
+              }
+              style={
+                notesInlineWithEditor && notesSlotBox
+                  ? {
+                      position: "fixed",
+                      top: notesSlotBox.top,
+                      left: notesSlotBox.left,
+                      width: notesSlotBox.width,
+                      height: notesSlotBox.height,
+                      zIndex: overlayModalOpen ? 40 : 55,
+                    }
+                  : notesInlineWithEditor
+                    ? { visibility: "hidden" }
+                    : undefined
+              }
+              id="coach-student-notes-panel"
+              aria-hidden={!notesOpen || overlayModalOpen}
+              role={notesDrawerMode ? "dialog" : undefined}
+              aria-modal={notesDrawerMode ? true : undefined}
+              aria-label={notesDrawerMode ? "Заметки" : undefined}
+            >
+              <LkCoachStudentNotesPanel
+                key={studentId}
+                studentId={studentId}
+                variant="side"
+                onClose={() => closeNotes()}
+              />
+            </div>
+          </>
+        ) : null}
+      </div>
 
       {programImportDate ? (
         <div
@@ -3461,11 +3850,31 @@ export function LkStudentCalendar({ studentId, workouts, exerciseLibrary }: Prop
         <div
           className="fixed inset-0 z-50 flex items-end bg-slate-950/40 px-3 py-4 sm:items-center sm:justify-center"
           onMouseDown={(e) => {
-            if (e.target === e.currentTarget && !saving) setEditing(null);
+            if (e.target === e.currentTarget && !saving && !notesDrawerMode) setEditing(null);
           }}
         >
           <div
-            className="max-h-[86vh] w-full max-w-3xl overflow-y-auto rounded-3xl bg-white p-4 text-slate-950 shadow-2xl sm:p-5"
+            className={
+              notesInlineWithEditor
+                ? "grid max-h-[90vh] w-full max-w-[min(96vw,1400px)] grid-cols-[minmax(0,1fr)_minmax(22rem,28rem)] items-stretch gap-3"
+                : "contents"
+            }
+            role={notesInlineWithEditor ? "dialog" : undefined}
+            aria-modal={notesInlineWithEditor ? true : undefined}
+            aria-labelledby={notesInlineWithEditor ? "student-workout-editor-title" : undefined}
+            aria-owns={notesInlineWithEditor && notesOpen ? "coach-student-notes-panel" : undefined}
+            onMouseDown={(e) => {
+              if (notesInlineWithEditor) e.stopPropagation();
+            }}
+          >
+          <div
+            ref={editorDialogRef}
+            role={notesInlineWithEditor ? undefined : "dialog"}
+            aria-modal={notesInlineWithEditor ? undefined : true}
+            aria-labelledby={notesInlineWithEditor ? undefined : "student-workout-editor-title"}
+            className={`max-h-[86vh] w-full overflow-y-auto rounded-3xl bg-white p-4 text-slate-950 shadow-2xl sm:p-5 ${
+              notesInlineWithEditor ? "max-h-[90vh] max-w-none" : "max-w-3xl"
+            }`}
             onMouseDown={(e) => e.stopPropagation()}
           >
             <div className="mb-4 flex items-start justify-between gap-3">
@@ -3473,17 +3882,32 @@ export function LkStudentCalendar({ studentId, workouts, exerciseLibrary }: Prop
                 <p className="text-xs uppercase tracking-[0.18em] text-slate-500">
                   {editing.mode === "edit" ? "Редактирование" : "Новая тренировка"}
                 </p>
-                <h3 className="mt-1 text-xl font-semibold">
+                <h3 id="student-workout-editor-title" className="mt-1 text-xl font-semibold">
                   {editing.mode === "edit" ? "Изменить тренировку" : "Создать тренировку"}
                 </h3>
               </div>
-              <button
-                type="button"
-                onClick={() => setEditing(null)}
-                className="rounded-full border border-slate-200 px-3 py-2 text-sm text-slate-600 transition-colors hover:bg-slate-100"
-              >
-                Закрыть
-              </button>
+              <div className="flex flex-wrap justify-end gap-2">
+                <button
+                  ref={editorNotesButtonRef}
+                  type="button"
+                  onClick={() => toggleNotes(editorNotesButtonRef.current)}
+                  className={`rounded-full border px-3 py-2 text-sm font-semibold transition-colors ${
+                    notesOpen
+                      ? "border-slate-950 bg-slate-950 text-white hover:bg-slate-800"
+                      : "border-slate-200 text-slate-600 hover:bg-slate-100"
+                  }`}
+                  aria-expanded={notesOpen}
+                >
+                  Заметки
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setEditing(null)}
+                  className="rounded-full border border-slate-200 px-3 py-2 text-sm text-slate-600 transition-colors hover:bg-slate-100"
+                >
+                  Закрыть
+                </button>
+              </div>
             </div>
 
             <div className="grid gap-3 sm:grid-cols-[180px_minmax(0,1fr)]">
@@ -3648,6 +4072,10 @@ export function LkStudentCalendar({ studentId, workouts, exerciseLibrary }: Prop
                 {saving ? "Сохраняем..." : "Сохранить"}
               </button>
             </div>
+          </div>
+          {notesInlineWithEditor ? (
+            <div ref={editorNotesSlotRef} className="min-h-0 min-w-0" aria-hidden="true" />
+          ) : null}
           </div>
         </div>
       ) : null}

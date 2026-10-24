@@ -24,6 +24,8 @@ type NoteMutationResponse = {
 
 type Props = {
   studentId: string;
+  variant?: "page" | "side";
+  onClose?: () => void;
 };
 
 function isNote(value: unknown): value is CoachStudentNote {
@@ -81,7 +83,7 @@ function orderedNewestFirst(notes: CoachStudentNote[]) {
   });
 }
 
-export function LkCoachStudentNotesPanel({ studentId }: Props) {
+export function LkCoachStudentNotesPanel({ studentId, variant = "page", onClose }: Props) {
   const [notes, setNotes] = useState<CoachStudentNote[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
@@ -147,6 +149,7 @@ export function LkCoachStudentNotesPanel({ studentId }: Props) {
   const orderedNotes = useMemo(() => orderedNewestFirst(notes), [notes]);
   const createLength = draft.length;
   const editLength = editBody.length;
+  const isSide = variant === "side";
 
   async function createNote() {
     if (busyKey) return;
@@ -258,21 +261,44 @@ export function LkCoachStudentNotesPanel({ studentId }: Props) {
   }
 
   return (
-    <section className="space-y-4">
-      <div className="rounded-3xl border border-slate-200 bg-white p-4 shadow-sm">
+    <section
+      className={
+        isSide
+          ? "flex h-full min-h-0 flex-col overflow-hidden rounded-3xl border border-slate-200 bg-white text-slate-950 shadow-2xl"
+          : "space-y-4"
+      }
+    >
+      <div
+        className={
+          isSide
+            ? "min-h-0 shrink-0 overflow-y-auto overscroll-contain border-b border-slate-100 p-4 max-h-[min(50dvh,24rem)]"
+            : "rounded-3xl border border-slate-200 bg-white p-4 shadow-sm"
+        }
+      >
         <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           <div>
             <h3 className="text-xl font-semibold text-slate-950">Заметки</h3>
-            <p className="mt-1 text-sm text-slate-500">Видно только вам</p>
+            <p className="mt-1 text-sm text-slate-500">Видно только вам как тренеру</p>
           </div>
-          <button
-            type="button"
-            onClick={() => setRetryKey((value) => value + 1)}
-            disabled={loading}
-            className="inline-flex min-h-11 items-center justify-center rounded-full border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-600 transition-colors hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60"
-          >
-            {loading ? "Обновляем..." : "Повторить"}
-          </button>
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={() => setRetryKey((value) => value + 1)}
+              disabled={loading}
+              className="inline-flex min-h-11 items-center justify-center rounded-full border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-600 transition-colors hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {loading ? "Обновляем..." : "Повторить"}
+            </button>
+            {onClose ? (
+              <button
+                type="button"
+                onClick={onClose}
+                className="inline-flex min-h-11 items-center justify-center rounded-full border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-600 transition-colors hover:bg-slate-100"
+              >
+                Закрыть
+              </button>
+            ) : null}
+          </div>
         </div>
 
         <div className="mt-4 space-y-2">
@@ -312,33 +338,37 @@ export function LkCoachStudentNotesPanel({ studentId }: Props) {
         </div>
       </div>
 
-      {loadError ? (
-        <p className="rounded-2xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
-          {loadError}
-        </p>
-      ) : null}
-      {mutationError ? (
-        <p className="rounded-2xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
-          {mutationError}
-        </p>
-      ) : null}
+      <div className={isSide ? "min-h-0 flex-1 space-y-3 overflow-y-auto overscroll-contain p-4" : "space-y-4"}>
+        {loadError ? (
+          <p className="rounded-2xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+            {loadError}
+          </p>
+        ) : null}
+        {mutationError ? (
+          <p className="rounded-2xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+            {mutationError}
+          </p>
+        ) : null}
 
-      {loading && orderedNotes.length === 0 ? (
-        <div className="rounded-2xl border border-dashed border-slate-200 px-4 py-6 text-sm text-slate-500">
-          Загружаем заметки...
-        </div>
-      ) : orderedNotes.length === 0 ? (
-        <div className="rounded-2xl border border-dashed border-slate-200 px-4 py-6 text-sm text-slate-500">
-          Пока нет заметок.
-        </div>
-      ) : (
-        <div className="space-y-3">
+        {loading && orderedNotes.length === 0 ? (
+          <div className="rounded-2xl border border-dashed border-slate-200 px-4 py-6 text-sm text-slate-500">
+            Загружаем заметки...
+          </div>
+        ) : orderedNotes.length === 0 ? (
+          <div className="rounded-2xl border border-dashed border-slate-200 px-4 py-6 text-sm text-slate-500">
+            Пока нет заметок.
+          </div>
+        ) : (
+          <div className="space-y-3">
           {orderedNotes.map((note) => {
             const isEditing = editId === note.id;
             const isBusy = busyKey === `update:${note.id}` || busyKey === `delete:${note.id}`;
 
             return (
-              <article key={note.id} className="rounded-3xl border border-slate-200 bg-white p-4 shadow-sm">
+              <article
+                key={note.id}
+                className={`rounded-3xl border border-slate-200 bg-white shadow-sm ${isSide ? "p-3" : "p-4"}`}
+              >
                 <div className="mb-3 flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
                   <p className="text-sm font-semibold text-slate-950">{note.authorName}</p>
                   <time className="text-xs text-slate-500" dateTime={note.createdAt}>
@@ -422,8 +452,9 @@ export function LkCoachStudentNotesPanel({ studentId }: Props) {
               </article>
             );
           })}
-        </div>
-      )}
+          </div>
+        )}
+      </div>
     </section>
   );
 }
