@@ -1978,6 +1978,12 @@ export function LkStudentCalendar({ studentId, workouts, exerciseLibrary, initia
   }, []);
 
   useEffect(() => {
+    if (notesMounted) return;
+    const frameId = window.requestAnimationFrame(() => setNotesMounted(true));
+    return () => window.cancelAnimationFrame(frameId);
+  }, [notesMounted]);
+
+  useEffect(() => {
     const updateViewportWidth = () => setViewportWidth(window.innerWidth);
     updateViewportWidth();
     window.addEventListener("resize", updateViewportWidth);

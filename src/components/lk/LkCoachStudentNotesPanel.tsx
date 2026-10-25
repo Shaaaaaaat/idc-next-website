@@ -97,11 +97,14 @@ export function LkCoachStudentNotesPanel({ studentId, variant = "page", onClose 
   const [busyKey, setBusyKey] = useState("");
   const requestRef = useRef(0);
   const mountedRef = useRef(false);
+  const panelRef = useRef<HTMLElement>(null);
   const draftTextareaRef = useRef<HTMLTextAreaElement>(null);
+  const lastPanelWidthRef = useRef(0);
 
   function resizeDraftTextarea(element = draftTextareaRef.current) {
     if (!element) return;
     element.style.height = "auto";
+    if (element.scrollHeight <= 0) return;
     element.style.height = `${Math.min(element.scrollHeight, 96)}px`;
   }
 
@@ -156,6 +159,46 @@ export function LkCoachStudentNotesPanel({ studentId, variant = "page", onClose 
   useEffect(() => {
     resizeDraftTextarea();
   }, [draft]);
+
+  useEffect(() => {
+    const resizeWhenPanelWidthChanges = () => {
+      const width = panelRef.current?.getBoundingClientRect().width || 0;
+      if (width <= 0) {
+        lastPanelWidthRef.current = 0;
+        return;
+      }
+      if (width === lastPanelWidthRef.current) return;
+      lastPanelWidthRef.current = width;
+      resizeDraftTextarea();
+    };
+    const frameId = window.requestAnimationFrame(resizeWhenPanelWidthChanges);
+    window.addEventListener("resize", resizeWhenPanelWidthChanges);
+
+    if (typeof ResizeObserver === "undefined") {
+      return () => {
+        window.cancelAnimationFrame(frameId);
+        window.removeEventListener("resize", resizeWhenPanelWidthChanges);
+      };
+    }
+
+    const observer = new ResizeObserver((entries) => {
+      const width = entries[0]?.contentRect.width || 0;
+      if (width <= 0) {
+        lastPanelWidthRef.current = 0;
+        return;
+      }
+      if (width === lastPanelWidthRef.current) return;
+      lastPanelWidthRef.current = width;
+      resizeDraftTextarea();
+    });
+    if (panelRef.current) observer.observe(panelRef.current);
+
+    return () => {
+      window.cancelAnimationFrame(frameId);
+      observer.disconnect();
+      window.removeEventListener("resize", resizeWhenPanelWidthChanges);
+    };
+  }, []);
 
   const orderedNotes = useMemo(() => orderedNewestFirst(notes), [notes]);
   const createLength = draft.length;
@@ -279,16 +322,17 @@ export function LkCoachStudentNotesPanel({ studentId, variant = "page", onClose 
 
   return (
     <section
+      ref={panelRef}
       className={
         isSide
-          ? "flex h-full min-h-0 flex-col overflow-hidden rounded-3xl border border-slate-200 bg-white text-slate-950 shadow-2xl"
+          ? "flex h-full min-h-0 flex-col overflow-y-auto overscroll-contain rounded-3xl border border-slate-200 bg-white text-slate-950 shadow-2xl"
           : "space-y-4"
       }
     >
       <div
         className={
           isSide
-            ? "min-h-0 shrink-0 overflow-y-auto overscroll-contain border-b border-slate-100 p-4 max-h-[min(42dvh,18rem)]"
+            ? "border-b border-slate-100 p-4"
             : "rounded-3xl border border-slate-200 bg-white p-4 shadow-sm"
         }
       >
@@ -345,7 +389,7 @@ export function LkCoachStudentNotesPanel({ studentId, variant = "page", onClose 
         </div>
       </div>
 
-      <div className={isSide ? "min-h-0 flex-1 space-y-2 overflow-y-auto overscroll-contain p-3" : "space-y-4"}>
+      <div className={isSide ? "space-y-2 p-3" : "space-y-4"}>
         {loadError ? (
           <div className="flex flex-col gap-2 rounded-2xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700 sm:flex-row sm:items-center sm:justify-between">
             <span>{loadError}</span>
