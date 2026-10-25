@@ -2046,7 +2046,7 @@ export function LkStudentCalendar({ studentId, workouts, exerciseLibrary, initia
         top: rect.top,
         left: rect.right + gap,
         width: Math.min(maxWidth, availableWidth),
-        height: rect.height,
+        height: Math.min(rect.height, Math.max(0, window.innerHeight - rect.top - margin)),
       });
     };
 
@@ -3638,16 +3638,18 @@ export function LkStudentCalendar({ studentId, workouts, exerciseLibrary, initia
                 !notesOpen
                   ? "hidden"
                   : notesDrawerMode
-                  ? "fixed inset-y-3 right-3 z-[56] flex w-[min(92vw,28rem)] max-w-[28rem] flex-col"
+                  ? "fixed inset-y-3 right-3 z-[56] m-0 flex w-[min(92vw,28rem)] max-w-[28rem] flex-col"
                   : notesInlineWithEditor
-                    ? "flex min-h-0 flex-col"
+                    ? "m-0 flex min-h-0 flex-col overflow-hidden"
                     : notesInlineWithCalendar
-                      ? "sticky top-4 flex max-h-[calc(100dvh-2rem)] min-h-0 w-full flex-col"
-                      : "fixed bottom-4 right-4 top-4 z-[45] flex w-[min(28rem,calc(100vw-2rem))] flex-col"
+                      ? "fixed bottom-4 right-4 top-32 z-[45] m-0 flex min-h-0 w-[min(28rem,calc(100vw-2rem))] flex-col overflow-hidden"
+                      : "fixed bottom-4 right-4 top-4 z-[45] m-0 flex w-[min(28rem,calc(100vw-2rem))] flex-col"
               }
               style={
                 notesInlineWithEditor && notesSlotBox
                   ? {
+                      marginTop: 0,
+                      marginBottom: 0,
                       position: "fixed",
                       top: notesSlotBox.top,
                       left: notesSlotBox.left,
@@ -3657,7 +3659,9 @@ export function LkStudentCalendar({ studentId, workouts, exerciseLibrary, initia
                     }
                   : notesInlineWithEditor
                     ? { visibility: "hidden" }
-                    : undefined
+                    : notesOpen
+                      ? { marginTop: 0, marginBottom: 0 }
+                      : undefined
               }
               id="coach-student-notes-panel"
               aria-hidden={!notesOpen || overlayModalOpen}
