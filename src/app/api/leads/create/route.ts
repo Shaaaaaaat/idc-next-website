@@ -1,5 +1,5 @@
 // src/app/api/leads/create/route.ts
-import { after, NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 import { createLeadInSupabase } from "@/lib/supabase/leads";
 
 type LeadBody = {
@@ -9,22 +9,6 @@ type LeadBody = {
   city: string; // "Москва" | "Санкт-Петербург"
   studio: string; // cleaned studio name (e.g., "м. Октябрьская")
 };
-
-function airtableEnv() {
-  const apiKey = process.env.AIRTABLE_API_KEY;
-  const baseId = process.env.AIRTABLE_BASE_ID;
-  const leadsTableId = process.env.AIRTABLE_LEADS_TABLE_ID; // tbl0geFqIkCdroD05
-  if (!apiKey || !baseId || !leadsTableId) {
-    return { ok: false as const, apiKey: "", baseId: "", leadsTableId: "" };
-  }
-  return { ok: true as const, apiKey, baseId, leadsTableId };
-}
-
-function airtableTableUrl(baseId: string, tableId: string) {
-  return `https://api.airtable.com/v0/${encodeURIComponent(baseId)}/${encodeURIComponent(
-    tableId
-  )}`;
-}
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
@@ -124,19 +108,6 @@ export async function POST(req: Request) {
       });
     }
 
-    const fields: Record<string, unknown> = {
-      FIO: fullName,
-      Phone: phone,
-      City: city,
-      Studio: studio,
-      // Multi-select must be an array of option names
-      Source: ["website"],
-      Product: "trial",
-      // RU-first flags
-      ru_first_ok: cfRes.ok === true,
-    };
-    if (email) fields.email = email;
-
     const supabaseLeadRes = await createLeadInSupabase({
       fio: fullName,
       phone,
@@ -154,36 +125,6 @@ export async function POST(req: Request) {
         { status: 502 }
       );
     }
-
-    after(async () => {
-      const env = airtableEnv();
-      if (!env.ok) {
-        console.warn("[/api/leads/create] airtable lead mirror skipped", { reason: "env_missing" });
-        return;
-      }
-
-      try {
-        const url = airtableTableUrl(env.baseId, env.leadsTableId);
-        const r = await fetch(url, {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${env.apiKey}`,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({ fields }),
-          cache: "no-store",
-        });
-        const text = await r.text();
-        if (!r.ok) {
-          console.warn("[/api/leads/create] airtable lead mirror failed", {
-            status: r.status,
-            text,
-          });
-        }
-      } catch (e) {
-        console.warn("[/api/leads/create] airtable lead mirror crashed", e instanceof Error ? e.message : String(e));
-      }
-    });
 
     return NextResponse.json({ ok: true });
   } catch (e) {

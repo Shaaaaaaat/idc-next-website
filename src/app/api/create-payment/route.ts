@@ -129,50 +129,6 @@ async function sendTelegramMessage(text: string, invId: string) {
   });
 }
 
-/* ---------------- AIRTABLE HELPERS ---------------- */
-function airtableEnv() {
-  const apiKey = process.env.AIRTABLE_API_KEY;
-  const baseId = process.env.AIRTABLE_BASE_ID;
-  const table = process.env.AIRTABLE_PURCHASE_WEBSITE_TABLE;
-  if (!apiKey || !baseId || !table) {
-    return { ok: false as const, apiKey: "", baseId: "", table: "" };
-  }
-  return { ok: true as const, apiKey, baseId, table };
-}
-
-function airtableBaseUrl(env: { baseId: string; table: string }) {
-  return `https://api.airtable.com/v0/${env.baseId}/${encodeURIComponent(env.table)}`;
-}
-
-async function airtableCreateRecord(fields: Record<string, any>) {
-  const env = airtableEnv();
-  if (!env.ok) return { ok: false as const, reason: "env_missing" as const };
-  const url = airtableBaseUrl(env);
-  try {
-    const r = await fetch(url, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${env.apiKey}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({ fields }),
-      cache: "no-store",
-    });
-    const text = await r.text();
-    if (!r.ok) {
-      return { ok: false as const, reason: "create_failed" as const, status: r.status, text };
-    }
-    let json: any = null;
-    try {
-      json = JSON.parse(text);
-    } catch {}
-    return { ok: true as const, record: json ?? text };
-  } catch (err) {
-    console.error("💥 Airtable CREATE crashed:", err);
-    return { ok: false as const, reason: "create_crashed" as const };
-  }
-}
-
 /* ---------------- YDB CF (RU-first) ---------------- */
 async function postToYdbCF(payload: {
   name: string;
@@ -209,11 +165,12 @@ async function postToYdbCF(payload: {
     });
     clearTimeout(timer);
     const text = await r.text();
-    let json: any = null;
+    let json: unknown = null;
     try {
       json = JSON.parse(text);
     } catch {}
-    if (!r.ok || !json?.ok) {
+    const parsed = json && typeof json === "object" ? (json as Record<string, unknown>) : null;
+    if (!r.ok || parsed?.ok !== true) {
       return {
         ok: false as const,
         reason: "cf_failed" as const,
@@ -221,10 +178,10 @@ async function postToYdbCF(payload: {
         text,
       };
     }
-    return { ok: true as const, ydb_id: json?.ydb_id ?? null };
-  } catch (e: any) {
+    return { ok: true as const, ydb_id: parsed.ydb_id ?? null };
+  } catch (e: unknown) {
     clearTimeout(timer);
-    return { ok: false as const, reason: "cf_crashed" as const, error: e?.message };
+    return { ok: false as const, reason: "cf_crashed" as const, error: e instanceof Error ? e.message : String(e) };
   }
 }
 
@@ -291,7 +248,7 @@ export async function POST(req: Request) {
       receiptEncodedForUrl
     );
 
-    // Сохраняем заказ в Airtable (status=created) и генерим tg-токен для success-страницы
+    // Генерим tg-токен для success-страницы.
     const tgToken = crypto.randomBytes(16).toString("hex");
     const botUrl = tgToken
       ? `https://t.me/IDCMAIN_bot?start=${encodeURIComponent(tgToken)}`
@@ -441,43 +398,43 @@ export async function POST(req: Request) {
           return undefined;
       }
     }
-    // Compute Tag / tariff_label / course_name for Airtable
+    // Compute purchase fields used by Supabase, YDB and notifications.
     const cityCode = mapStudioToCityCode(studioId);
     const gymCode = mapStudioToGymCode(studioId);
     const lessons = isGym
       ? detectLessonsGym(tariffLabel, tariffId)
       : detectLessonsOnline(tariffLabel, tariffId, courseName);
     const formatField = isGym ? "gym" : "ds";
-    let tagForAirtable: string = "";
-    let tariffLabelForAirtable: string = "";
-    let courseNameForAirtable: string = "";
+    let tagForPurchase: string = "";
+    let tariffLabelForPurchase: string = "";
+    let courseNameForPurchase: string = "";
 
     if (isGym) {
       // Tag
       if (isTrialGym || lessons === 1) {
-        tagForAirtable = "short1";
+        tagForPurchase = "short1";
       } else {
         const weeks = computeValidWeeksGym(isTrialGym, tariffLabel, tariffId);
-        tagForAirtable = weeks >= 8 ? "long12" : "short12";
+        tagForPurchase = weeks >= 8 ? "long12" : "short12";
       }
       // tariff_label
-      tariffLabelForAirtable = getGymTariffLabel(tariffLabel, isTrialGym);
+      tariffLabelForPurchase = getGymTariffLabel(tariffLabel, isTrialGym);
       // course_name as city_kind_gym
       const kind = deriveGymKindForCourseName(tariffLabel);
       const kindForCourse = kind; // group | personal | split
-      courseNameForAirtable = `${cityCode || ""}_${kindForCourse}_${gymCode || ""}`.replace(/^_+|_+$/g, "");
+      courseNameForPurchase = `${cityCode || ""}_${kindForCourse}_${gymCode || ""}`.replace(/^_+|_+$/g, "");
     } else {
       // ONLINE
       const onlineTariff = determineOnlineTariffLabel(tariffLabel, tariffId, courseName);
-      tariffLabelForAirtable = onlineTariff;
-      tagForAirtable = mapOnlineTag(onlineTariff);
+      tariffLabelForPurchase = onlineTariff;
+      tagForPurchase = mapOnlineTag(onlineTariff);
       const key = normalizeOnlineCourseKey(courseName);
       if (onlineTariff === "gift_certificate" || key === "gift") {
-        courseNameForAirtable = "gift_certificate";
+        courseNameForPurchase = "gift_certificate";
       } else {
         // default ds_rub_{key}
         const c = key || "classic";
-        courseNameForAirtable = `ds_rub_${c}`;
+        courseNameForPurchase = `ds_rub_${c}`;
       }
     }
 
@@ -519,26 +476,6 @@ export async function POST(req: Request) {
       valid_weeks: validWeeks,
     };
 
-    const airtablePaymentFields: Record<string, any> = {
-      id_payment: String(paymentId),
-      Status: "created",
-      email: emailNorm,
-      FIO: fullName,
-      Phone: phoneNorm,
-      Sum: Number(amount),
-      Currency: currency,
-      Tag: tagForAirtable,
-      tariff_label: tariffLabelForAirtable,
-      course_name: courseNameForAirtable,
-      studio_name: studioName ?? "",
-      studio_id: studioId ?? "",
-      slot_start_at: slotStartAt ?? "",
-      Lessons: lessons,
-      GiftRecipient: giftRecipient ?? "",
-      format: formatField,
-      tg_link_token: tgToken,
-    };
-
     const telegramInvoiceText =
       `<b>🧾 Создан счёт</b>\n` +
         `<b>InvId:</b> <code>${escapeTgHtml(String(paymentId))}</code>\n` +
@@ -564,12 +501,12 @@ export async function POST(req: Request) {
       lessons,
       price_per_lesson: pricePerLesson,
       id_payment: paymentId,
-      course_name: courseNameForAirtable,
-      tag: tagForAirtable,
+      course_name: courseNameForPurchase,
+      tag: tagForPurchase,
       nickname: null,
       phone: phoneNorm,
       locale: acceptLang,
-      tariff_label: tariffLabelForAirtable,
+      tariff_label: tariffLabelForPurchase,
       studio_slug: studioId ?? "",
       slot_start_at: slotStartAt ?? null,
       format: formatField,
@@ -596,11 +533,8 @@ export async function POST(req: Request) {
     }
 
     after(async () => {
-      let paymentYdbOk = false;
-
       try {
         const cfRes = await postToYdbCF(ydbPaymentPayload);
-        paymentYdbOk = cfRes.ok === true;
         if (!cfRes.ok) {
           console.warn("[/api/create-payment] ydb payment mirror failed", {
             paymentId: String(paymentId),
@@ -610,24 +544,6 @@ export async function POST(req: Request) {
         }
       } catch (e) {
         console.warn("[/api/create-payment] ydb payment mirror crashed", {
-          paymentId: String(paymentId),
-          message: e instanceof Error ? e.message : String(e),
-        });
-      }
-
-      try {
-        const createRes = await airtableCreateRecord({
-          ...airtablePaymentFields,
-          ru_first_ok: paymentYdbOk,
-        });
-        if (!createRes.ok) {
-          console.warn("[/api/create-payment] airtable payment mirror failed", {
-            paymentId: String(paymentId),
-            result: createRes,
-          });
-        }
-      } catch (e) {
-        console.warn("[/api/create-payment] airtable payment mirror crashed", {
           paymentId: String(paymentId),
           message: e instanceof Error ? e.message : String(e),
         });

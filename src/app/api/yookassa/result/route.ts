@@ -40,14 +40,6 @@ function logYooKassaResult(event: string, payload: JsonRecord) {
   }
 }
 
-function warnYooKassaResult(event: string, payload: JsonRecord) {
-  try {
-    console.warn(JSON.stringify({ tag: LOG_TAG, event, ...payload }));
-  } catch {
-    console.warn(`[${LOG_TAG}] ${event}`);
-  }
-}
-
 function acceptsJson(contentType: string | null) {
   const mime = String(contentType ?? "").split(";")[0]?.trim().toLowerCase();
   return mime === "application/json";
@@ -61,113 +53,6 @@ function expectedStatusForEvent(event: string) {
   if (event === "payment.succeeded") return "succeeded";
   if (event === "payment.canceled") return "canceled";
   return "";
-}
-
-function airtableCoreEnv() {
-  const apiKey = process.env.AIRTABLE_API_KEY?.trim();
-  const baseId = process.env.AIRTABLE_BASE_ID?.trim();
-  const table = process.env.AIRTABLE_PURCHASES?.trim();
-  if (!apiKey || !baseId || !table) {
-    return { ok: false as const, reason: "env_missing" as const };
-  }
-  return { ok: true as const, apiKey, baseId, table };
-}
-
-function airtableBaseUrl(env: { baseId: string; table: string }) {
-  return `https://api.airtable.com/v0/${env.baseId}/${encodeURIComponent(env.table)}`;
-}
-
-function escapeAirtableFormulaString(value: string) {
-  return value.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
-}
-
-async function airtableFetch(url: string, init: RequestInit) {
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
-  try {
-    return await fetch(url, {
-      ...init,
-      signal: controller.signal,
-      cache: "no-store",
-    });
-  } finally {
-    clearTimeout(timeout);
-  }
-}
-
-async function syncAirtablePaid(paymentId: string, purchaseId: string) {
-  const env = airtableCoreEnv();
-  if (!env.ok) {
-    warnYooKassaResult("yookassa_airtable_pending", {
-      payment_id: paymentId,
-      purchase_id: purchaseId,
-      reason: env.reason,
-    });
-    return;
-  }
-
-  try {
-    const formula = encodeURIComponent(`LOWER({id_uuid}&"") = "${escapeAirtableFormulaString(paymentId.toLowerCase())}"`);
-    const findUrl = `${airtableBaseUrl(env)}?pageSize=1&maxRecords=1&filterByFormula=${formula}`;
-    const findRes = await airtableFetch(findUrl, {
-      headers: { Authorization: `Bearer ${env.apiKey}` },
-    });
-
-    if (!findRes.ok) {
-      warnYooKassaResult("yookassa_airtable_pending", {
-        payment_id: paymentId,
-        purchase_id: purchaseId,
-        reason: "find_failed",
-        status: findRes.status,
-      });
-      return;
-    }
-
-    const findJson = (await findRes.json().catch(() => null)) as unknown;
-    const records = isRecord(findJson) && Array.isArray(findJson.records) ? findJson.records : [];
-    const record = records.find(isRecord);
-    const recordId = getString(record?.id);
-
-    if (!recordId) {
-      warnYooKassaResult("yookassa_airtable_pending", {
-        payment_id: paymentId,
-        purchase_id: purchaseId,
-        reason: "record_not_found",
-      });
-      return;
-    }
-
-    const updateRes = await airtableFetch(`${airtableBaseUrl(env)}/${encodeURIComponent(recordId)}`, {
-      method: "PATCH",
-      headers: {
-        Authorization: `Bearer ${env.apiKey}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({ fields: { Status: "paid" } }),
-    });
-
-    if (!updateRes.ok) {
-      warnYooKassaResult("yookassa_airtable_pending", {
-        payment_id: paymentId,
-        purchase_id: purchaseId,
-        reason: "update_failed",
-        status: updateRes.status,
-      });
-      return;
-    }
-
-    logYooKassaResult("yookassa_airtable_synced", {
-      payment_id: paymentId,
-      purchase_id: purchaseId,
-    });
-  } catch (error) {
-    warnYooKassaResult("yookassa_airtable_pending", {
-      payment_id: paymentId,
-      purchase_id: purchaseId,
-      reason: "airtable_exception",
-      message: safeMessage(error),
-    });
-  }
 }
 
 async function fetchYooKassaPayment(paymentId: string, shopId: string, secretKey: string) {
@@ -402,10 +287,6 @@ export async function POST(req: NextRequest) {
       error: "error" in confirmed ? confirmed.error : undefined,
     });
     return json({ ok: false, reason: confirmed.reason }, 500);
-  }
-
-  if (event === "payment.succeeded") {
-    await syncAirtablePaid(verified.payment.id, verified.payment.purchaseId);
   }
 
   logYooKassaResult("yookassa_webhook_result", {
