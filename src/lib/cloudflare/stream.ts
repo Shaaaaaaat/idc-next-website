@@ -25,6 +25,17 @@ export type CloudflareDirectUpload = CloudflareVideoUrls & {
   uploadUrl: string;
 };
 
+type CloudflareStreamVideoResult = {
+  readyToStream?: boolean;
+  status?: {
+    state?: string;
+  };
+};
+
+type CloudflareStreamVideoResponse = {
+  result?: CloudflareStreamVideoResult;
+};
+
 function readCloudflareStreamEnv(): CloudflareStreamEnv {
   const accountId = String(process.env.CLOUDFLARE_ACCOUNT_ID || "").trim();
   const apiToken = String(process.env.CLOUDFLARE_STREAM_API_TOKEN || "").trim();
@@ -169,6 +180,48 @@ export async function verifyCloudflareVideoExists(uid: string): Promise<{ ok: tr
   }
 
   return { ok: true };
+}
+
+export async function verifyCloudflareVideoReady(
+  uid: string
+): Promise<{ ok: true } | { ok: false; reason: "not_ready" | "lookup_failed"; message: string; state?: string }> {
+  const env = readCloudflareStreamEnv();
+  if (!env.ok) return { ok: false, reason: "lookup_failed", message: env.message };
+  if (!isCloudflareStreamUid(uid)) return { ok: false, reason: "lookup_failed", message: "Invalid Cloudflare Stream UID" };
+
+  const res = await fetch(
+    `${CLOUDFLARE_STREAM_API_BASE}/accounts/${encodeURIComponent(env.accountId)}/stream/${encodeURIComponent(uid)}`,
+    {
+      method: "GET",
+      headers: {
+        Authorization: `Bearer ${env.apiToken}`,
+        Accept: "application/json",
+      },
+      cache: "no-store",
+    }
+  );
+
+  if (!res.ok) {
+    return {
+      ok: false,
+      reason: "lookup_failed",
+      message: `Cloudflare Stream video lookup failed: ${await readError(res)}`,
+    };
+  }
+
+  const body = (await res.json().catch(() => null)) as CloudflareStreamVideoResponse | null;
+  const video = body?.result;
+  const state = String(video?.status?.state || "").trim();
+  if (video?.readyToStream === true || state.toLowerCase() === "ready") {
+    return { ok: true };
+  }
+
+  return {
+    ok: false,
+    reason: "not_ready",
+    state: state || undefined,
+    message: state ? `Cloudflare Stream video is ${state}` : "Cloudflare Stream video is still processing",
+  };
 }
 
 export async function deleteCloudflareStreamVideo(uid: string): Promise<{ ok: true } | { ok: false; message: string }> {

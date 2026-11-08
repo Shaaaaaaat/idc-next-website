@@ -2,10 +2,12 @@ import { NextResponse } from "next/server";
 import { getValidatedSessionEmail } from "@/lib/auth/lkSession";
 import { resolveLkAccessByEmail } from "@/lib/auth/lkAccess";
 import { createCloudflareDirectTusUpload, getCloudflareMaxUploadBytes } from "@/lib/cloudflare/stream";
+import { recordExerciseVideoUploadClaim, type ExerciseUploadPurpose } from "@/lib/supabase/exerciseLibrary";
 
 export const runtime = "nodejs";
 
 const ALLOWED_VIDEO_TYPES = new Set(["video/mp4", "video/quicktime", "video/webm"]);
+const TECHNIQUE_UPLOAD_PURPOSE: ExerciseUploadPurpose = "technique_breakdown";
 
 async function requireCoach() {
   const email = await getValidatedSessionEmail();
@@ -33,6 +35,7 @@ export async function POST(req: Request) {
   const title = String(body.title || "").trim();
   const fileType = String(body.fileType || "").trim();
   const fileSize = Number(body.fileSize || 0);
+  const purpose = body.purpose === TECHNIQUE_UPLOAD_PURPOSE ? TECHNIQUE_UPLOAD_PURPOSE : "exercise_demo";
 
   if (!title) {
     return NextResponse.json({ ok: false, error: "title_required" }, { status: 400 });
@@ -58,6 +61,20 @@ export async function POST(req: Request) {
       { ok: false, error: "cloudflare_upload_init_failed", message: upload.message },
       { status: 502 }
     );
+  }
+
+  if (purpose === TECHNIQUE_UPLOAD_PURPOSE) {
+    const claim = await recordExerciseVideoUploadClaim({
+      coachEmail: coach.email,
+      videoAssetId: upload.data.uid,
+      purpose,
+    });
+    if (!claim.ok) {
+      return NextResponse.json(
+        { ok: false, error: "upload_claim_failed", message: claim.message },
+        { status: claim.reason === "disabled" ? 503 : claim.reason === "invalid" ? 400 : 500 }
+      );
+    }
   }
 
   return NextResponse.json({

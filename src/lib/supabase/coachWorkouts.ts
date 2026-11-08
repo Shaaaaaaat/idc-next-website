@@ -22,6 +22,11 @@ export type CoachWorkoutExercise = {
   videoAssetId?: string;
   videoUrl?: string;
   thumbnailUrl?: string;
+  techniqueVideo?: {
+    videoAssetId: string;
+    videoUrl?: string;
+    thumbnailUrl?: string;
+  } | null;
   result?: StudentExerciseResult | null;
 };
 
@@ -153,6 +158,9 @@ type ExerciseMediaRow = {
   video_asset_id?: string | null;
   video_url?: string | null;
   thumbnail_url?: string | null;
+  technique_video_asset_id?: string | null;
+  technique_video_url?: string | null;
+  technique_thumbnail_url?: string | null;
 };
 
 export type ReadWorkoutsForStudentParams = {
@@ -228,6 +236,7 @@ function groupExercisesByWorkout(
     const exerciseInstanceId = cleanOptional(row.id) || undefined;
     const exerciseId = cleanOptional(row.exercise_id) || undefined;
     const media = exerciseId ? mediaByExerciseId.get(exerciseId) : undefined;
+    const techniqueVideoAssetId = cleanOptional(media?.technique_video_asset_id);
     const list = map.get(workoutId) || [];
     list.push({
       id: exerciseInstanceId,
@@ -244,6 +253,13 @@ function groupExercisesByWorkout(
       videoAssetId: cleanOptional(media?.video_asset_id) || undefined,
       videoUrl: cleanOptional(media?.video_url) || undefined,
       thumbnailUrl: cleanOptional(media?.thumbnail_url) || undefined,
+      techniqueVideo: techniqueVideoAssetId
+        ? {
+            videoAssetId: techniqueVideoAssetId,
+            videoUrl: cleanOptional(media?.technique_video_url) || undefined,
+            thumbnailUrl: cleanOptional(media?.technique_thumbnail_url) || undefined,
+          }
+        : null,
       result: exerciseInstanceId ? resultsByExerciseInstanceId.get(exerciseInstanceId) || null : null,
     });
     map.set(workoutId, list);
@@ -419,7 +435,7 @@ async function readWorkoutsForStudent(
   if (exerciseIds.length > 0) {
     const { data: mediaRows, error: mediaErr } = await sb
       .from("exercise_library")
-      .select("id, video_asset_id, video_url, thumbnail_url")
+      .select("id, video_asset_id, video_url, thumbnail_url, technique_video_asset_id, technique_video_url, technique_thumbnail_url")
       .in("id", exerciseIds);
 
     if (mediaErr) {

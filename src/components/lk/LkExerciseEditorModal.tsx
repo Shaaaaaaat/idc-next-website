@@ -16,11 +16,20 @@ type InitUploadResponse = {
   thumbnailUrl: string;
 };
 
+type ApiErrorResponse = {
+  ok?: false;
+  message?: string;
+  error?: string;
+  videoId?: string;
+  state?: string;
+};
+
 type Props = {
   open: boolean;
   mode: "create" | "edit";
   exercise?: ExerciseLibraryItem;
   initialTitle?: string;
+  enableTechniqueVideo?: boolean;
   onClose: () => void;
   onSaved: (exercise?: ExerciseLibraryItem) => void;
   onDeleted?: (result: { warning?: string }) => void;
@@ -68,8 +77,9 @@ export function ExerciseTagPills({ tags }: { tags: string[] }) {
   );
 }
 
-export function LkExerciseEditorModal({ open, mode, exercise, initialTitle, onClose, onSaved, onDeleted }: Props) {
+export function LkExerciseEditorModal({ open, mode, exercise, initialTitle, enableTechniqueVideo = false, onClose, onSaved, onDeleted }: Props) {
   const fileRef = useRef<HTMLInputElement>(null);
+  const techniqueFileRef = useRef<HTMLInputElement>(null);
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [tags, setTags] = useState<string[]>([]);
@@ -79,13 +89,19 @@ export function LkExerciseEditorModal({ open, mode, exercise, initialTitle, onCl
   const [error, setError] = useState("");
   const [selectedVideoName, setSelectedVideoName] = useState("");
   const [uploadedVideoId, setUploadedVideoId] = useState("");
+  const [selectedTechniqueVideoName, setSelectedTechniqueVideoName] = useState("");
+  const [hasTechniqueVideo, setHasTechniqueVideo] = useState(false);
+  const [pendingTechniqueVideoId, setPendingTechniqueVideoId] = useState("");
+  const [techniqueStatus, setTechniqueStatus] = useState("");
 
   const isUploading = uploadState !== "idle";
   const isEdit = mode === "edit";
   const hasExistingVideo = Boolean(exercise?.videoAssetId || exercise?.videoUrl);
   const hasSelectedVideo = Boolean(selectedVideoName);
   const hasUploadedVideo = Boolean(uploadedVideoId);
+  const hasSelectedTechniqueVideo = Boolean(selectedTechniqueVideoName);
   const videoButtonText = hasExistingVideo || hasSelectedVideo || hasUploadedVideo ? "Заменить видео" : "Загрузить видео";
+  const techniqueButtonText = hasTechniqueVideo || hasSelectedTechniqueVideo ? "Заменить разбор" : "Добавить разбор";
   const titleText = isEdit ? "Редактировать упражнение" : "Добавить упражнение";
   const submitText = useMemo(() => {
     if (uploadState === "initializing") return "Готовим загрузку...";
@@ -106,7 +122,12 @@ export function LkExerciseEditorModal({ open, mode, exercise, initialTitle, onCl
     setUploadState("idle");
     setSelectedVideoName("");
     setUploadedVideoId("");
+    setSelectedTechniqueVideoName("");
+    setHasTechniqueVideo(Boolean(exercise?.techniqueVideoAssetId));
+    setPendingTechniqueVideoId("");
+    setTechniqueStatus("");
     if (fileRef.current) fileRef.current.value = "";
+    if (techniqueFileRef.current) techniqueFileRef.current.value = "";
   }, [exercise, initialTitle, open]);
 
   if (!open || typeof document === "undefined") return null;
@@ -159,7 +180,7 @@ export function LkExerciseEditorModal({ open, mode, exercise, initialTitle, onCl
     });
   }
 
-  async function initAndUploadVideo(file: File, cleanTitle: string) {
+  async function initAndUploadVideo(file: File, cleanTitle: string, purpose: "exercise_demo" | "technique_breakdown" = "exercise_demo") {
     setUploadState("initializing");
     const initRes = await fetch("/api/lk/coach/exercises/init-upload", {
       method: "POST",
@@ -169,11 +190,12 @@ export function LkExerciseEditorModal({ open, mode, exercise, initialTitle, onCl
         fileName: file.name,
         fileType: file.type,
         fileSize: file.size,
+        purpose,
       }),
     });
     const initJson = (await initRes.json().catch(() => null)) as
       | InitUploadResponse
-      | { ok?: false; message?: string; error?: string }
+      | ApiErrorResponse
       | null;
 
     if (!initRes.ok || !initJson || initJson.ok !== true) {
@@ -183,7 +205,6 @@ export function LkExerciseEditorModal({ open, mode, exercise, initialTitle, onCl
 
     setUploadState("uploading");
     await startTusUpload({ file, init: initJson, title: cleanTitle });
-    setUploadedVideoId(initJson.videoId);
     return initJson.videoId;
   }
 
@@ -206,6 +227,7 @@ export function LkExerciseEditorModal({ open, mode, exercise, initialTitle, onCl
       let videoId = "";
       if (video) {
         videoId = await initAndUploadVideo(video, cleanTitle);
+        setUploadedVideoId(videoId);
       }
 
       setUploadState("saving");
@@ -242,6 +264,122 @@ export function LkExerciseEditorModal({ open, mode, exercise, initialTitle, onCl
       onClose();
     } catch (submitError) {
       setError(submitError instanceof Error ? submitError.message : "Не удалось сохранить упражнение.");
+    } finally {
+      setUploadState("idle");
+    }
+  }
+
+  async function saveTechniqueVideoId(videoId: string) {
+    if (!exercise?.id) throw new Error("Упражнение не найдено.");
+
+    setUploadState("saving");
+    const res = await fetch(`/api/lk/coach/exercises/${exercise.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ techniqueVideoId: videoId }),
+    });
+    const json = (await res.json().catch(() => null)) as
+      | { exercise?: ExerciseLibraryItem; message?: string; error?: string }
+      | ApiErrorResponse
+      | null;
+
+    if (!res.ok) {
+      if (res.status === 409 && json?.error === "cloudflare_video_processing") {
+        const pendingVideoId = "videoId" in json && typeof json.videoId === "string" ? json.videoId : videoId;
+        setPendingTechniqueVideoId(pendingVideoId);
+        setSelectedTechniqueVideoName("");
+        if (techniqueFileRef.current) techniqueFileRef.current.value = "";
+        setTechniqueStatus(json.message || "Видео обрабатывается. Повтори проверку через минуту.");
+        return null;
+      }
+      throw new Error(json?.message || json?.error || "Не удалось сохранить разбор техники.");
+    }
+
+    setPendingTechniqueVideoId("");
+    setTechniqueStatus("");
+    return json && "exercise" in json ? json.exercise : undefined;
+  }
+
+  async function handleSaveTechniqueVideo() {
+    if (!isEdit || !exercise?.id || !enableTechniqueVideo) return;
+    const file = techniqueFileRef.current?.files?.[0] || null;
+    if (!file) {
+      setError("Выбери видео разбора техники.");
+      return;
+    }
+
+    setError("");
+    setTechniqueStatus("");
+    setUploadProgress(0);
+
+    try {
+      const cleanTitle = title.trim() || exercise.title;
+      const videoId = await initAndUploadVideo(file, `${cleanTitle} — разбор техники`, "technique_breakdown");
+
+      const savedExercise = await saveTechniqueVideoId(videoId);
+      if (!savedExercise) return;
+
+      setSelectedTechniqueVideoName("");
+      setHasTechniqueVideo(Boolean(savedExercise.techniqueVideoAssetId || videoId));
+      if (techniqueFileRef.current) techniqueFileRef.current.value = "";
+      onSaved(savedExercise);
+    } catch (techniqueError) {
+      setError(techniqueError instanceof Error ? techniqueError.message : "Не удалось сохранить разбор техники.");
+    } finally {
+      setUploadState("idle");
+    }
+  }
+
+  async function handleRetryTechniqueVideo() {
+    if (!isEdit || !exercise?.id || !enableTechniqueVideo || !pendingTechniqueVideoId) return;
+
+    setError("");
+    setTechniqueStatus("");
+
+    try {
+      const savedExercise = await saveTechniqueVideoId(pendingTechniqueVideoId);
+      if (!savedExercise) return;
+
+      setSelectedTechniqueVideoName("");
+      setHasTechniqueVideo(Boolean(savedExercise.techniqueVideoAssetId));
+      if (techniqueFileRef.current) techniqueFileRef.current.value = "";
+      onSaved(savedExercise);
+    } catch (retryError) {
+      setError(retryError instanceof Error ? retryError.message : "Не удалось сохранить разбор техники.");
+    } finally {
+      setUploadState("idle");
+    }
+  }
+
+  async function handleRemoveTechniqueVideo() {
+    if (!isEdit || !exercise?.id || !enableTechniqueVideo || !hasTechniqueVideo) return;
+    const confirmed = window.confirm("Убрать разбор техники из упражнения? Сам ролик в Cloudflare удалён не будет.");
+    if (!confirmed) return;
+
+    setError("");
+    setUploadState("saving");
+
+    try {
+      const res = await fetch(`/api/lk/coach/exercises/${exercise.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ removeTechniqueVideo: true }),
+      });
+      const json = (await res.json().catch(() => null)) as
+        | { exercise?: ExerciseLibraryItem; message?: string; error?: string }
+        | null;
+      if (!res.ok) {
+        throw new Error(json?.message || json?.error || "Не удалось удалить разбор техники.");
+      }
+
+      setHasTechniqueVideo(false);
+      setSelectedTechniqueVideoName("");
+      setPendingTechniqueVideoId("");
+      setTechniqueStatus("");
+      if (techniqueFileRef.current) techniqueFileRef.current.value = "";
+      onSaved(json?.exercise);
+    } catch (removeError) {
+      setError(removeError instanceof Error ? removeError.message : "Не удалось удалить разбор техники.");
     } finally {
       setUploadState("idle");
     }
@@ -432,6 +570,115 @@ export function LkExerciseEditorModal({ open, mode, exercise, initialTitle, onCl
               </div>
               <p className="text-xs text-slate-400">Нажми Enter или запятую, чтобы создать тег.</p>
             </div>
+
+            {enableTechniqueVideo ? (
+              <div className="space-y-2 rounded-2xl border border-slate-200 bg-slate-50 p-3 text-sm lg:col-span-2">
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <p className="font-semibold text-slate-800">Разбор техники</p>
+                    <p className="text-xs text-slate-500">
+                      Дополнительный ролик для ученика. Основное демо упражнения не меняется.
+                    </p>
+                  </div>
+                  {hasTechniqueVideo ? (
+                    <span className="inline-flex w-fit rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-700">
+                      Есть разбор
+                    </span>
+                  ) : null}
+                </div>
+
+                {!isEdit || !exercise?.id ? (
+                  <p className="rounded-2xl border border-dashed border-slate-200 bg-white px-3 py-2 text-xs text-slate-500">
+                    Разбор можно добавить после сохранения упражнения в библиотеке.
+                  </p>
+                ) : (
+                  <div className="rounded-2xl border border-slate-200 bg-white p-3">
+                    <input
+                      ref={techniqueFileRef}
+                      type="file"
+                      accept="video/mp4,video/quicktime,video/webm"
+                      className="sr-only"
+                      onChange={(event) => {
+                        const file = event.target.files?.[0] || null;
+                        setSelectedTechniqueVideoName(file?.name || "");
+                        setPendingTechniqueVideoId("");
+                        setTechniqueStatus("");
+                      }}
+                    />
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                      <div className="min-w-0">
+                        {hasSelectedTechniqueVideo ? (
+                          <>
+                            <p className="font-semibold text-slate-700">Файл разбора выбран</p>
+                            <p className="truncate text-xs text-slate-500">{selectedTechniqueVideoName}</p>
+                          </>
+                        ) : pendingTechniqueVideoId ? (
+                          <>
+                            <p className="font-semibold text-amber-700">Видео обрабатывается</p>
+                            <p className="text-xs text-slate-500">Файл уже загружен. Можно повторить проверку без новой загрузки.</p>
+                          </>
+                        ) : hasTechniqueVideo ? (
+                          <>
+                            <p className="font-semibold text-emerald-700">Разбор сохранён</p>
+                            <p className="text-xs text-slate-500">Можно заменить ролик или отвязать его от упражнения.</p>
+                          </>
+                        ) : (
+                          <>
+                            <p className="font-semibold text-slate-700">Разбор не добавлен</p>
+                            <p className="text-xs text-slate-500">MP4, MOV или WebM.</p>
+                          </>
+                        )}
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        <button
+                          type="button"
+                          onClick={() => techniqueFileRef.current?.click()}
+                          disabled={isUploading}
+                          className="rounded-full border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700 transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+                        >
+                          {techniqueButtonText}
+                        </button>
+                        {hasSelectedTechniqueVideo ? (
+                          <button
+                            type="button"
+                            onClick={handleSaveTechniqueVideo}
+                            disabled={isUploading}
+                            className="rounded-full bg-brand-primary px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-brand-primary/90 disabled:cursor-not-allowed disabled:opacity-60"
+                          >
+                            Сохранить разбор
+                          </button>
+                        ) : null}
+                        {pendingTechniqueVideoId && !hasSelectedTechniqueVideo ? (
+                          <button
+                            type="button"
+                            onClick={handleRetryTechniqueVideo}
+                            disabled={isUploading}
+                            className="rounded-full bg-amber-500 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-amber-600 disabled:cursor-not-allowed disabled:opacity-60"
+                          >
+                            Проверить готовность
+                          </button>
+                        ) : null}
+                        {hasTechniqueVideo ? (
+                          <button
+                            type="button"
+                            onClick={handleRemoveTechniqueVideo}
+                            disabled={isUploading}
+                            className="rounded-full border border-red-200 px-4 py-2 text-sm font-semibold text-red-600 transition-colors hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-60"
+                          >
+                            Удалить разбор
+                          </button>
+                        ) : null}
+                      </div>
+                    </div>
+                    {techniqueStatus ? (
+                      <p className="mt-3 rounded-2xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+                        {techniqueStatus}
+                      </p>
+                    ) : null}
+                  </div>
+                )}
+              </div>
+            ) : null}
           </div>
 
           <div

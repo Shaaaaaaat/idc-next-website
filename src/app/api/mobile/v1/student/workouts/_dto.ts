@@ -27,6 +27,18 @@ function mobileExerciseVideoUrl(exercise: CoachWorkout["exercises"][number]): st
   return nullableString(exercise.videoUrl);
 }
 
+function mobileTechniqueVideo(exercise: CoachWorkout["exercises"][number]) {
+  const technique = exercise.techniqueVideo;
+  const videoAssetId = nullableString(technique?.videoAssetId);
+  if (!videoAssetId || !isCloudflareStreamUid(videoAssetId)) return null;
+
+  return {
+    video_id: videoAssetId,
+    video_url: buildCloudflareHlsManifestUrl(videoAssetId),
+    thumbnail_url: nullableString(technique?.thumbnailUrl),
+  };
+}
+
 function mobileExerciseResult(exercise: CoachWorkout["exercises"][number]) {
   if (!exercise.result) return null;
 
@@ -85,6 +97,7 @@ export function mobileWorkoutDetail(workout: CoachWorkout) {
       sort_order: exercise.sortOrder ?? 0,
       video_url: mobileExerciseVideoUrl(exercise),
       thumbnail_url: nullableString(exercise.thumbnailUrl),
+      technique_video: mobileTechniqueVideo(exercise),
       result: mobileExerciseResult(exercise),
     })),
   };

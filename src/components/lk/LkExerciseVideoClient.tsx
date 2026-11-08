@@ -76,6 +76,7 @@ export function LkExerciseVideoClient({ exercise, role, backHref, canEdit }: Pro
         open={isEditorOpen}
         mode="edit"
         exercise={exercise}
+        enableTechniqueVideo
         onClose={() => setIsEditorOpen(false)}
         onSaved={() => router.refresh()}
         onDeleted={() => {

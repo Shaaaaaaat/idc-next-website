@@ -89,6 +89,7 @@ export function LkExerciseLibraryManager({ exercises }: Props) {
                   <tr>
                     <th className="px-4 py-3 font-semibold">Название</th>
                     <th className="px-4 py-3 font-semibold">Теги</th>
+                    <th className="px-4 py-3 font-semibold">Разбор</th>
                     <th className="px-4 py-3 font-semibold">Описание</th>
                   </tr>
                 </thead>
@@ -114,6 +115,15 @@ export function LkExerciseLibraryManager({ exercises }: Props) {
                       <td className="px-4 py-4 text-slate-600">
                         <ExerciseTagPills tags={exercise.tags} />
                       </td>
+                      <td className="px-4 py-4">
+                        {exercise.techniqueVideoAssetId ? (
+                          <span className="inline-flex rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-700">
+                            Есть разбор
+                          </span>
+                        ) : (
+                          <span className="text-slate-400">—</span>
+                        )}
+                      </td>
                       <td className="max-w-md px-4 py-4 text-slate-500">{descriptionPreview(exercise.description)}</td>
                     </tr>
                   ))}
@@ -133,6 +143,11 @@ export function LkExerciseLibraryManager({ exercises }: Props) {
                     <div className="mt-2">
                       <ExerciseTagPills tags={exercise.tags} />
                     </div>
+                    {exercise.techniqueVideoAssetId ? (
+                      <span className="mt-2 inline-flex rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-700">
+                        Есть разбор
+                      </span>
+                    ) : null}
                     <p className="mt-2 text-sm text-slate-500">{descriptionPreview(exercise.description)}</p>
                   </button>
                 </div>
@@ -145,6 +160,7 @@ export function LkExerciseLibraryManager({ exercises }: Props) {
       <LkExerciseEditorModal
         open={isAddOpen}
         mode="create"
+        enableTechniqueVideo
         onClose={() => setIsAddOpen(false)}
         onSaved={() => {
           setSuccess("Упражнение добавлено в библиотеку.");

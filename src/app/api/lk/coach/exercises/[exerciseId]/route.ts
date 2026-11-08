@@ -1,8 +1,13 @@
 import { NextResponse } from "next/server";
 import { getValidatedSessionEmail } from "@/lib/auth/lkSession";
 import { resolveLkAccessByEmail } from "@/lib/auth/lkAccess";
-import { normalizeCloudflareVideo, verifyCloudflareVideoExists } from "@/lib/cloudflare/stream";
-import { deleteExercise, updateExerciseMetadata } from "@/lib/supabase/exerciseLibrary";
+import { normalizeCloudflareVideo, verifyCloudflareVideoExists, verifyCloudflareVideoReady } from "@/lib/cloudflare/stream";
+import {
+  deleteExercise,
+  removeExerciseTechniqueVideo,
+  updateExerciseMetadata,
+  updateExerciseTechniqueVideo,
+} from "@/lib/supabase/exerciseLibrary";
 
 export const runtime = "nodejs";
 
@@ -44,6 +49,70 @@ export async function PATCH(req: Request, context: RouteContext) {
 
   const videoId = typeof body.videoId === "string" ? body.videoId.trim() : "";
   const video = videoId ? normalizeCloudflareVideo(videoId) : null;
+  const techniqueVideoId = typeof body.techniqueVideoId === "string" ? body.techniqueVideoId.trim() : "";
+  const techniqueVideo = techniqueVideoId ? normalizeCloudflareVideo(techniqueVideoId) : null;
+  const removeTechniqueVideo = body.removeTechniqueVideo === true;
+  if (techniqueVideoId || removeTechniqueVideo) {
+    if (removeTechniqueVideo) {
+      const result = await removeExerciseTechniqueVideo({
+        coachEmail: coach.email,
+        exerciseId,
+      });
+      if (!result.ok) {
+        return NextResponse.json(
+          { ok: false, error: result.reason, message: result.message },
+          { status: statusForReason(result.reason) }
+        );
+      }
+      return NextResponse.json({ ok: true, exercise: result.data });
+    }
+
+    if (techniqueVideo && !techniqueVideo.ok) {
+      return NextResponse.json(
+        { ok: false, error: "invalid_cloudflare_video", message: techniqueVideo.message },
+        { status: 400 }
+      );
+    }
+    if (!techniqueVideo?.ok) {
+      return NextResponse.json({ ok: false, error: "technique_video_required" }, { status: 400 });
+    }
+
+    const ready = await verifyCloudflareVideoReady(techniqueVideo.data.uid);
+    if (!ready.ok && ready.reason === "not_ready") {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: "cloudflare_video_processing",
+          message: "Видео обрабатывается. Повтори проверку через минуту.",
+          videoId: techniqueVideo.data.uid,
+          state: ready.state,
+        },
+        { status: 409 }
+      );
+    }
+    if (!ready.ok) {
+      return NextResponse.json(
+        { ok: false, error: "cloudflare_video_verify_failed", message: ready.message },
+        { status: 502 }
+      );
+    }
+
+    const result = await updateExerciseTechniqueVideo({
+      coachEmail: coach.email,
+      exerciseId,
+      videoAssetId: techniqueVideo.data.uid,
+      videoUrl: techniqueVideo.data.videoUrl,
+      thumbnailUrl: techniqueVideo.data.thumbnailUrl,
+    });
+    if (!result.ok) {
+      return NextResponse.json(
+        { ok: false, error: result.reason, message: result.message },
+        { status: statusForReason(result.reason) }
+      );
+    }
+    return NextResponse.json({ ok: true, exercise: result.data });
+  }
+
   if (video && !video.ok) {
     return NextResponse.json(
       { ok: false, error: "invalid_cloudflare_video", message: video.message },
