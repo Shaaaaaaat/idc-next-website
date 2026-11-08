@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import type {
   CoachWorkout,
   CoachWorkoutExercise,
@@ -166,6 +166,68 @@ function StudentResult({ exercise }: { exercise: CoachWorkoutExercise }) {
   );
 }
 
+function CoachAssignment({ exercise }: { exercise: CoachWorkoutExercise }) {
+  const [videoOpen, setVideoOpen] = useState(false);
+  const videoPanelId = useId();
+  const videoUrl =
+    exercise.videoAssetId && isSafeCloudflareEmbedUrl(exercise.videoUrl, exercise.videoAssetId)
+      ? exercise.videoUrl
+      : "";
+  const hasDetails =
+    Boolean(exercise.sets || exercise.reps || exercise.rest || exercise.tempo || exercise.notes) ||
+    Boolean(videoUrl);
+
+  if (!hasDetails) return null;
+
+  return (
+    <div className="mt-3 rounded-2xl border border-slate-200 bg-slate-50/75 p-3">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">
+          Задание тренера
+        </p>
+        {videoUrl ? (
+          <span className="rounded-full bg-white px-2.5 py-1 text-xs font-medium text-slate-500">
+            Исходное видео
+          </span>
+        ) : null}
+      </div>
+      <PrescriptionMetrics exercise={exercise} />
+      {exercise.notes ? (
+        <p className="mt-3 whitespace-pre-wrap text-sm leading-6 text-slate-600">
+          {exercise.notes}
+        </p>
+      ) : null}
+      {videoUrl && exercise.videoAssetId ? (
+        <>
+          <button
+            type="button"
+            onClick={() => setVideoOpen((current) => !current)}
+            aria-expanded={videoOpen}
+            aria-controls={videoPanelId}
+            className="mt-3 inline-flex items-center justify-center rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-600 transition-colors hover:bg-slate-100 hover:text-slate-900 focus:outline-none focus:ring-2 focus:ring-brand-primary/20"
+          >
+            {videoOpen ? "Скрыть видео задания" : "Видео задания"}
+          </button>
+          {videoOpen ? (
+            <div
+              id={videoPanelId}
+              className="mt-3 overflow-hidden rounded-2xl border border-slate-200 bg-slate-950"
+            >
+              <div className="aspect-video">
+                <CloudflareStreamPlayer
+                  src={videoUrl}
+                  title={`Задание тренера — ${exercise.title}`}
+                  className="h-full w-full"
+                />
+              </div>
+            </div>
+          ) : null}
+        </>
+      ) : null}
+    </div>
+  );
+}
+
 function ExerciseReview({
   exercise,
   indexLabel,
@@ -183,12 +245,7 @@ function ExerciseReview({
         ) : null}
         <div className="min-w-0 flex-1">
           <h5 className="text-base font-semibold text-slate-950">{exercise.title}</h5>
-          <PrescriptionMetrics exercise={exercise} />
-          {exercise.notes ? (
-            <p className="mt-3 whitespace-pre-wrap text-sm leading-6 text-slate-600">
-              {exercise.notes}
-            </p>
-          ) : null}
+          <CoachAssignment exercise={exercise} />
           <StudentResult exercise={exercise} />
         </div>
       </div>

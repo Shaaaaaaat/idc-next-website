@@ -1721,14 +1721,15 @@ export function LkStudentCalendar({ studentId, workouts, exerciseLibrary, initia
   );
   const uploadDraftExercise =
     uploadExerciseIndex !== null && editing ? editing.exercises[uploadExerciseIndex] : undefined;
-  const overlayModalOpen =
+  const blockingOverlayOpen =
     Boolean(previewExercise) ||
     uploadExerciseIndex !== null ||
     Boolean(programImportDate) ||
     Boolean(reviewingWorkout);
-  const notesInlineWithEditor = notesOpen && Boolean(editing) && Boolean(notesSlotBox) && !overlayModalOpen;
+  const overlayModalOpen = blockingOverlayOpen;
+  const notesInlineWithEditor = notesOpen && Boolean(editing) && Boolean(notesSlotBox) && !blockingOverlayOpen;
   const notesInlineWithCalendar = notesOpen && !editing && workspaceWidth >= NOTES_CALENDAR_SIDE_MIN_WIDTH;
-  const notesDrawerMode = notesOpen && !notesInlineWithEditor && !notesInlineWithCalendar && !overlayModalOpen;
+  const notesDrawerMode = notesOpen && !notesInlineWithEditor && !notesInlineWithCalendar && !blockingOverlayOpen;
   const isEditorOpen = Boolean(editing);
   overlayModalOpenRef.current = overlayModalOpen;
   notesDrawerModeRef.current = notesDrawerMode;
@@ -2026,7 +2027,7 @@ export function LkStudentCalendar({ studentId, workouts, exerciseLibrary, initia
   }, []);
 
   useEffect(() => {
-    if (!editing || !notesOpen || overlayModalOpen) {
+    if (!editing || !notesOpen || blockingOverlayOpen) {
       const frameId = window.requestAnimationFrame(() => setNotesSlotBox(null));
       return () => window.cancelAnimationFrame(frameId);
     }
@@ -2078,10 +2079,10 @@ export function LkStudentCalendar({ studentId, workouts, exerciseLibrary, initia
       window.removeEventListener("resize", updateSlotBox);
       window.removeEventListener("scroll", updateSlotBox, true);
     };
-  }, [editing, notesOpen, overlayModalOpen, viewportWidth]);
+  }, [blockingOverlayOpen, editing, notesOpen, viewportWidth]);
 
   useEffect(() => {
-    if (!notesDrawerMode || overlayModalOpen) return;
+    if (!notesDrawerMode || blockingOverlayOpen) return;
 
     const previousOverflow = document.body.style.overflow;
     document.body.style.overflow = "hidden";
@@ -2119,10 +2120,10 @@ export function LkStudentCalendar({ studentId, workouts, exerciseLibrary, initia
       document.body.style.overflow = previousOverflow;
       document.removeEventListener("keydown", handleKeyDown, true);
     };
-  }, [closeNotes, notesDrawerMode, overlayModalOpen]);
+  }, [blockingOverlayOpen, closeNotes, notesDrawerMode]);
 
   useEffect(() => {
-    if (!notesOpen || notesDrawerMode || editing || overlayModalOpen) return;
+    if (!notesOpen || notesDrawerMode || editing || blockingOverlayOpen) return;
 
     function handleKeyDown(event: KeyboardEvent) {
       if (event.key === "Escape") closeNotes();
@@ -2130,10 +2131,10 @@ export function LkStudentCalendar({ studentId, workouts, exerciseLibrary, initia
 
     document.addEventListener("keydown", handleKeyDown);
     return () => document.removeEventListener("keydown", handleKeyDown);
-  }, [closeNotes, editing, notesDrawerMode, notesOpen, overlayModalOpen]);
+  }, [blockingOverlayOpen, closeNotes, editing, notesDrawerMode, notesOpen]);
 
   useEffect(() => {
-    if (!editing || notesDrawerMode || overlayModalOpen) return;
+    if (!editing || notesDrawerMode || blockingOverlayOpen) return;
 
     function handleKeyDown(event: KeyboardEvent) {
       if (event.key !== "Tab") return;
@@ -2195,7 +2196,7 @@ export function LkStudentCalendar({ studentId, workouts, exerciseLibrary, initia
 
     document.addEventListener("keydown", handleKeyDown, true);
     return () => document.removeEventListener("keydown", handleKeyDown, true);
-  }, [editing, notesDrawerMode, notesOpen, overlayModalOpen]);
+  }, [blockingOverlayOpen, editing, notesDrawerMode, notesOpen]);
 
   useEffect(() => {
     if (!previewExercise) return;
@@ -2209,7 +2210,7 @@ export function LkStudentCalendar({ studentId, workouts, exerciseLibrary, initia
   }, [previewExercise]);
 
   useEffect(() => {
-    if (!editing || saving || overlayModalOpen || notesDrawerMode) return;
+    if (!editing || saving || blockingOverlayOpen || notesDrawerMode) return;
 
     function handleKeyDown(e: KeyboardEvent) {
       if (e.key !== "Escape") return;
@@ -2222,7 +2223,7 @@ export function LkStudentCalendar({ studentId, workouts, exerciseLibrary, initia
 
     document.addEventListener("keydown", handleKeyDown);
     return () => document.removeEventListener("keydown", handleKeyDown);
-  }, [closeNotes, editing, notesDrawerMode, notesInlineWithEditor, notesOpen, overlayModalOpen, saving]);
+  }, [blockingOverlayOpen, closeNotes, editing, notesDrawerMode, notesInlineWithEditor, notesOpen, saving]);
 
   useEffect(() => {
     if (isEditorOpen) {
@@ -3639,7 +3640,7 @@ export function LkStudentCalendar({ studentId, workouts, exerciseLibrary, initia
             <div
               ref={notesHostRef}
               hidden={!notesOpen}
-              inert={!notesOpen || overlayModalOpen || undefined}
+              inert={!notesOpen || blockingOverlayOpen || undefined}
               className={
                 !notesOpen
                   ? "hidden"
@@ -3661,7 +3662,7 @@ export function LkStudentCalendar({ studentId, workouts, exerciseLibrary, initia
                       left: notesSlotBox.left,
                       width: notesSlotBox.width,
                       height: notesSlotBox.height,
-                      zIndex: overlayModalOpen ? 40 : 55,
+                      zIndex: blockingOverlayOpen ? 40 : 65,
                     }
                   : notesInlineWithEditor
                     ? { visibility: "hidden" }
@@ -3670,7 +3671,7 @@ export function LkStudentCalendar({ studentId, workouts, exerciseLibrary, initia
                       : undefined
               }
               id="coach-student-notes-panel"
-              aria-hidden={!notesOpen || overlayModalOpen}
+              aria-hidden={!notesOpen || blockingOverlayOpen}
               role={notesDrawerMode ? "dialog" : undefined}
               aria-modal={notesDrawerMode ? true : undefined}
               aria-label={notesDrawerMode ? "Заметки" : undefined}
