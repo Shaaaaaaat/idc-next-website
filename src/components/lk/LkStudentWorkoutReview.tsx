@@ -7,6 +7,7 @@ import type {
   CoachWorkoutExerciseGroup,
 } from "@/lib/supabase/coachWorkouts";
 import { CloudflareStreamPlayer } from "@/components/lk/CloudflareStreamPlayer";
+import { resolveCloudflareIframeUrl } from "@/lib/cloudflare/streamClient";
 
 type Props = {
   workout: CoachWorkout;
@@ -169,10 +170,7 @@ function StudentResult({ exercise }: { exercise: CoachWorkoutExercise }) {
 function CoachAssignment({ exercise }: { exercise: CoachWorkoutExercise }) {
   const [videoOpen, setVideoOpen] = useState(false);
   const videoPanelId = useId();
-  const videoUrl =
-    exercise.videoAssetId && isSafeCloudflareEmbedUrl(exercise.videoUrl, exercise.videoAssetId)
-      ? exercise.videoUrl
-      : "";
+  const videoUrl = resolveCloudflareIframeUrl(exercise.videoUrl, exercise.videoAssetId);
   const hasDetails =
     Boolean(exercise.sets || exercise.reps || exercise.rest || exercise.tempo || exercise.notes) ||
     Boolean(videoUrl);
