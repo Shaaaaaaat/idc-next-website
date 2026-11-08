@@ -8,6 +8,7 @@ export const runtime = "nodejs";
 
 const ALLOWED_VIDEO_TYPES = new Set(["video/mp4", "video/quicktime", "video/webm"]);
 const TECHNIQUE_UPLOAD_PURPOSE: ExerciseUploadPurpose = "technique_breakdown";
+const TECHNIQUE_MAX_UPLOAD_BYTES = 1024 * 1024 * 1024;
 
 async function requireCoach() {
   const email = await getValidatedSessionEmail();
@@ -36,6 +37,7 @@ export async function POST(req: Request) {
   const fileType = String(body.fileType || "").trim();
   const fileSize = Number(body.fileSize || 0);
   const purpose = body.purpose === TECHNIQUE_UPLOAD_PURPOSE ? TECHNIQUE_UPLOAD_PURPOSE : "exercise_demo";
+  const maxUploadBytes = purpose === TECHNIQUE_UPLOAD_PURPOSE ? TECHNIQUE_MAX_UPLOAD_BYTES : getCloudflareMaxUploadBytes();
 
   if (!title) {
     return NextResponse.json({ ok: false, error: "title_required" }, { status: 400 });
@@ -46,8 +48,16 @@ export async function POST(req: Request) {
   if (!Number.isFinite(fileSize) || fileSize <= 0) {
     return NextResponse.json({ ok: false, error: "video_required" }, { status: 400 });
   }
-  if (fileSize > getCloudflareMaxUploadBytes()) {
-    return NextResponse.json({ ok: false, error: "video_too_large" }, { status: 413 });
+  if (fileSize > maxUploadBytes) {
+    return NextResponse.json(
+      {
+        ok: false,
+        error: "video_too_large",
+        fileSizeBytes: fileSize,
+        maxFileSizeBytes: maxUploadBytes,
+      },
+      { status: 413 }
+    );
   }
 
   const upload = await createCloudflareDirectTusUpload({

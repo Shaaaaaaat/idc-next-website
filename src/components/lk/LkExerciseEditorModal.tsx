@@ -22,7 +22,21 @@ type ApiErrorResponse = {
   error?: string;
   videoId?: string;
   state?: string;
+  fileSizeBytes?: number;
+  maxFileSizeBytes?: number;
 };
+
+class UploadTooLargeError extends Error {
+  fileSizeBytes: number;
+  maxFileSizeBytes: number;
+
+  constructor(fileSizeBytes: number, maxFileSizeBytes: number) {
+    super("Не удалось подготовить загрузку.");
+    this.name = "UploadTooLargeError";
+    this.fileSizeBytes = fileSizeBytes;
+    this.maxFileSizeBytes = maxFileSizeBytes;
+  }
+}
 
 type Props = {
   open: boolean;
@@ -93,6 +107,7 @@ export function LkExerciseEditorModal({ open, mode, exercise, initialTitle, enab
   const [hasTechniqueVideo, setHasTechniqueVideo] = useState(false);
   const [pendingTechniqueVideoId, setPendingTechniqueVideoId] = useState("");
   const [techniqueStatus, setTechniqueStatus] = useState("");
+  const [techniqueUploadError, setTechniqueUploadError] = useState("");
 
   const isUploading = uploadState !== "idle";
   const isEdit = mode === "edit";
@@ -126,6 +141,7 @@ export function LkExerciseEditorModal({ open, mode, exercise, initialTitle, enab
     setHasTechniqueVideo(Boolean(exercise?.techniqueVideoAssetId));
     setPendingTechniqueVideoId("");
     setTechniqueStatus("");
+    setTechniqueUploadError("");
     if (fileRef.current) fileRef.current.value = "";
     if (techniqueFileRef.current) techniqueFileRef.current.value = "";
   }, [exercise, initialTitle, open]);
@@ -146,6 +162,10 @@ export function LkExerciseEditorModal({ open, mode, exercise, initialTitle, enab
 
   function removeTag(tagToRemove: string) {
     setTags((current) => current.filter((tag) => tag !== tagToRemove));
+  }
+
+  function formatUploadTooLargeMessage(uploadError: UploadTooLargeError) {
+    return `Видео слишком большое: размер файла — ${uploadError.fileSizeBytes} байт, максимум — ${uploadError.maxFileSizeBytes} байт.`;
   }
 
   async function startTusUpload(params: {
@@ -199,6 +219,15 @@ export function LkExerciseEditorModal({ open, mode, exercise, initialTitle, enab
       | null;
 
     if (!initRes.ok || !initJson || initJson.ok !== true) {
+      const initError = initJson as ApiErrorResponse | null;
+      if (
+        purpose === "technique_breakdown" &&
+        initError?.error === "video_too_large" &&
+        Number.isFinite(initError.fileSizeBytes) &&
+        Number.isFinite(initError.maxFileSizeBytes)
+      ) {
+        throw new UploadTooLargeError(Number(initError.fileSizeBytes), Number(initError.maxFileSizeBytes));
+      }
       const err = initJson && "message" in initJson ? initJson.message || initJson.error : "";
       throw new Error(err || "Не удалось подготовить загрузку.");
     }
@@ -310,6 +339,7 @@ export function LkExerciseEditorModal({ open, mode, exercise, initialTitle, enab
 
     setError("");
     setTechniqueStatus("");
+    setTechniqueUploadError("");
     setUploadProgress(0);
 
     try {
@@ -324,6 +354,10 @@ export function LkExerciseEditorModal({ open, mode, exercise, initialTitle, enab
       if (techniqueFileRef.current) techniqueFileRef.current.value = "";
       onSaved(savedExercise);
     } catch (techniqueError) {
+      if (techniqueError instanceof UploadTooLargeError) {
+        setTechniqueUploadError(formatUploadTooLargeMessage(techniqueError));
+        return;
+      }
       setError(techniqueError instanceof Error ? techniqueError.message : "Не удалось сохранить разбор техники.");
     } finally {
       setUploadState("idle");
@@ -603,6 +637,7 @@ export function LkExerciseEditorModal({ open, mode, exercise, initialTitle, enab
                         setSelectedTechniqueVideoName(file?.name || "");
                         setPendingTechniqueVideoId("");
                         setTechniqueStatus("");
+                        setTechniqueUploadError("");
                       }}
                     />
                     <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -673,6 +708,11 @@ export function LkExerciseEditorModal({ open, mode, exercise, initialTitle, enab
                     {techniqueStatus ? (
                       <p className="mt-3 rounded-2xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
                         {techniqueStatus}
+                      </p>
+                    ) : null}
+                    {techniqueUploadError ? (
+                      <p className="mt-3 rounded-2xl border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
+                        {techniqueUploadError}
                       </p>
                     ) : null}
                   </div>
